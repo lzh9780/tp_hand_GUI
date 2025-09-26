@@ -10,20 +10,20 @@ grip_ctrl/
 │     ├─ can_defs.hpp
 │     ├─ control_interface.hpp
 │     ├─ control_policy_native.hpp
-│     ├─ control_policy_python.hpp         # optional, only if pybind11 is found
+│     ├─ control_policy_python.hpp
 │     ├─ protocol_codec.hpp
 │     └─ settings.hpp
 ├─ src/
-│  ├─ can_bus.cpp
+│  ├─ can_bus.cpp            # (kept header-only before; now split for clarity)
 │  ├─ control_interface.cpp
 │  ├─ control_policy_native.cpp
-│  ├─ control_policy_python.cpp            # optional, only if pybind11 is found
+│  ├─ control_policy_python.cpp
+│  ├─ settings.cpp
 │  ├─ main_native.cpp
-│  ├─ main_python.cpp                      # optional, only if pybind11 is found
-│  └─ settings.cpp
+│  └─ main_python.cpp
 └─ vendor/
-   ├─ zcan.h                # your vendor header
-   └─ libusbcanfd.(so|dll)  # put next to binaries at runtime if needed
+   ├─ zcan.h                 # vendor header you provided
+   └─ libusbcanfd.(so|dll)   # vendor library placed next to the binaries at runtime
 ```
 
 # Build & run

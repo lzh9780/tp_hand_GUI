@@ -7,10 +7,10 @@ can_device:
   core_clock_hz: 60000000
   termination_enabled: true
   bit_timing:
-    arbitration: { tseg1: 14, tseg2: 3, sjw: 2, brp: 5 }   # ~500 kbps
-    data_phase:  { tseg1: 10, tseg2: 2, sjw: 2, brp: 1 }   # ~2 Mbps
+    arbitration: { tseg1: 14, tseg2: 3, sjw: 2, brp: 5 }
+    data_phase:  { tseg1: 10, tseg2: 2, sjw: 2, brp: 1 }
 
-joints:
+joints:                  # map hardware device name to controller joint key
   - device: THUMB
     key: thumb_mcp
   - device: INDEX_FINGER
@@ -22,9 +22,9 @@ joints:
   - device: PINKY_FINGER
     key: pinky_mcp
 
-hold_targets:
-  others_rad: 1.5707963   # 90°
-  thumb_rad:  2.4434610   # 140°
+hold_targets:            # default target angles after calibration
+  others_rad: 1.5707963  # 90°
+  thumb_rad:  2.4434610  # 140°
 
 calibration:
   current_limit_mA: 1500
@@ -60,7 +60,7 @@ native_policy:
       feedforward_mA: [0,21.4286,42.8571,64.2857,85.7143,107.1429,128.5714,150.0,171.4286,192.8571,214.2857,235.7143,257.1429,278.5714,300.0]
 
 python_policy:
-  script_dir: "./"     # folder with Hall_Position_Control_with_Protection.py
+  script_dir: "./"      # folder with Hall_Position_Control_with_Protection.py
   module: "Hall_Position_Control_with_Protection"
   class: "Hall_Position_Control_with_Protection_Function"
   use_headless_matplotlib: true
