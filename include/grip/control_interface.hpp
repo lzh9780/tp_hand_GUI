@@ -37,7 +37,6 @@ public:
 
     // target API (GUI or any producer can call this): radians!
     void submit_target(JointDevice dev, float radians);
-    void set_default_targets(float others_rad, float thumb_rad);
 
     // state
     std::unordered_map<JointDevice, Telemetry> snapshot() const;
@@ -47,7 +46,7 @@ private:
     void control_loop();
     bool all_stalled_locked() const;
 
-    void send_broadcast(MsgKind kind, uint8_t field, const std::vector<int32_t>& values);
+    void send_broadcast(std::vector<JointDevice> devs, MsgKind kind, uint8_t field, const std::vector<int32_t>& values);
     void send_single(JointDevice dev, MsgKind kind, uint8_t field, int32_t value);
 
     void drain_pending_targets_locked();

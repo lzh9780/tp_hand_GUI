@@ -31,7 +31,6 @@ int main(int argc, char** argv) {
     ControlInterface ctrl(devs, key_of, cfg.native_policy, std::chrono::milliseconds(1));
     ctrl.start_bus(cfg.can_device);
     ctrl.run_calibration(cfg.calibration);
-    ctrl.set_default_targets(cfg.targets.others_rad, cfg.targets.thumb_rad);
     ctrl.start_control_loop();
 
     std::signal(SIGINT, +[](int){});

@@ -6,6 +6,7 @@
 #include "ActionStore.hpp"
 
 class SidePanel;
+class TopPanel;
 class QTextEdit;
 
 namespace grip { class ControlInterface; }
@@ -25,6 +26,7 @@ private slots:
     void onSidePanelValuesChanged();   // Follow mode → immediate send
     void onSidePanelCommitted();       // Setup mode → Execute
     void onSidePanelNotify(const QString& msg);
+    void onTopPanelDeviceConnect();
 
 private:
     void buildUI(const QStringList& jointNames);
@@ -32,7 +34,11 @@ private:
 private:
     std::vector<grip::JointDevice> devices_;
     grip::ControlInterface* ctrl_{nullptr};
+    const grip::AppSettings cfg_;
 
+    QWidget* mainContent;
+    QWidget* central;
     SidePanel* side_{nullptr};
+    TopPanel* top_{nullptr};
     QTextEdit* log_{nullptr};
 };

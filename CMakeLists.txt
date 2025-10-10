@@ -74,6 +74,7 @@ if (BUILD_GUI)
     src_gui/main_gui.cpp
     src_gui/MainWindow.cpp
     src_gui/SidePanel.cpp
+    src_gui/TopPanel.cpp
     src_gui/ActionStore.cpp
   )
   target_compile_definitions(grip_gui PRIVATE WITH_QT_GUI=1)

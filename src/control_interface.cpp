@@ -62,20 +62,18 @@ namespace grip
         using namespace std::chrono_literals;
         // 1) MAX_CURRENT
         {
-            auto id = make_can_id(JointDevice::BROADCAST, MsgKind::SET_MOTOR_PARAM);
-            auto payload = pack_broadcast_payload(devices_, (uint8_t)ParamField::MAX_CURRENT,
-                                                  std::vector<int32_t>(devices_.size(), c.current_limit_mA));
-            auto f = CanBus::buildFD(id, payload, (uint8_t)bus_channel_, 0);
-            bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{f});
+            send_broadcast(devices_,
+                           MsgKind::SET_MOTOR_PARAM,
+                           (uint8_t)ParamField::MAX_CURRENT,
+                           std::vector<int32_t>(devices_.size(), c.current_limit_mA));
             std::this_thread::sleep_for(10ms);
         }
         // 2) CALIBRATE negative speed
         {
-            auto id = make_can_id(JointDevice::BROADCAST, MsgKind::MOTOR_COMMAND);
-            auto payload = pack_broadcast_payload(devices_, (uint8_t)MotorMode::CALIBRATE,
-                                                  std::vector<int32_t>(devices_.size(), c.backdrive_speed));
-            auto f = CanBus::buildFD(id, payload, (uint8_t)bus_channel_, 0);
-            bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{f});
+            send_broadcast(devices_,
+                           MsgKind::MOTOR_COMMAND,
+                           (uint8_t)MotorMode::CALIBRATE,
+                           std::vector<int32_t>(devices_.size(), c.backdrive_speed));
             std::this_thread::sleep_for(10ms);
         }
         // 3) wait for stall -> stop -> write zero
@@ -85,13 +83,15 @@ namespace grip
                 std::lock_guard<std::mutex> lk(mtx_);
                 if (all_stalled_locked())
                 {
-                    auto id = make_can_id(JointDevice::BROADCAST, MsgKind::MOTOR_COMMAND);
-                    auto p1 = pack_broadcast_payload(devices_, (uint8_t)MotorMode::CALIBRATE, std::vector<int32_t>(devices_.size(), 0));
-                    bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p1, (uint8_t)bus_channel_, 0)});
+                    send_broadcast(devices_,
+                                   MsgKind::MOTOR_COMMAND,
+                                   (uint8_t)MotorMode::CALIBRATE,
+                                   std::vector<int32_t>(devices_.size(), 0));
                     std::this_thread::sleep_for(500ms);
-                    auto id2 = make_can_id(JointDevice::BROADCAST, MsgKind::SET_MOTOR_PARAM);
-                    auto p2 = pack_broadcast_payload(devices_, (uint8_t)ParamField::ENCODER_POS, std::vector<int32_t>(devices_.size(), c.encoder_zero_offset));
-                    bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id2, p2, (uint8_t)bus_channel_, 0)});
+                    send_broadcast(devices_,
+                                   MsgKind::SET_MOTOR_PARAM,
+                                   (uint8_t)ParamField::ENCODER_POS,
+                                   std::vector<int32_t>(devices_.size(), c.encoder_zero_offset));
                     break;
                 }
             }
@@ -115,13 +115,6 @@ namespace grip
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
         inbox_.emplace_back(dev, radians);
-    }
-
-    void ControlInterface::set_default_targets(float others_rad, float thumb_rad)
-    {
-        std::lock_guard<std::mutex> lk(mtx_);
-        for (auto d : devices_)
-            targets_rad_[d] = (d == JointDevice::THUMB) ? thumb_rad : others_rad;
     }
 
     void ControlInterface::drain_pending_targets_locked()
@@ -204,10 +197,10 @@ namespace grip
         }
     }
 
-    void ControlInterface::send_broadcast(MsgKind kind, uint8_t field, const std::vector<int32_t> &values)
+    void ControlInterface::send_broadcast(std::vector<JointDevice> devs, MsgKind kind, uint8_t field, const std::vector<int32_t> &values)
     {
         auto id = make_can_id(JointDevice::BROADCAST, kind);
-        auto p = pack_broadcast_payload(devices_, field, values);
+        auto p = pack_broadcast_payload(devs, field, values);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }
 
