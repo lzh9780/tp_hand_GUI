@@ -512,7 +512,7 @@ bool SidePanel::validateNewActionName(const QString &n, const QString &o) const
         return false;
     
     int i = -1;
-    if (o.trimmed().isEmpty() || o == n) {
+    if (o.trimmed().isEmpty() || o != n) {
         i = store_->findActionByName(n);
     }
     return i == -1;
