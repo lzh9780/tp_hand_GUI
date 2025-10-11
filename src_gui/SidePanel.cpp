@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QApplication>
 #include <QMessageBox>
+#include <QTimer>
 
 static constexpr int kDegMin = 0; // degrees
 static constexpr int kDegMax = 140;
@@ -31,7 +32,7 @@ SidePanel::SidePanel(QWidget *parent,
 
     // Splitter: actions (top) + sliders (bottom)
     auto *splitter = new QSplitter(Qt::Vertical, this);
-    splitter->addWidget(actionsPanel_);
+    splitter->addWidget(actionScroll_);
     splitter->addWidget(sliderScroll_);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
@@ -51,27 +52,57 @@ void SidePanel::buildControlRow()
 
     btnSave_ = new QPushButton("Save");
     btnDelete_ = new QPushButton("Delete");
+
+    QPushButton *recordBtn = new QPushButton();
+    recordBtn->setText("Record");
+    recordBtn->setEnabled(false);
+
+    QPushButton *saveRecordBtn = new QPushButton();
+    saveRecordBtn->setText("Save Set");
+    saveRecordBtn->setEnabled(false);
+
+    QPushButton *editBtn = new QPushButton();
+    editBtn->setText("Edit");
+    editBtn->setEnabled(false);
+
     btnEditName_ = new QPushButton("Edit Name");
+
     btnMode_ = new QPushButton("Mode: Follow");
+    btnMode_->setToolTip("Change the joint control mode\n"
+                         "    Follow mode: joints act with the sliders\n"
+                         "    Setup mode: The joints act after press \"Execute\" button");
+
     btnExecute_ = new QPushButton("Execute");
     btnExecute_->setEnabled(false);
 
-    h->addWidget(btnSave_);
-    h->addWidget(btnDelete_);
-    h->addWidget(btnEditName_);
-    h->addStretch(1);
-    h->addWidget(btnMode_);
-    h->addWidget(btnExecute_);
+    QVBoxLayout *btnCol1 = new QVBoxLayout();
+    btnCol1->addWidget(btnSave_);
+    btnCol1->addWidget(btnDelete_);
+    btnCol1->addWidget(editBtn);
+    btnCol1->addWidget(btnMode_);
+    // saveLine->setSpacing(0);
+
+    QVBoxLayout *btnCol2 = new QVBoxLayout();
+    btnCol2->addWidget(saveRecordBtn);
+    btnCol2->addWidget(recordBtn);
+    btnCol2->addWidget(btnEditName_);
+    btnCol2->addWidget(btnExecute_);
+
+    h->addLayout(btnCol1);
+    h->addLayout(btnCol2);
+
+    controlRow_->setLayout(h);
 
     connect(btnMode_, &QPushButton::clicked, this, &SidePanel::onToggleMode);
     connect(btnExecute_, &QPushButton::clicked, this, &SidePanel::onExecute);
     connect(btnSave_, &QPushButton::clicked, this, &SidePanel::onSaveAction);
-    connect(btnDelete_, &QPushButton::clicked, this, &SidePanel::onDeleteAction);
+    // connect(btnDelete_, &QPushButton::clicked, this, &SidePanel::onDeleteAction);
 }
 
 void SidePanel::buildActionsPanel()
 {
     actionsPanel_ = new QWidget(this);
+    // actionsPanel_->setStyleSheet("background: #fff;");
     auto *v = new QVBoxLayout(actionsPanel_);
     v->setContentsMargins(6, 6, 6, 6);
     v->setSpacing(4);
@@ -90,6 +121,7 @@ void SidePanel::buildActionsPanel()
 
     // Actions list container
     actionListWidget_ = new QWidget;
+    actionListWidget_->setStyleSheet("background: #fff;");
     auto *listLayout = new QVBoxLayout(actionListWidget_);
     listLayout->setContentsMargins(24, 0, 0, 0);
     listLayout->setSpacing(2);
@@ -113,13 +145,40 @@ void SidePanel::buildActionsPanel()
         rl->addWidget(nameEdit);
         listLayout->addWidget(row);
 
-        // Clicking the name applies the stored joint values to sliders
-        connect(nameBtn, &QPushButton::clicked, this, &SidePanel::onActionNameClicked);
+        connect(nameBtn, &QPushButton::clicked,
+                this, [=]()
+                { onActionNameClicked(); });
 
-        // Inline rename UX (Edit Name button brings focus to the QLineEdit)
-        connect(btnEditName_, &QPushButton::clicked, this, [=]
-                { nameEdit->show(); nameEdit->setFocus(); nameBtn->hide(); });
-        connect(nameEdit, &QLineEdit::editingFinished, this, &SidePanel::onNameEditingFinished);
+        connect(qApp, &QApplication::focusChanged, this,
+                [=](QWidget *old, QWidget *now)
+                {
+                    if (old == nameEdit && now != nameEdit)
+                    {
+                        if (now != btnSave_)
+                        {
+                            vialdate(nameEdit, nameBtn);
+                        }
+                    }
+
+                    if (old == nameBtn)
+                    {
+
+                        if (now == btnDelete_)
+                        {
+                            onDeleteAction(nameBtn);
+                        }
+                        else if (now == btnEditName_)
+                        {
+                            nameEdit->show();
+                            nameEdit->setFocus();
+                            nameBtn->hide();
+                        }
+                    }
+                });
+
+        connect(nameEdit, &QLineEdit::editingFinished,
+                this, [=]()
+                { vialdate(nameEdit, nameBtn); });
     }
 
     // Header: "Action Sets" [collapse] (kept for UI parity)
@@ -138,6 +197,12 @@ void SidePanel::buildActionsPanel()
     actionSetPanel_->setMinimumHeight(80);
     actionSetPanel_->setStyleSheet("background: #fff;");
     v->addWidget(actionSetPanel_);
+    auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);
+    v->addItem(spacer);
+
+    actionScroll_ = new QScrollArea;
+    actionScroll_->setWidget(actionsPanel_);
+    actionScroll_->setWidgetResizable(true);
 }
 
 void SidePanel::buildSliderPanel(const QStringList &jointNames)
@@ -229,6 +294,9 @@ void SidePanel::onSaveAction()
         auto *hl = new QHBoxLayout(row);
         hl->setContentsMargins(0, 0, 0, 0);
         auto *nameBtn = new QPushButton;
+        nameBtn->setStyleSheet(
+            "QPushButton { border: 1px solid #ffffff; background: #ffffff; text-align: left; padding-left: 10px; }"
+            "QPushButton:focus  { border: 2px solid #000000; background: #f0f0f0; text-align: left; padding-left: 10px; }");
         nameBtn->hide();
         auto *nameEdit = new QLineEdit;
         hl->addWidget(nameBtn);
@@ -236,8 +304,40 @@ void SidePanel::onSaveAction()
         layout->addWidget(row);
         addingRowIndex_ = layout->count() - 1;
         nameEdit->setFocus();
-        connect(nameEdit, &QLineEdit::editingFinished, this, &SidePanel::onNameEditingFinished);
-        connect(nameBtn, &QPushButton::clicked, this, &SidePanel::onActionNameClicked);
+        connect(nameBtn, &QPushButton::clicked,
+                this, [=]()
+                { onActionNameClicked(); });
+
+        connect(qApp, &QApplication::focusChanged, this,
+                [=](QWidget *old, QWidget *now)
+                {
+                    if (old == nameEdit && now != nameEdit)
+                    {
+                        if (now != btnSave_)
+                        {
+                            vialdate(nameEdit, nameBtn);
+                        }
+                    }
+
+                    if (old == nameBtn)
+                    {
+
+                        if (now == btnDelete_)
+                        {
+                            onDeleteAction(nameBtn);
+                        }
+                        else if (now == btnEditName_)
+                        {
+                            nameEdit->show();
+                            nameEdit->setFocus();
+                            nameBtn->hide();
+                        }
+                    }
+                });
+
+        connect(nameEdit, &QLineEdit::editingFinished,
+                this, [=]()
+                { vialdate(nameEdit, nameBtn); });
         btnSave_->setText("Cancel");
     }
     else
@@ -269,68 +369,68 @@ void SidePanel::onFocusChanged(QWidget *oldW, QWidget *nowW)
     // no-op here; inline editing is handled on editingFinished
 }
 
-void SidePanel::onNameEditingFinished()
-{
-    auto *edit = qobject_cast<QLineEdit *>(sender());
-    if (!edit)
-        return;
+// void SidePanel::onNameEditingFinished()
+// {
+//     auto *edit = qobject_cast<QLineEdit *>(sender());
+//     if (!edit)
+//         return;
 
-    QString name = edit->text().trimmed();
-    if (!validateNewActionName(name))
-    {
-        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
-        edit->setFocus();
-        edit->selectAll();
-        return;
-    }
+//     QString name = edit->text().trimmed();
+//     if (!validateNewActionName(name))
+//     {
+//         QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
+//         edit->setFocus();
+//         edit->selectAll();
+//         return;
+//     }
 
-    // Collect slider values (convert to doubles in 0..140 deg for storage)
-    QVector<double> vals;
-    vals.reserve(sliders_.size());
-    for (auto *s : sliders_)
-        vals.push_back(double(s->value()));
+//     // Collect slider values (convert to doubles in 0..140 deg for storage)
+//     QVector<double> vals;
+//     vals.reserve(sliders_.size());
+//     for (auto *s : sliders_)
+//         vals.push_back(double(s->value()));
 
-    // Was it an add-row or rename?
-    auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-    int rowIdx = -1;
-    for (int i = 0; i < layout->count(); ++i)
-    {
-        auto *row = layout->itemAt(i)->widget();
-        if (!row)
-            continue;
-        if (row->findChild<QLineEdit *>() == edit)
-        {
-            rowIdx = i;
-            break;
-        }
-    }
-    if (rowIdx == addingRowIndex_)
-    {
-        // Add
-        store_->addAction(name, vals);
-        // convert row to normal button
-        auto *row = layout->itemAt(rowIdx)->widget();
-        auto *nameBtn = row->findChild<QPushButton *>();
-        nameBtn->setText(name);
-        nameBtn->show();
-        edit->hide();
-        connect(nameBtn, &QPushButton::clicked, this, &SidePanel::onActionNameClicked);
-        addingRowIndex_ = -1;
-        btnSave_->setText("Save");
-    }
-    else
-    {
-        // Rename: find which button matches this row's old name
-        // (simple approach: refresh store entry by current focus)
-        // For brevity, we just add if not found.
-        int idx = store_->findActionByName(name);
-        if (idx < 0)
-            store_->addAction(name, vals);
-        // else setActionName/setActionJoints(idx, vals)
-    }
+//     // Was it an add-row or rename?
+//     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
+//     int rowIdx = -1;
+//     for (int i = 0; i < layout->count(); ++i)
+//     {
+//         auto *row = layout->itemAt(i)->widget();
+//         if (!row)
+//             continue;
+//         if (row->findChild<QLineEdit *>() == edit)
+//         {
+//             rowIdx = i;
+//             break;
+//         }
+//     }
+//     if (rowIdx == addingRowIndex_)
+//     {
+//         // Add
+//         store_->addAction(name, vals);
+//         // convert row to normal button
+//         auto *row = layout->itemAt(rowIdx)->widget();
+//         auto *nameBtn = row->findChild<QPushButton *>();
+//         nameBtn->setText(name);
+//         nameBtn->show();
+//         edit->hide();
+//         connect(nameBtn, &QPushButton::clicked, this, &SidePanel::onActionNameClicked);
+//         addingRowIndex_ = -1;
+//         btnSave_->setText("Save");
+//     }
+//     else
+//     {
+//         // Rename: find which button matches this row's old name
+//         // (simple approach: refresh store entry by current focus)
+//         // For brevity, we just add if not found.
+//         int idx = store_->findActionByName(name);
+//         if (idx < 0)
+//             store_->addAction(name, vals);
+//         // else setActionName/setActionJoints(idx, vals)
+//     }
 
-    persistStore();
-}
+//     persistStore();
+// }
 
 void SidePanel::onToggleActions()
 {
@@ -346,27 +446,49 @@ void SidePanel::onToggleActionSets()
     btnCollapseSets_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
 }
 
-void SidePanel::onDeleteAction()
+void SidePanel::onDeleteAction(QPushButton* btn)
 {
     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-    // delete last normal action (simple UX parity; you can wire focus-based delete if desired)
-    for (int i = layout->count() - 1; i >= 0; --i)
-    {
-        auto *row = layout->itemAt(i)->widget();
-        if (!row)
-            continue;
-        if (row->findChild<QPushButton *>())
-        {
-            // remove from store by button text
-            auto *btn = row->findChild<QPushButton *>();
-            int idx = store_->findActionByName(btn->text());
-            if (idx >= 0)
-                store_->removeAction(idx);
-            layout->removeWidget(row);
-            delete row;
-            persistStore();
-            break;
+    // // delete last normal action (simple UX parity; you can wire focus-based delete if desired)
+    // for (int i = layout->count() - 1; i >= 0; --i)
+    // {
+    //     auto *row = layout->itemAt(i)->widget();
+    //     if (!row)
+    //         continue;
+    //     if (row->findChild<QPushButton *>())
+    //     {
+    //         // remove from store by button text
+    //         auto *btn = row->findChild<QPushButton *>();
+    //         int idx = store_->findActionByName(btn->text());
+    //         if (idx >= 0)
+    //             store_->removeAction(idx);
+    //         layout->removeWidget(row);
+    //         delete row;
+    //         persistStore();
+    //         break;
+    //     }
+    // }\auto *parentLyt = qobject_cast<QVBoxLayout*>(actions->layout());
+
+    int idx = store_->findActionByName(btn->text());
+    QLayoutItem *item = layout->takeAt(idx);
+
+    if (item) {
+        // qDebug() << "Deleting";
+        if (QLayout *rowLyt = item->layout()) {
+            QLayoutItem *child;
+            while ((child = rowLyt->takeAt(0))) {
+                if (child->widget()) delete child->widget();
+                delete child;
+            }
+            delete rowLyt;
+        } else if (item->widget()) {
+            delete item->widget();
         }
+    }
+
+    if (idx < store_->actionCount()) {
+        // qDebug() << "Deleting" << idx;
+        store_->removeAction(idx);
     }
 }
 
@@ -384,9 +506,66 @@ void SidePanel::applyActionToSliders(int actionIndex)
 
 void SidePanel::persistStore() { store_->save(); }
 
-bool SidePanel::validateNewActionName(const QString &n) const
+bool SidePanel::validateNewActionName(const QString &n, const QString &o) const
 {
     if (n.trimmed().isEmpty())
         return false;
-    return store_->findActionByName(n) == -1;
+    
+    int i = -1;
+    if (o.trimmed().isEmpty() || o == n) {
+        i = store_->findActionByName(n);
+    }
+    return i == -1;
+}
+
+void SidePanel::vialdate(QLineEdit* edit, QPushButton* btn) {
+    if (edit->property("vaildating").toBool()) return;
+    edit->setProperty("vaildating", true);
+    
+    // if (validateNewActionName(edit->text(), idx)) {
+    if (validateNewActionName(edit->text(), btn->text())) {
+        QString aName = edit->text();
+
+        if (btn->text().trimmed().isEmpty()) {
+            QVector<double> vals;
+            vals.reserve(sliders_.size());
+            for (auto *s : sliders_)
+                vals.push_back(double(s->value()));      
+
+            // actionList.append(newObj);
+            // edit->clearFocus();
+            btnSave_->setText("Save");
+            addingRowIndex_ = -1;
+            store_->addAction(aName, vals);
+        } else {
+            // QJsonObject actionObj = actionList[idx].toObject();
+            // actionObj["name"] = aName;
+            // actionList[idx] = actionObj;
+            int idx = store_->findActionByName(btn->text());
+            store_->setActionName(idx, aName);
+        }
+
+        btn->setText(aName);
+        btn->show();
+        edit->hide();
+
+        /** TODO: change write file position */
+        // QJsonObject obj;
+        // obj["actions"] = actionList;
+        // obj["action_sets"] = actionSetList;
+
+        // QFile file("saveData.json");
+        // if (file.open(QIODevice::WriteOnly)) {
+        //     QJsonDocument doc(obj);
+        //     file.write(doc.toJson());
+        //     file.close();
+        // }
+        persistStore();
+    } else {
+        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
+        edit->setFocus();
+        edit->selectAll();
+    }
+
+    QTimer::singleShot(0, edit, [edit]{ edit->setProperty("vaildating", false); });
 }

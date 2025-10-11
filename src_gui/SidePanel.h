@@ -55,11 +55,10 @@ private slots:
     void onSaveAction();               // begin/cancel inline add
     void onActionNameClicked();        // apply saved action to sliders
     void onFocusChanged(QWidget* old, QWidget* now);
-    void onNameEditingFinished();
-
+    // void onNameEditingFinished();
     void onToggleActions();
     void onToggleActionSets();
-    void onDeleteAction();
+    
 
 private:
     // Build sections
@@ -70,7 +69,9 @@ private:
     // Helpers
     void applyActionToSliders(int actionIndex);
     void persistStore();
-    bool validateNewActionName(const QString& n) const;
+    bool validateNewActionName(const QString& n, const QString& o) const;
+    void vialdate(QLineEdit* edit, QPushButton* btn);
+    void onDeleteAction(QPushButton* btn);
 
 private:
     // Data
@@ -95,6 +96,7 @@ private:
     // UI: sliders
     QWidget* sliderPanel_{nullptr};
     QScrollArea* sliderScroll_{nullptr};
+    QScrollArea* actionScroll_{nullptr};
     QVBoxLayout* sliderVBox_{nullptr};
     QList<QSlider*> sliders_;
     QList<QLabel*>  valueLabels_;  // number next to each slider
