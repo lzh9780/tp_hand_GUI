@@ -2,6 +2,7 @@
 #include <QFrame>
 
 class QWidget;
+class QPushButton;
 
 class TopPanel : public QFrame
 {
@@ -11,7 +12,12 @@ public:
 
 signals:
     void deviceConnect();
+    void controlSwitch(const QString& msg);
 
 private slots:
     void onConnect();
+    void onSwitch();
+
+private:
+    QPushButton* switchBtn;
 };

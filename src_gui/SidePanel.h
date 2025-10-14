@@ -13,6 +13,7 @@ class QSplitter;
 class QPushButton;
 class QToolButton;
 class QLineEdit;
+class QImage;
 
 class ActionStore; // fwd
 
@@ -42,6 +43,9 @@ public:
 
     // Mode string exactly as UI shows it ("Mode: Follow"/"Mode: Setup")
     QString modeText() const;
+    void setFrame(const QImage img);
+    void modeChange(const QString& mode);
+    void applyCameraData(const QVector<double>& data);
 
 signals:
     void valuesChanged();
@@ -92,6 +96,9 @@ private:
     QWidget* actionSetPanel_{nullptr};
     QToolButton* btnCollapseActions_{nullptr};
     QToolButton* btnCollapseSets_{nullptr};
+
+    // UI: Image 
+    QLabel* img_label_{nullptr};
 
     // UI: sliders
     QWidget* sliderPanel_{nullptr};

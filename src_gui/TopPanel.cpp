@@ -11,13 +11,27 @@ TopPanel::TopPanel(QWidget *parent)
     content->setFixedHeight(30);
     content->setStyleSheet("background: #fff;");
     root->addWidget(content);
-    root->setContentsMargins(0, 0, 0, 0);
+    auto *background = new QHBoxLayout(content);
+    background->setContentsMargins(0, 0, 0, 0);
+    switchBtn = new QPushButton("Joints");
+    background->addWidget(switchBtn);
     auto *connectBtn = new QPushButton("Connect");
-    root->addWidget(connectBtn);
+    background->addWidget(connectBtn);
     connect(connectBtn, &QPushButton::clicked, this, &TopPanel::onConnect);
+    connect(switchBtn, &QPushButton::clicked, this, &TopPanel::onSwitch);
 }
 
 void TopPanel::onConnect()
 {
     emit deviceConnect();
+}
+
+void TopPanel::onSwitch() {
+    if (switchBtn->text() == "Joints") {
+        switchBtn->setText("Camera");
+        emit controlSwitch(switchBtn->text());
+    } else if (switchBtn->text() == "Camera") {
+        switchBtn->setText("Joints");
+        emit controlSwitch(switchBtn->text());
+    }
 }

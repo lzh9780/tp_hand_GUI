@@ -6,6 +6,8 @@
 #include <QSplitter>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QStatusBar>
+#include <QTimer>
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        const std::vector<grip::JointDevice> &devices,
@@ -18,6 +20,39 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
         names << QString::fromStdString(s);
     buildUI(names);
     resize(800, 600);
+
+    // Worker thread
+    workerThread_ = new QThread(this);
+    worker_ = new PyCamWorker();
+    worker_->moveToThread(workerThread_);
+
+    // Start worker when thread starts
+    connect(workerThread_, &QThread::started, worker_, &PyCamWorker::start);
+    connect(this, &QObject::destroyed, worker_, &PyCamWorker::stop);
+    connect(workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
+
+    // Display frames
+    connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage& img){
+        // label_->setPixmap(QPixmap::fromImage(img));
+        side_->setFrame(img);
+        // statusBar()->showMessage(QString("Frame %1x%2").arg(img.width()).arg(img.height()), 100);
+    });
+
+    connect(worker_, &PyCamWorker::newJoint, this, [this](const QVector<double>& joints){
+        // label_->setPixmap(QPixmap::fromImage(img));
+        side_->applyCameraData(joints);
+        // statusBar()->showMessage(QString("Frame %1x%2").arg(img.width()).arg(img.height()), 100);
+    });
+    connect(worker_, &PyCamWorker::status, this, [this](const QString& s){
+        statusBar()->showMessage(s, 2000);
+    });
+    connect(worker_, &PyCamWorker::error, this, [this](const QString& e){
+        statusBar()->showMessage(QString("Error: %1").arg(e), 5000);
+    });
+
+    // QTimer* timer_ = new QTimer(this);
+    // connect(timer_, &QTimer::timeout, worker_, &PyCamWorker::onTick);
+    // timer_->start(1000/60);
 }
 
 void MainWindow::buildUI(const QStringList &jointNames)
@@ -60,6 +95,7 @@ void MainWindow::buildUI(const QStringList &jointNames)
     connect(side_, &SidePanel::committed, this, &MainWindow::onSidePanelCommitted);
     connect(side_, &SidePanel::notify, this, &MainWindow::onSidePanelNotify);
     connect(top_, &TopPanel::deviceConnect, this, &MainWindow::onTopPanelDeviceConnect);
+    connect(top_, &TopPanel::controlSwitch, this, &MainWindow::onTopPanelControlSwitch);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -116,5 +152,17 @@ void MainWindow::onTopPanelDeviceConnect()
     {
         const QString qerr = QString(e.what());
         log_->append(qerr);
+    }
+}
+
+void MainWindow::onTopPanelControlSwitch(const QString &msg) {
+    side_->modeChange(msg);
+    if (msg == "Camera") {
+        qDebug() << "Mode camera";
+        workerThread_->start();
+        qDebug() << "Thread started";
+    } else {
+        workerThread_->quit();
+        workerThread_->wait();
     }
 }

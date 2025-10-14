@@ -13,6 +13,8 @@
 #include <QApplication>
 #include <QMessageBox>
 #include <QTimer>
+#include <QImage>
+#include <QPixmap>
 
 static constexpr int kDegMin = 0; // degrees
 static constexpr int kDegMax = 140;
@@ -30,8 +32,16 @@ SidePanel::SidePanel(QWidget *parent,
     buildActionsPanel();
     buildSliderPanel(jointNames);
 
+    // auto *vb = new QVBoxLayout();
+    img_label_ = new QLabel();
+    img_label_->hide();
+
+    // vb->addWidget(img_label_);
+    // vb->addWidget(actionScroll_);
+
     // Splitter: actions (top) + sliders (bottom)
     auto *splitter = new QSplitter(Qt::Vertical, this);
+    splitter->addWidget(img_label_);
     splitter->addWidget(actionScroll_);
     splitter->addWidget(sliderScroll_);
     splitter->setStretchFactor(0, 0);
@@ -369,69 +379,6 @@ void SidePanel::onFocusChanged(QWidget *oldW, QWidget *nowW)
     // no-op here; inline editing is handled on editingFinished
 }
 
-// void SidePanel::onNameEditingFinished()
-// {
-//     auto *edit = qobject_cast<QLineEdit *>(sender());
-//     if (!edit)
-//         return;
-
-//     QString name = edit->text().trimmed();
-//     if (!validateNewActionName(name))
-//     {
-//         QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
-//         edit->setFocus();
-//         edit->selectAll();
-//         return;
-//     }
-
-//     // Collect slider values (convert to doubles in 0..140 deg for storage)
-//     QVector<double> vals;
-//     vals.reserve(sliders_.size());
-//     for (auto *s : sliders_)
-//         vals.push_back(double(s->value()));
-
-//     // Was it an add-row or rename?
-//     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-//     int rowIdx = -1;
-//     for (int i = 0; i < layout->count(); ++i)
-//     {
-//         auto *row = layout->itemAt(i)->widget();
-//         if (!row)
-//             continue;
-//         if (row->findChild<QLineEdit *>() == edit)
-//         {
-//             rowIdx = i;
-//             break;
-//         }
-//     }
-//     if (rowIdx == addingRowIndex_)
-//     {
-//         // Add
-//         store_->addAction(name, vals);
-//         // convert row to normal button
-//         auto *row = layout->itemAt(rowIdx)->widget();
-//         auto *nameBtn = row->findChild<QPushButton *>();
-//         nameBtn->setText(name);
-//         nameBtn->show();
-//         edit->hide();
-//         connect(nameBtn, &QPushButton::clicked, this, &SidePanel::onActionNameClicked);
-//         addingRowIndex_ = -1;
-//         btnSave_->setText("Save");
-//     }
-//     else
-//     {
-//         // Rename: find which button matches this row's old name
-//         // (simple approach: refresh store entry by current focus)
-//         // For brevity, we just add if not found.
-//         int idx = store_->findActionByName(name);
-//         if (idx < 0)
-//             store_->addAction(name, vals);
-//         // else setActionName/setActionJoints(idx, vals)
-//     }
-
-//     persistStore();
-// }
-
 void SidePanel::onToggleActions()
 {
     bool vis = actionListWidget_->isVisible();
@@ -449,26 +396,6 @@ void SidePanel::onToggleActionSets()
 void SidePanel::onDeleteAction(QPushButton* btn)
 {
     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-    // // delete last normal action (simple UX parity; you can wire focus-based delete if desired)
-    // for (int i = layout->count() - 1; i >= 0; --i)
-    // {
-    //     auto *row = layout->itemAt(i)->widget();
-    //     if (!row)
-    //         continue;
-    //     if (row->findChild<QPushButton *>())
-    //     {
-    //         // remove from store by button text
-    //         auto *btn = row->findChild<QPushButton *>();
-    //         int idx = store_->findActionByName(btn->text());
-    //         if (idx >= 0)
-    //             store_->removeAction(idx);
-    //         layout->removeWidget(row);
-    //         delete row;
-    //         persistStore();
-    //         break;
-    //     }
-    // }\auto *parentLyt = qobject_cast<QVBoxLayout*>(actions->layout());
-
     int idx = store_->findActionByName(btn->text());
     QLayoutItem *item = layout->takeAt(idx);
 
@@ -532,15 +459,10 @@ void SidePanel::vialdate(QLineEdit* edit, QPushButton* btn) {
             for (auto *s : sliders_)
                 vals.push_back(double(s->value()));      
 
-            // actionList.append(newObj);
-            // edit->clearFocus();
             btnSave_->setText("Save");
             addingRowIndex_ = -1;
             store_->addAction(aName, vals);
         } else {
-            // QJsonObject actionObj = actionList[idx].toObject();
-            // actionObj["name"] = aName;
-            // actionList[idx] = actionObj;
             int idx = store_->findActionByName(btn->text());
             store_->setActionName(idx, aName);
         }
@@ -549,17 +471,6 @@ void SidePanel::vialdate(QLineEdit* edit, QPushButton* btn) {
         btn->show();
         edit->hide();
 
-        /** TODO: change write file position */
-        // QJsonObject obj;
-        // obj["actions"] = actionList;
-        // obj["action_sets"] = actionSetList;
-
-        // QFile file("saveData.json");
-        // if (file.open(QIODevice::WriteOnly)) {
-        //     QJsonDocument doc(obj);
-        //     file.write(doc.toJson());
-        //     file.close();
-        // }
         persistStore();
     } else {
         QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
@@ -568,4 +479,33 @@ void SidePanel::vialdate(QLineEdit* edit, QPushButton* btn) {
     }
 
     QTimer::singleShot(0, edit, [edit]{ edit->setProperty("vaildating", false); });
+}
+
+void SidePanel::setFrame(const QImage img) {
+    // qDebug() << "Drawing frame";
+    auto pm = QPixmap::fromImage(img).scaled(img_label_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation); //(img);
+    img_label_->setPixmap(pm);
+}
+
+void SidePanel::modeChange(const QString& mode) {
+    /** TODO: Complete mode change */
+    if (mode == "Camera") {
+        for (auto s : sliders_) {
+            s->setEnabled(false);
+        }
+        actionScroll_->hide();
+        controlRow_->hide();
+        img_label_->show();
+    }
+}
+
+void SidePanel::applyCameraData(const QVector<double>& data){
+    // auto vals = store_->actionJoints(actionIndex);
+    for (int i = 0; i < sliders_.size() && i < data.size(); ++i)
+    {
+        float f = data[i];
+        int v = std::clamp(int(f), kDegMin, kDegMax);
+        sliders_[i]->setValue(v);
+    }
+    emit valuesChanged();
 }

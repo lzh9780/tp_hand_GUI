@@ -6,6 +6,8 @@ option(BUILD_GUI "Build Qt GUI target" OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_AUTOMOC ON)
+
 if (MSVC)
   add_compile_options(/W4)
 else()
@@ -13,6 +15,14 @@ else()
 endif()
 
 find_package(yaml-cpp REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+
+
+# ---- OpenCV (only for color utilities; not strictly needed if you keep manual BGR->RGB) ----
+find_package(OpenCV QUIET COMPONENTS core imgproc)
+
+# ---- pybind11 (CONFIG mode; e.g., pip install pybind11) ----
+find_package(pybind11 CONFIG REQUIRED)
 
 if (BUILD_GUI)
   set(QT_REQUIRED_COMPONENTS Widgets)
@@ -76,9 +86,20 @@ if (BUILD_GUI)
     src_gui/SidePanel.cpp
     src_gui/TopPanel.cpp
     src_gui/ActionStore.cpp
+    src_gui/PyCamWorker.h
+    src_gui/PyCamWorker.cpp
   )
+  target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(grip_gui PRIVATE Python3::Python)
   target_compile_definitions(grip_gui PRIVATE WITH_QT_GUI=1)
-  target_link_libraries(grip_gui PRIVATE grip_core ${QT_PACKAGE}::Widgets)
+  target_link_libraries(grip_gui PRIVATE
+    grip_core
+    ${QT_PACKAGE}::Widgets
+    pybind11::embed
+    ${OpenCV_LIBS}
+  )
+  
+  # target_link_libraries(grip_gui PRIVATE grip_core ${QT_PACKAGE}::Widgets)
   set_target_properties(grip_gui PROPERTIES BUILD_RPATH "${_rpath}" INSTALL_RPATH "${_rpath}")
 endif()
 

@@ -1,13 +1,18 @@
 #pragma once
 #include <QMainWindow>
 #include <vector>
+#include <QThread>
 #include "grip/can_defs.hpp"
 #include "grip/settings.hpp"
 #include "ActionStore.hpp"
+#include "PyCamWorker.h"
 
 class SidePanel;
 class TopPanel;
 class QTextEdit;
+class QThread;
+
+Q_DECLARE_METATYPE(QVector<float>)
 
 namespace grip { class ControlInterface; }
 
@@ -27,6 +32,7 @@ private slots:
     void onSidePanelCommitted();       // Setup mode → Execute
     void onSidePanelNotify(const QString& msg);
     void onTopPanelDeviceConnect();
+    void onTopPanelControlSwitch(const QString &msg);
 
 private:
     void buildUI(const QStringList& jointNames);
@@ -41,4 +47,6 @@ private:
     SidePanel* side_{nullptr};
     TopPanel* top_{nullptr};
     QTextEdit* log_{nullptr};
+    PyCamWorker* worker_ = nullptr;
+    QThread* workerThread_ = nullptr;
 };
