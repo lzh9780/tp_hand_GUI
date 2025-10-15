@@ -1,5 +1,6 @@
 #include "grip/control_policy_native.hpp"
 #include <algorithm>
+#include <iostream>
 
 namespace grip
 {
@@ -89,8 +90,17 @@ namespace grip
         if (jr.integral_err < Imin)
             jr.integral_err = Imin;
 
+        // Stopping the motor if the target position is reached
+        if (abs(e) < 600000 && abs(d) > 5000) { //
+            e = 0;
+            jr.integral_err = 0;
+            d = 0;
+        }
+
         double torque = pid_.kp * double(e) + pid_.kd * double(d) + pid_.ki * double(jr.integral_err);
         double current_mA = torque / 10.0;
+
+        // std::cout << "algorithm speed: " << d << "\n";
 
         // Optional FF (off by default to match prior behavior)
         if (!jr.ff_mA.empty() && abs_th >= 0.74918)

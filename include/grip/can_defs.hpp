@@ -25,7 +25,7 @@ enum class MsgKind : uint32_t {
 };
 
 enum class MotorMode : uint8_t { TORQUE_ZERO=0x00, TORQUE_STEP=0x01, SPEED=0x02, HALL_GUARD=0x03, CALIBRATE=0xFE };
-enum class ParamField : uint8_t { MAX_CURRENT=0x01, MAX_SPEED=0x02, ENCODER_POS=0x04 };
+enum class ParamField : uint8_t { MAX_CURRENT=0x01, MAX_SPEED=0x02, CAN_MODE=0x03, ENCODER_POS=0x04 };
 enum class FaultCode : uint16_t { MOTOR_STALL=0x80 };
 
 struct Telemetry {

@@ -47,7 +47,9 @@ private:
     bool all_stalled_locked() const;
 
     void send_broadcast(std::vector<JointDevice> devs, MsgKind kind, uint8_t field, const std::vector<int32_t>& values);
+    void send_broadcast(std::vector<JointDevice> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2);
     void send_single(JointDevice dev, MsgKind kind, uint8_t field, int32_t value);
+    void send_single(JointDevice dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2);
 
     void drain_pending_targets_locked();
 

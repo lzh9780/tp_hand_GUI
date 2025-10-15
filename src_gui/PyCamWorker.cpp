@@ -11,8 +11,9 @@ PyCamWorker::PyCamWorker(QObject* parent) : QObject(parent) {}
 PyCamWorker::~PyCamWorker() { stop(); }
 
 void PyCamWorker::start() {
-    if (running_) return;
     qDebug() << "Start";
+    if (running_) return;
+    qDebug() << "Starting";
     try {
         // Start the Python interpreter (scoped for this worker thread)
         interp_ = std::make_unique<py::scoped_interpreter>();
@@ -57,6 +58,7 @@ void PyCamWorker::start() {
 
 void PyCamWorker::stop() {
     if (!running_) return;
+    running_ = false;
     if (timer_) { timer_->stop(); timer_->deleteLater(); timer_ = nullptr; }
     try {
         if (stop_fn_) {
@@ -67,10 +69,12 @@ void PyCamWorker::stop() {
         // report but continue shutdown
         emit error(QString::fromUtf8(e.what()));
     }
-    stop_fn_ = py::object();
-    get_latest_fn = py::object();
+    {
+        py::gil_scoped_acquire gil;
+        stop_fn_ = py::object();
+        get_latest_fn = py::object();
+    }
     interp_.reset();
-    running_ = false;
     emit status("Python camera loop stopped.");
 }
 
@@ -92,14 +96,26 @@ void PyCamWorker::onTick() {
         py::array arr = get_latest_fn().cast<py::tuple>();// tup[0].cast<py::array>();
         py::dict d = get_joint_fn().cast<py::dict>();
 
-        // Data transform
-        float thumb_joint = (180 - (d["thumb"]["ip"].cast<float>())) + (180 - d["thumb"]["mcp"].cast<float>());
+        // Data transform: finger_joint_Node -> finger_joint
+        float thumb_joint = 180 - (d["thumb"]["ip"].cast<float>()) + 180 - d["thumb"]["mcp"].cast<float>();
         float index_joint = 180 - d["index"]["pip"].cast<float>() + 180 - d["index"]["mcp"].cast<float>();
         float middle_joint = 180 - d["middle"]["pip"].cast<float>() + 180 - d["middle"]["mcp"].cast<float>();
         float ring_joint = 180 - d["ring"]["pip"].cast<float>() + 180 - d["ring"]["mcp"].cast<float>();
         float pinky_joint = 180 - d["pinky"]["pip"].cast<float>() + 180 - d["pinky"]["mcp"].cast<float>();
 
-        // Data 
+        // Data processing: bias
+        thumb_joint += -12;
+        index_joint += -25;
+        middle_joint += -40;
+        ring_joint += -28;
+        pinky_joint += -40;
+
+        // Data processing: scale
+        thumb_joint = thumb_joint*1.8;
+        index_joint = index_joint*1.0;
+        middle_joint = middle_joint*1.0;
+        ring_joint = ring_joint*1.0;
+        pinky_joint = pinky_joint*1.4;
 
         QVector<double> l;
         l.append(thumb_joint);

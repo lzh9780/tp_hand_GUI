@@ -496,6 +496,13 @@ void SidePanel::modeChange(const QString& mode) {
         actionScroll_->hide();
         controlRow_->hide();
         img_label_->show();
+    } else {
+        for (auto s : sliders_) {
+            s->setEnabled(true);
+        }
+        actionScroll_->show();
+        controlRow_->show();
+        img_label_->hide();
     }
 }
 

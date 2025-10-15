@@ -50,6 +50,8 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
         statusBar()->showMessage(QString("Error: %1").arg(e), 5000);
     });
 
+    connect(this, &MainWindow::requestStop, worker_, &PyCamWorker::stop, Qt::QueuedConnection);
+
     // QTimer* timer_ = new QTimer(this);
     // connect(timer_, &QTimer::timeout, worker_, &PyCamWorker::onTick);
     // timer_->start(1000/60);
@@ -162,6 +164,7 @@ void MainWindow::onTopPanelControlSwitch(const QString &msg) {
         workerThread_->start();
         qDebug() << "Thread started";
     } else {
+        emit requestStop();
         workerThread_->quit();
         workerThread_->wait();
     }

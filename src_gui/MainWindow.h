@@ -27,6 +27,9 @@ public:
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
+signals:
+    void requestStop();
+
 private slots:
     void onSidePanelValuesChanged();   // Follow mode → immediate send
     void onSidePanelCommitted();       // Setup mode → Execute
