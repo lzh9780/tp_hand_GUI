@@ -26,7 +26,7 @@ calibration:
 
 native_policy:
   pid: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 100Hz: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 10Hz: { kp: 0.005, ki: 0.00005, kd: 0.0001 }
-  current_limits_mA: { min: -1600, max: 1600 }
+  current_limits_mA: { min: -3000, max: 3000 }
   initial_theta_rad: 0.74918
   geometry:
     tendon_fix_mm:  9.410

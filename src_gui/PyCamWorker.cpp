@@ -11,44 +11,40 @@ PyCamWorker::PyCamWorker(QObject* parent) : QObject(parent) {}
 PyCamWorker::~PyCamWorker() { stop(); }
 
 void PyCamWorker::start() {
-    qDebug() << "Start";
     if (running_) return;
-    qDebug() << "Starting";
+
     try {
         // Start the Python interpreter (scoped for this worker thread)
-        interp_ = std::make_unique<py::scoped_interpreter>();
+        // interp_ = std::make_unique<py::scoped_interpreter>();
 
         // Ensure ./scripts on sys.path
-        py::module sys = py::module::import("sys");
-        sys.attr("path").cast<py::list>().insert(0, "scripts");
-
-        // 3) Import module and construct the Python class instance
-        py::object producer = py::module::import("hand_detect");
-        py::object HandDetector = producer.attr("HandDetector");
-        py::object loop = HandDetector(); // internal Python loop rate
-
-        // Cache bound callables to reduce attribute lookups per tick
-        py::object start_fn = loop.attr("start");
-        stop_fn_  = loop.attr("stop");
-        get_latest_fn = loop.attr("get_frame");
-        get_joint_fn = loop.attr("get_joints");
-
-        
-
         {
             py::gil_scoped_acquire gil;
+            py::module sys = py::module::import("sys");
+            sys.attr("path").cast<py::list>().insert(0, "scripts");
+
+            // 3) Import module and construct the Python class instance
+            py::object producer = py::module::import("hand_detect");
+            py::object HandDetector = producer.attr("HandDetector");
+            py::object loop = HandDetector(); // internal Python loop rate
+
+            // Cache bound callables to reduce attribute lookups per tick
+            py::object start_fn = loop.attr("start");
+            stop_fn_  = loop.attr("stop");
+            get_latest_fn = loop.attr("get_frame");
+            get_joint_fn = loop.attr("get_joints");
+
             start_fn();
         }
         
-        qDebug() << "Connect";
         // Poll ~60 FPS (adjust as needed)
         timer_ = new QTimer(this);
         connect(timer_, &QTimer::timeout, this, &PyCamWorker::onTick);
-        qDebug() << "After Connect";
         timer_->start(1000/120);
 
         running_ = true;
         emit status("Python camera loop started.");
+        emit runningChanged(running_);
     } catch (const py::error_already_set& e) {
         emit error(QString::fromUtf8(e.what()));
     } catch (const std::exception& e) {
@@ -73,9 +69,11 @@ void PyCamWorker::stop() {
         py::gil_scoped_acquire gil;
         stop_fn_ = py::object();
         get_latest_fn = py::object();
+        get_joint_fn = py::object();
     }
-    interp_.reset();
+    // interp_.reset();
     emit status("Python camera loop stopped.");
+    emit runningChanged(running_);
 }
 
 static inline void copy_bgr_rows(void* dst, int dstStride, const void* src, int srcStride, int rows, int rowBytes) {

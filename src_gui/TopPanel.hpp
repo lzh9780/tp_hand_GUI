@@ -9,6 +9,7 @@ class TopPanel : public QFrame
     Q_OBJECT
 public:
     explicit TopPanel(QWidget *parent);
+    void onChange(bool on);
 
 signals:
     void deviceConnect();
@@ -20,4 +21,5 @@ private slots:
 
 private:
     QPushButton* switchBtn;
+    QPushButton* connectBtn;
 };

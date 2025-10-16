@@ -50,7 +50,7 @@ namespace grip
 
         // 5-sample MA on target
         jr.recent_targets.push_front(target_rad);
-        if (jr.recent_targets.size() > 80)
+        if (jr.recent_targets.size() > 20)
             jr.recent_targets.pop_back();
         double filt = 0.0;
         for (double v : jr.recent_targets)
@@ -98,7 +98,7 @@ namespace grip
         }
 
         double torque = pid_.kp * double(e) + pid_.kd * double(d) + pid_.ki * double(jr.integral_err);
-        double current_mA = torque / 10.0;
+        double speed_command = torque / 10.0;
 
         // std::cout << "algorithm speed: " << d << "\n";
 
@@ -106,10 +106,10 @@ namespace grip
         if (!jr.ff_mA.empty() && abs_th >= 0.74918)
         {
             double ff = lerp_table(double(deg), ff_x_deg_, jr.ff_mA);
-            (void)ff; /* current_mA += ff; */
+            (void)ff; /* speed_command += ff; */
         }
 
-        return clamp_i32(int32_t(std::llround(current_mA)), limit_min_mA_, limit_max_mA_);
+        return clamp_i32(int32_t(std::llround(speed_command)), limit_min_mA_, limit_max_mA_);
     }
 
 } // namespace grip

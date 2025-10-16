@@ -230,8 +230,8 @@ class HandDetector():
 
                 # TODO: multi-hand data process
                 # 打印关节角度信息到控制台
-                if len(result.hand_world_landmarks) > 1:
-                    print(f"Hand {hand_idx+1}:")  # 多手时标识手的编号
+                # if len(result.hand_world_landmarks) > 1:
+                #     print(f"Hand {hand_idx+1}:")  # 多手时标识手的编号
                 
                 with self.lock:
                     # 拇指关节角
@@ -276,7 +276,7 @@ class HandDetector():
             min_tracking_confidence=0.5,
             result_callback=self.hand_landmarker_callback
         )
-        print("python program")
+        # print("python program")
         # landmarker = self.HandLandmarker.create_from_options(options)
         with self.HandLandmarker.create_from_options(options) as landmarker:
             pipeline, align, clip_depth_units, depth_scale = self.setup_realsense()
@@ -368,7 +368,7 @@ class HandDetector():
                 print(f"发生错误: {e}")
 
             finally:
-                landmarker.close()
+                # landmarker.close()
                 pipeline.stop()
                 # cv2.destroyAllWindows()
     

@@ -23,12 +23,13 @@ public:
                const std::vector<grip::JointDevice>& devices,
                grip::ControlInterface* ctrl,
                QWidget* parent=nullptr);
+    ~MainWindow() override;
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
 signals:
-    void requestStop();
+    // void requestStop();
 
 private slots:
     void onSidePanelValuesChanged();   // Follow mode → immediate send

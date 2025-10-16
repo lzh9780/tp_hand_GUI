@@ -3,6 +3,7 @@
 #include <QApplication>
 #include "MainWindow.h"
 #include <csignal>
+#include <pybind11/embed.h>
 
 using namespace grip;
 
@@ -49,6 +50,9 @@ int main(int argc, char **argv)
     // ctrl->start_bus(cfg.can_device);
     // ctrl->run_calibration(cfg.calibration);
     // ctrl->start_control_loop();
+
+    pybind11::scoped_interpreter guard{};
+    pybind11::gil_scoped_release release;
 
     QApplication app(argc, argv);
 

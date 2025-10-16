@@ -27,34 +27,47 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
     worker_->moveToThread(workerThread_);
 
     // Start worker when thread starts
-    connect(workerThread_, &QThread::started, worker_, &PyCamWorker::start);
-    connect(this, &QObject::destroyed, worker_, &PyCamWorker::stop);
-    connect(workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
+    // connect(workerThread_, &QThread::started, worker_, &PyCamWorker::start);
+    connect(this, &QObject::destroyed, workerThread_, &QThread::quit);
+    // connect(workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
 
     // Display frames
     connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage& img){
-        // label_->setPixmap(QPixmap::fromImage(img));
         side_->setFrame(img);
-        // statusBar()->showMessage(QString("Frame %1x%2").arg(img.width()).arg(img.height()), 100);
     });
 
     connect(worker_, &PyCamWorker::newJoint, this, [this](const QVector<double>& joints){
-        // label_->setPixmap(QPixmap::fromImage(img));
         side_->applyCameraData(joints);
-        // statusBar()->showMessage(QString("Frame %1x%2").arg(img.width()).arg(img.height()), 100);
     });
     connect(worker_, &PyCamWorker::status, this, [this](const QString& s){
         statusBar()->showMessage(s, 2000);
     });
     connect(worker_, &PyCamWorker::error, this, [this](const QString& e){
         statusBar()->showMessage(QString("Error: %1").arg(e), 5000);
+        log_->append(QString("Error: %1").arg(e));
     });
 
-    connect(this, &MainWindow::requestStop, worker_, &PyCamWorker::stop, Qt::QueuedConnection);
+    connect(worker_, &PyCamWorker::runningChanged, this, [this](bool r){
+        top_->onChange(r);
+    });
+
+    // connect(this, &MainWindow::requestStop, worker_, &PyCamWorker::stop, Qt::QueuedConnection);
 
     // QTimer* timer_ = new QTimer(this);
     // connect(timer_, &QTimer::timeout, worker_, &PyCamWorker::onTick);
     // timer_->start(1000/60);
+    workerThread_->start();
+}
+
+MainWindow::~MainWindow() {
+    if (worker_) {
+        QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
+        worker_->deleteLater();
+    }
+    if (workerThread_) {
+        workerThread_->quit();
+        workerThread_->wait();
+    }
 }
 
 void MainWindow::buildUI(const QStringList &jointNames)
@@ -161,11 +174,10 @@ void MainWindow::onTopPanelControlSwitch(const QString &msg) {
     side_->modeChange(msg);
     if (msg == "Camera") {
         qDebug() << "Mode camera";
-        workerThread_->start();
+        QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
         qDebug() << "Thread started";
     } else {
-        emit requestStop();
-        workerThread_->quit();
-        workerThread_->wait();
+        // emit requestStop();
+        QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
     }
 }

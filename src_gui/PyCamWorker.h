@@ -29,6 +29,7 @@ public slots:
 signals:
     void newFrame(const QImage& img);
     void newJoint(const QVector<double>&);
+    void runningChanged(bool running);
     void status(const QString& msg);
     void error(const QString& msg);
 
@@ -39,7 +40,7 @@ private:
     QTimer* timer_ = nullptr;
 
     // Python side
-    std::unique_ptr<py::scoped_interpreter> interp_;
+    // std::unique_ptr<py::scoped_interpreter> interp_;
     py::object get_latest_fn;
     py::object get_joint_fn;
     py::object stop_fn_;
