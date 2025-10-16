@@ -489,7 +489,7 @@ void SidePanel::setFrame(const QImage img) {
 
 void SidePanel::modeChange(const QString& mode) {
     /** TODO: Complete mode change */
-    if (mode == "Camera") {
+    if (mode == "Start Camera") {
         for (auto s : sliders_) {
             s->setEnabled(false);
         }

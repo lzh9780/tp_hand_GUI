@@ -13,7 +13,7 @@ TopPanel::TopPanel(QWidget *parent)
     root->addWidget(content);
     auto *background = new QHBoxLayout(content);
     background->setContentsMargins(0, 0, 0, 0);
-    switchBtn = new QPushButton("Joints");
+    switchBtn = new QPushButton("Start Camera");
     background->addWidget(switchBtn);
     connectBtn = new QPushButton("Connect");
     background->addWidget(connectBtn);
@@ -28,19 +28,19 @@ void TopPanel::onConnect()
 
 void TopPanel::onSwitch() {
     switchBtn->setEnabled(false);
-    if (switchBtn->text() == "Joints") {
-        switchBtn->setText("Camera");
+    if (switchBtn->text() == "Start Camera") {
         emit controlSwitch(switchBtn->text());
-    } else if (switchBtn->text() == "Camera") {
-        switchBtn->setText("Joints");
+        switchBtn->setText("Stop Camera");
+    } else if (switchBtn->text() == "Stop Camera") {
         emit controlSwitch(switchBtn->text());
+        switchBtn->setText("Start Camera");
     }
 }
 
 void TopPanel::onChange(bool on) {
     switchBtn->blockSignals(true);
     switchBtn->setChecked(on);
-    // switchBtn->setText(on ? "Stop Camera" : "Start Camera");
+    switchBtn->setText(on ? "Stop Camera" : "Start Camera");
     switchBtn->blockSignals(false);
     switchBtn->setEnabled(true);
 }

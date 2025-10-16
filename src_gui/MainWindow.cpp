@@ -172,7 +172,7 @@ void MainWindow::onTopPanelDeviceConnect()
 
 void MainWindow::onTopPanelControlSwitch(const QString &msg) {
     side_->modeChange(msg);
-    if (msg == "Camera") {
+    if (msg == "Start Camera") {
         qDebug() << "Mode camera";
         QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
         qDebug() << "Thread started";
