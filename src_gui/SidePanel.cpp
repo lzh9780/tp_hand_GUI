@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QImage>
 #include <QPixmap>
+#include <cmath>
 
 static constexpr int kDegMin = 0; // degrees
 static constexpr int kDegMax = 140;
@@ -230,9 +231,12 @@ void SidePanel::buildSliderPanel(const QStringList &jointNames)
         auto *nameLbl = new QLabel(name);
         auto *valueLbl = new QLabel("  0");
         valueLabels_.append(valueLbl);
+        auto *currValueLbl = new QLabel("  (0)");
+        currValueLabels_.append(currValueLbl);
         hl->addWidget(nameLbl);
         hl->addStretch(1);
         hl->addWidget(valueLbl);
+        hl->addWidget(currValueLbl);
         sliderVBox_->addWidget(row);
 
         // Slider row: [0 .. 140] degrees
@@ -515,4 +519,11 @@ void SidePanel::applyCameraData(const QVector<double>& data){
         sliders_[i]->setValue(v);
     }
     emit valuesChanged();
+}
+
+void SidePanel::updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky) {
+    // for (auto l : currValueLabels_) {
+    //     l->setText("  (%1)".arg(sliders_[i]->value()));
+    // }
+    currValueLabels_[1]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
 }

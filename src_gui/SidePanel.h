@@ -46,6 +46,7 @@ public:
     void setFrame(const QImage img);
     void modeChange(const QString& mode);
     void applyCameraData(const QVector<double>& data);
+    void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
 
 signals:
     void valuesChanged();
@@ -107,6 +108,7 @@ private:
     QVBoxLayout* sliderVBox_{nullptr};
     QList<QSlider*> sliders_;
     QList<QLabel*>  valueLabels_;  // number next to each slider
+    QList<QLabel*>  currValueLabels_;
 
     // cache joint count
     int jointCount_{0};

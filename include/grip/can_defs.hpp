@@ -38,4 +38,21 @@ struct Telemetry {
     uint8_t  state = 0;
 };
 
+struct JointAngles {
+    float thumb_mcp = 0;
+    float thumb_ip = 0;
+    float index_mcp = 0;
+    float index_pip = 0;
+    float index_dip = 0;
+    float middle_mcp = 0;
+    float middle_pip = 0;
+    float middle_dip = 0;
+    float ring_mcp = 0;
+    float ring_pip = 0;
+    float ring_dip = 0;
+    float pinky_mcp = 0;
+    float pinky_pip = 0;
+    float pinky_dip = 0;
+};
+
 } // namespace grip

@@ -37,6 +37,7 @@ private slots:
     void onSidePanelNotify(const QString& msg);
     void onTopPanelDeviceConnect();
     void onTopPanelControlSwitch(const QString &msg);
+    void readJointAngles();
 
 private:
     void buildUI(const QStringList& jointNames);

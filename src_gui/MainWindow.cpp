@@ -112,6 +112,10 @@ void MainWindow::buildUI(const QStringList &jointNames)
     connect(top_, &TopPanel::deviceConnect, this, &MainWindow::onTopPanelDeviceConnect);
     connect(top_, &TopPanel::controlSwitch, this, &MainWindow::onTopPanelControlSwitch);
 
+    auto timer_ = new QTimer(this);
+    connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+    timer_->start(10);
+
     // log_->append("Current control mode: " + side_->modeText());
 }
 
@@ -181,3 +185,18 @@ void MainWindow::onTopPanelControlSwitch(const QString &msg) {
         QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
     }
 }
+
+void MainWindow::readJointAngles()
+{
+    grip::JointAngles j = ctrl_->get_joint_angles();
+    float thumb_angle = j.thumb_ip + j.thumb_mcp;
+    float index_angle = j.index_mcp + j.index_pip + j.index_dip;
+    float middle_angle = j.middle_mcp + j.middle_pip + j.middle_dip;
+    float ring_angle = j.ring_mcp + j.ring_pip + j.ring_dip;
+    float pinky_angle = j.pinky_mcp + j.pinky_pip + j.pinky_dip;
+
+    // std::vector<float> values = [thumb_angle, index_angle, middle_angle, ring_angle, pinky_angle];
+
+    side_->updateJoints(thumb_angle, index_angle, middle_angle, ring_angle, pinky_angle);
+}
+

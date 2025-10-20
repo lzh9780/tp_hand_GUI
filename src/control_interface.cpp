@@ -100,6 +100,26 @@ namespace grip
                                    MsgKind::SET_MOTOR_PARAM,
                                    (uint8_t)ParamField::ENCODER_POS,
                                    std::vector<int32_t>(devices_.size(), c.encoder_zero_offset));
+                    std::cout << "encoder_zero set";
+                    JointAngles offset;
+                    offset.thumb_mcp = joint_angles_.thumb_mcp;
+                    offset.thumb_ip = joint_angles_.thumb_ip;
+                    offset.index_mcp = joint_angles_.index_mcp;
+                    offset.index_pip = joint_angles_.index_pip;
+                    offset.index_dip = joint_angles_.index_dip;
+                    offset.middle_mcp = joint_angles_.middle_mcp;
+                    offset.middle_pip = joint_angles_.middle_pip;
+                    offset.middle_dip = joint_angles_.middle_dip;
+                    offset.ring_mcp = joint_angles_.ring_mcp;
+                    offset.ring_pip = joint_angles_.ring_pip;
+                    offset.ring_dip = joint_angles_.ring_dip;
+                    offset.pinky_mcp = joint_angles_.pinky_mcp;
+                    offset.pinky_pip = joint_angles_.pinky_pip;
+                    offset.pinky_dip = joint_angles_.pinky_dip;
+                    std::cout << "offset got";
+                    // std::lock_guard<std::mutex> lk(mtx_);
+                    std::cout << "offset set";
+                    offset_ = offset;
                     break;
                 }
             }
@@ -165,6 +185,26 @@ namespace grip
 #if GRIP_DEBUG_RX
                     std::cout << "dev=" << (int)dev << " iq=" << t.iq_mA << " enc=" << t.encoder_counts << "\n";
 #endif
+                } else if (kind_bits == (uint32_t)MsgKind::SENSOR_TELEMETRY) {
+                    JointAngles j;
+                    j.thumb_mcp = float(rd_i16(&f.data[0])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.thumb_ip = float(rd_i16(&f.data[2])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.index_mcp = float(rd_i16(&f.data[4])) / 65536.0f * 2.0f * float(M_PI);
+                    j.index_pip = float(rd_u16(&f.data[6])) / 65536.0f * 2.0f * float(M_PI);
+                    j.index_dip = float(rd_u16(&f.data[8])) / 65536.0f * 2.0f * float(M_PI);
+                    j.middle_mcp = float(rd_u16(&f.data[10])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.middle_pip = float(rd_i16(&f.data[12])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.middle_dip = float(rd_i16(&f.data[14])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.ring_mcp = float(rd_i16(&f.data[16])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.ring_pip = float(rd_i16(&f.data[18])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.ring_dip = float(rd_i16(&f.data[20])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.pinky_mcp = float(rd_i16(&f.data[22])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.pinky_pip = float(rd_i16(&f.data[24])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    j.pinky_dip = float(rd_i16(&f.data[26])) / float(2 ^ 16) * 2.0f * float(M_PI);
+                    // std::cout << j.index_mcp <<" "<< j.index_pip<<" " << j.index_dip<<"\n";
+                    // std::cout << float(rd_u16(&f.data[4])) <<" "<< float(rd_u16(&f.data[6]))<<" " << float(rd_u16(&f.data[8]))<<"\n";
+                    std::lock_guard<std::mutex> lk(mtx_);
+                    joint_angles_ = j;
                 }
             }
         }
@@ -250,6 +290,27 @@ namespace grip
     {
         std::lock_guard<std::mutex> lk(mtx_);
         return state_;
+    }
+
+    JointAngles ControlInterface::get_joint_angles() const 
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        JointAngles j;
+        j.thumb_mcp = (joint_angles_.thumb_mcp - offset_.thumb_mcp) / 2;
+        j.thumb_ip = joint_angles_.thumb_ip - offset_.thumb_ip;
+        j.index_mcp = (joint_angles_.index_mcp - offset_.index_mcp) / 2;
+        j.index_pip = (joint_angles_.index_pip - offset_.index_pip) / 2;
+        j.index_dip = (joint_angles_.index_dip - offset_.index_dip) / 2;
+        j.middle_mcp = joint_angles_.middle_mcp;
+        j.middle_pip = joint_angles_.middle_pip;
+        j.middle_dip = joint_angles_.middle_dip;
+        j.ring_mcp = joint_angles_.ring_mcp;
+        j.ring_pip = joint_angles_.ring_pip;
+        j.ring_dip = joint_angles_.ring_dip;
+        j.pinky_mcp = joint_angles_.pinky_mcp;
+        j.pinky_pip = joint_angles_.pinky_pip;
+        j.pinky_dip = joint_angles_.pinky_dip;
+        return j;
     }
 
 } // namespace grip

@@ -40,6 +40,7 @@ public:
 
     // state
     std::unordered_map<JointDevice, Telemetry> snapshot() const;
+    JointAngles get_joint_angles() const;
 
 private:
     void receiver_loop();
@@ -62,10 +63,12 @@ private:
     std::vector<JointDevice> devices_;
     std::unordered_map<JointDevice, std::string> joint_key_;  // device -> joint key used by policy
     NativePolicy policy_;
+    JointAngles offset_;
 
     // shared state
     std::unordered_map<JointDevice, Telemetry> state_;
     std::unordered_map<JointDevice, float> targets_rad_;
+    JointAngles joint_angles_;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;
