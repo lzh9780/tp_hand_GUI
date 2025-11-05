@@ -54,10 +54,20 @@ class HandDetector():
                            "middle":{"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
                            "ring": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
                            "pinky": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}}
+        
+        self.previous_finger_joints = {"thumb": {"cmc_rot": [0], "cmc_pull": [0], "mcp": [0], "ip": [0]}, 
+                                        "index": {"mcp": [0], "pip": [0], "dip": [0], "sway": [0]}, 
+                                        "middle":{"mcp": [0], "pip": [0], "dip": [0], "sway": [0]}, 
+                                        "ring": {"mcp": [0], "pip": [0], "dip": [0], "sway": [0]}, 
+                                        "pinky": {"mcp": [0], "pip": [0], "dip": [0], "sway": [0]}}
+        
         self.curr_img = None
         # self.hands = {"left": None, "right": None} # init
         # self.hands["left"] = self.finger_joints # left hand value
         # self.hands["right"] = deepcopy(self.finger_joints) # right hand value (need copy)
+        
+        # Low Pass Filter
+        self.low_pass_filter_size = 5
         
     def setup_realsense(self):
         pipeline = rs.pipeline()
@@ -128,6 +138,23 @@ class HandDetector():
 
             # 遍历每只检测到的手
             for hand_idx, landmarks in enumerate(result.hand_landmarks):
+                # 获取这一只手的 handedness 标签
+                hand_label = result.handedness[hand_idx][0].category_name  # e.g. "Left" / "Right"
+                
+                for i in range(hand_idx):
+                    if result.handedness[i][0].category_name == hand_label:
+                        self.hand_detected = False
+                        print("Duplicate hand detected, skipping...")
+                        return
+
+                # 在图像上标注这个手是 Left 还是 Right
+                # 在该手关键点的某个位置旁写字
+                # e.g.
+                x0 = int(landmarks[0].x * w)  # WRIST 的 x 像素坐标
+                y0 = int(landmarks[0].y * h)
+                cv2.putText(image_bgr, hand_label, (x0 + 20, y0 + 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+                
+                
                 # 将归一化坐标转换为像素坐标并绘制关节点和骨架
                 points = []  # 存储当前手的像素坐标列表
                 for lm in landmarks:
@@ -237,23 +264,101 @@ class HandDetector():
                     # 拇指关节角
                     if thumb_cmc_rot is not None:
                         # print(f"Thumb : CMC_rot={thumb_cmc_rot:.1f}°, CMC_pull={thumb_cmc_pull:.1f}°, MCP={thumb_mcp:.1f}°, IP={thumb_ip:.1f}°")
-                        self.finger_joints["thumb"]["cmc_rot"] = thumb_cmc_rot
+                        self.previous_finger_joints["thumb"]["cmc_rot"].append(thumb_cmc_rot) # append to the list
+                        if len(self.previous_finger_joints["thumb"]["cmc_rot"]) > self.low_pass_filter_size:
+                            self.previous_finger_joints["thumb"]["cmc_rot"].pop(0) # pop the first element
+                        self.finger_joints["thumb"]["cmc_rot"] = np.mean(self.previous_finger_joints["thumb"]["cmc_rot"]) # low pass filter
 
-                    self.finger_joints["thumb"]["cmc_pull"] = thumb_cmc_pull
-                    self.finger_joints["thumb"]["mcp"] = thumb_mcp
-                    self.finger_joints["thumb"]["ip"]  = float(thumb_ip)
-                    self.finger_joints["index"]["mcp"]  = index_mcp
-                    self.finger_joints["index"]["pip"]  = index_pip
-                    self.finger_joints["index"]["dip"]  = index_dip
-                    self.finger_joints["middle"]["mcp"] = middle_mcp
-                    self.finger_joints["middle"]["pip"] = middle_pip
-                    self.finger_joints["middle"]["dip"] = middle_dip
-                    self.finger_joints["ring"]["mcp"]   = ring_mcp
-                    self.finger_joints["ring"]["pip"]   = ring_pip
-                    self.finger_joints["ring"]["dip"]   = ring_dip
-                    self.finger_joints["pinky"]["mcp"]  = pinky_mcp
-                    self.finger_joints["pinky"]["pip"]  = pinky_pip
-                    self.finger_joints["pinky"]["dip"]  = pinky_dip
+                    self.previous_finger_joints["thumb"]["cmc_pull"].append(thumb_cmc_pull) # append to the list
+                    if len(self.previous_finger_joints["thumb"]["cmc_pull"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["thumb"]["cmc_pull"].pop(0)
+                    self.finger_joints["thumb"]["cmc_pull"] = np.mean(self.previous_finger_joints["thumb"]["cmc_pull"])
+
+                    self.previous_finger_joints["thumb"]["mcp"].append(thumb_mcp) # append to the list
+                    if len(self.previous_finger_joints["thumb"]["mcp"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["thumb"]["mcp"].pop(0)
+                    self.finger_joints["thumb"]["mcp"] = np.mean(self.previous_finger_joints["thumb"]["mcp"])
+
+                    self.previous_finger_joints["thumb"]["ip"].append(thumb_ip) # append to the list
+                    if len(self.previous_finger_joints["thumb"]["ip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["thumb"]["ip"].pop(0)
+                    self.finger_joints["thumb"]["ip"] = np.mean(self.previous_finger_joints["thumb"]["ip"])
+
+                    self.previous_finger_joints["index"]["mcp"].append(index_mcp) # append to the list
+                    if len(self.previous_finger_joints["index"]["mcp"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["index"]["mcp"].pop(0)
+                    self.finger_joints["index"]["mcp"] = np.mean(self.previous_finger_joints["index"]["mcp"])
+
+                    self.previous_finger_joints["index"]["pip"].append(index_pip) # append to the list
+                    if len(self.previous_finger_joints["index"]["pip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["index"]["pip"].pop(0)
+                    self.finger_joints["index"]["pip"] = np.mean(self.previous_finger_joints["index"]["pip"])
+
+                    self.previous_finger_joints["index"]["dip"].append(index_dip) # append to the list
+                    if len(self.previous_finger_joints["index"]["dip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["index"]["dip"].pop(0)
+                    self.finger_joints["index"]["dip"] = np.mean(self.previous_finger_joints["index"]["dip"])
+
+                    self.previous_finger_joints["middle"]["mcp"].append(middle_mcp) # append to the list
+                    if len(self.previous_finger_joints["middle"]["mcp"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["middle"]["mcp"].pop(0)
+                    self.finger_joints["middle"]["mcp"] = np.mean(self.previous_finger_joints["middle"]["mcp"])
+
+                    self.previous_finger_joints["middle"]["pip"].append(middle_pip) # append to the list
+                    if len(self.previous_finger_joints["middle"]["pip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["middle"]["pip"].pop(0)
+                    self.finger_joints["middle"]["pip"] = np.mean(self.previous_finger_joints["middle"]["pip"])
+
+                    self.previous_finger_joints["middle"]["dip"].append(middle_dip) # append to the list
+                    if len(self.previous_finger_joints["middle"]["dip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["middle"]["dip"].pop(0)
+                    self.finger_joints["middle"]["dip"] = np.mean(self.previous_finger_joints["middle"]["dip"])
+
+                    self.previous_finger_joints["ring"]["mcp"].append(ring_mcp) # append to the list
+                    if len(self.previous_finger_joints["ring"]["mcp"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["ring"]["mcp"].pop(0)
+                    self.finger_joints["ring"]["mcp"] = np.mean(self.previous_finger_joints["ring"]["mcp"])
+
+                    self.previous_finger_joints["ring"]["pip"].append(ring_pip) # append to the list
+                    if len(self.previous_finger_joints["ring"]["pip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["ring"]["pip"].pop(0)
+                    self.finger_joints["ring"]["pip"] = np.mean(self.previous_finger_joints["ring"]["pip"])
+
+                    self.previous_finger_joints["ring"]["dip"].append(ring_dip) # append to the list
+                    if len(self.previous_finger_joints["ring"]["dip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["ring"]["dip"].pop(0)
+                    self.finger_joints["ring"]["dip"] = np.mean(self.previous_finger_joints["ring"]["dip"])
+
+                    self.previous_finger_joints["pinky"]["mcp"].append(pinky_mcp) # append to the list
+                    if len(self.previous_finger_joints["pinky"]["mcp"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["pinky"]["mcp"].pop(0)
+                    self.finger_joints["pinky"]["mcp"] = np.mean(self.previous_finger_joints["pinky"]["mcp"])
+
+                    self.previous_finger_joints["pinky"]["pip"].append(pinky_pip) # append to the list
+                    if len(self.previous_finger_joints["pinky"]["pip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["pinky"]["pip"].pop(0)
+                    self.finger_joints["pinky"]["pip"] = np.mean(self.previous_finger_joints["pinky"]["pip"])
+
+                    self.previous_finger_joints["pinky"]["dip"].append(pinky_dip) # append to the list
+                    if len(self.previous_finger_joints["pinky"]["dip"]) > self.low_pass_filter_size:
+                        self.previous_finger_joints["pinky"]["dip"].pop(0)
+                    self.finger_joints["pinky"]["dip"] = np.mean(self.previous_finger_joints["pinky"]["dip"])
+                    
+                    # self.finger_joints["thumb"]["cmc_pull"] = thumb_cmc_pull
+                    # self.finger_joints["thumb"]["mcp"] = thumb_mcp
+                    # self.finger_joints["thumb"]["ip"]  = float(thumb_ip)
+                    # self.finger_joints["index"]["mcp"]  = index_mcp
+                    # self.finger_joints["index"]["pip"]  = index_pip
+                    # self.finger_joints["index"]["dip"]  = index_dip
+                    # self.finger_joints["middle"]["mcp"] = middle_mcp
+                    # self.finger_joints["middle"]["pip"] = middle_pip
+                    # self.finger_joints["middle"]["dip"] = middle_dip
+                    # self.finger_joints["ring"]["mcp"]   = ring_mcp
+                    # self.finger_joints["ring"]["pip"]   = ring_pip
+                    # self.finger_joints["ring"]["dip"]   = ring_dip
+                    # self.finger_joints["pinky"]["mcp"]  = pinky_mcp
+                    # self.finger_joints["pinky"]["pip"]  = pinky_pip
+                    # self.finger_joints["pinky"]["dip"]  = pinky_dip
                     
                     self.finger_joints["index"]["sway"] = index_sway-14.9
                     self.finger_joints["middle"]["sway"] = middle_sway-8.5

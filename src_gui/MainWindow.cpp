@@ -66,6 +66,7 @@ MainWindow::~MainWindow()
         workerThread_->quit();
         workerThread_->wait();
     }
+    ctrl_->stop_all();
 }
 
 void MainWindow::buildUI()
@@ -108,10 +109,6 @@ void MainWindow::buildUI()
     connect(top_, &TopPanel::deviceConnect, this, &MainWindow::onTopPanelDeviceConnect);
     connect(top_, &TopPanel::controlSwitch, this, &MainWindow::onTopPanelControlSwitch);
     connect(top_, &TopPanel::modelChange, this, &MainWindow::onTopPanelModelChange);
-
-    // auto timer_ = new QTimer(this);
-    // connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-    // timer_->start(10);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -162,8 +159,8 @@ void MainWindow::onTopPanelDeviceConnect()
         log_->append("Device Connected. ");
         log_->append("Start Calibration... ");
         // ctrl_->run_calibration(cfg_.calibration);
-        // while (ctrl_->get_board_state() != 1)
-        //     log_->append(".");
+        while (ctrl_->get_board_state() != 1)
+            log_->append(".");
         log_->append("Calibration Complete. ");
         ctrl_->start_control_loop();
         log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
@@ -179,6 +176,10 @@ void MainWindow::onTopPanelDeviceConnect()
                 joint_names << QString::fromStdString(s);
         }
         side_->loadSliders(joint_names);
+
+        auto timer_ = new QTimer(this);
+        connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+        timer_->start(10);
     }
     catch (const std::exception &e)
     {

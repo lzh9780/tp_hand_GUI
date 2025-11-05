@@ -12,6 +12,7 @@
 #include "can_bus.hpp"
 #include "settings.hpp"
 #include "control_policy_native.hpp"
+#include "grip/finger_ctrl.h"
 
 namespace grip {
 
@@ -39,6 +40,7 @@ public:
     // state
     std::unordered_map<int, Telemetry> snapshot() const;
     JointAngles get_joint_angles() const;
+    int get_board_state() const;
 
 private:
     void receiver_loop();
@@ -64,11 +66,15 @@ private:
     std::unordered_map<int, std::string> ctrl_key_; // Matched the current algorithm. Will be removed later
     NativePolicy policy_;
     JointAngles offset_;
+    fc_ctx_t ctrl_;
 
     // shared state
     std::unordered_map<int, Telemetry> state_;
     std::unordered_map<std::string, float> targets_rad_;
     JointAngles joint_angles_;
+    JointAngles joint_vels_;
+    uint32_t time_stamp_ = 0;
+    int board_state_;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

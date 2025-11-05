@@ -18,7 +18,7 @@
 #include <cmath>
 
 static constexpr int kDegMin = 0; // degrees
-static constexpr int kDegMax = 140;
+static constexpr int kDegMax = 150;
 
 SidePanel::SidePanel(QWidget *parent)
     : QFrame(parent)
@@ -561,5 +561,5 @@ void SidePanel::updateJoints(const float thumb, const float index, const float m
     // for (auto l : currValueLabels_) {
     //     l->setText("  (%1)".arg(sliders_[i]->value()));
     // }
-    currValueLabels_[1]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
+    currValueLabels_[3]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
 }
