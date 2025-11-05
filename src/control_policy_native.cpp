@@ -22,7 +22,7 @@ namespace grip
         {
             JointRuntime jr;
             jr.linear_zero_counts = kv.second.linear_zero_counts;
-            jr.ff_mA = kv.second.feedforward_mA;
+            // jr.ff_mA = kv.second.feedforward_mA;
             table_.emplace(kv.first, std::move(jr));
         }
     }
@@ -103,11 +103,11 @@ namespace grip
         // std::cout << "algorithm speed: " << d << "\n";
 
         // Optional FF (off by default to match prior behavior)
-        if (!jr.ff_mA.empty() && abs_th >= 0.74918)
-        {
-            double ff = lerp_table(double(deg), ff_x_deg_, jr.ff_mA);
-            (void)ff; /* speed_command += ff; */
-        }
+        // if (!jr.ff_mA.empty() && abs_th >= 0.74918)
+        // {
+        //     double ff = lerp_table(double(deg), ff_x_deg_, jr.ff_mA);
+        //     (void)ff; /* speed_command += ff; */
+        // }
 
         return clamp_i32(int32_t(std::llround(speed_command)), limit_min_mA_, limit_max_mA_);
     }

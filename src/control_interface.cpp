@@ -6,19 +6,44 @@
 namespace grip
 {
 
-    ControlInterface::ControlInterface(const std::vector<JointDevice> &devices,
-                                       const std::unordered_map<JointDevice, std::string> &joint_key_of,
-                                       const NativePolicySettings &policy_cfg,
+    // ControlInterface::ControlInterface(const std::vector<int> &devices,
+    //                                    const std::unordered_map<int, std::string> &joint_key_of,
+    //                                    const NativePolicySettings &policy_cfg,
+    //                                    std::chrono::milliseconds period)
+    //     : devices_(devices), joint_key_(joint_key_of), policy_(policy_cfg), control_period_(period)
+
+    ControlInterface::ControlInterface(const HandSettings &hand_cfg,
                                        std::chrono::milliseconds period)
-        : devices_(devices), joint_key_(joint_key_of), policy_(policy_cfg), control_period_(period)
+        : policy_(hand_cfg.native_policy), control_period_(period)
     {
+        
+        
+        hand_ = hand_cfg.structs;
+        for (const auto & [key, value] : hand_cfg.structs) {
+            for (const auto & m : value.motors)
+                devices_.push_back(m.id);
+        }
+
+        /* To match the current algorithm. Remove later */
+        joint_key_[5] = "thumb_mcp";
+        joint_key_[7] = "index_finger_mcp";
+        joint_key_[4] = "middle_finger_mcp";
+        joint_key_[6] = "ring_finger_mcp";
+        joint_key_[3] = "pinky_mcp";
+        ctrl_key_[5] = "THUMB";
+        ctrl_key_[7] = "INDEX_FINGER";
+        ctrl_key_[4] = "MIDDLE_FINGER";
+        ctrl_key_[6] = "RING_FINGER";
+        ctrl_key_[3] = "PINKY";
+        /* To match the current algorithm. Remove later */
+
         std::sort(devices_.begin(), devices_.end(),
-                  [](JointDevice a, JointDevice b)
+                  [](int a, int b)
                   { return (uint32_t)a < (uint32_t)b; });
         for (auto d : devices_)
         {
             state_[d] = Telemetry{};
-            targets_rad_[d] = 0.0f;
+            targets_rad_[ctrl_key_[d]] = 0.0f;
         }
     }
 
@@ -57,81 +82,81 @@ namespace grip
             ctrl_thread_.join();
     }
 
-    void ControlInterface::run_calibration(const CalibrationSettings &c)
-    {
-        using namespace std::chrono_literals;
+    // void ControlInterface::run_calibration(const CalibrationSettings &c)
+    // {
+    //     using namespace std::chrono_literals;
 
-        {
-            send_broadcast(devices_,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
-            std::this_thread::sleep_for(10ms);
-        }
-        // 1) MAX_CURRENT
-        {
-            send_broadcast(devices_,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(devices_.size(), c.current_limit_mA));
-            std::this_thread::sleep_for(10ms);
-        }
-        // 2) CALIBRATE negative speed
-        {
-            send_broadcast(devices_,
-                           MsgKind::MOTOR_COMMAND,
-                           (uint8_t)MotorMode::CALIBRATE,
-                           std::vector<int32_t>(devices_.size(), c.backdrive_speed));
-            std::this_thread::sleep_for(10ms);
-        }
-        // 3) wait for stall -> stop -> write zero
-        while (!shutting_down_)
-        {
-            {
-                std::lock_guard<std::mutex> lk(mtx_);
-                if (all_stalled_locked())
-                {
-                    send_broadcast(devices_,
-                                   MsgKind::MOTOR_COMMAND,
-                                   (uint8_t)MotorMode::CALIBRATE,
-                                   std::vector<int32_t>(devices_.size(), 0));
-                    std::this_thread::sleep_for(500ms);
-                    send_broadcast(devices_,
-                                   MsgKind::SET_MOTOR_PARAM,
-                                   (uint8_t)ParamField::ENCODER_POS,
-                                   std::vector<int32_t>(devices_.size(), c.encoder_zero_offset));
-                    std::cout << "encoder_zero set";
-                    JointAngles offset;
-                    offset.thumb_mcp = joint_angles_.thumb_mcp;
-                    offset.thumb_ip = joint_angles_.thumb_ip;
-                    offset.index_mcp = joint_angles_.index_mcp;
-                    offset.index_pip = joint_angles_.index_pip;
-                    offset.index_dip = joint_angles_.index_dip;
-                    offset.middle_mcp = joint_angles_.middle_mcp;
-                    offset.middle_pip = joint_angles_.middle_pip;
-                    offset.middle_dip = joint_angles_.middle_dip;
-                    offset.ring_mcp = joint_angles_.ring_mcp;
-                    offset.ring_pip = joint_angles_.ring_pip;
-                    offset.ring_dip = joint_angles_.ring_dip;
-                    offset.pinky_mcp = joint_angles_.pinky_mcp;
-                    offset.pinky_pip = joint_angles_.pinky_pip;
-                    offset.pinky_dip = joint_angles_.pinky_dip;
-                    std::cout << "offset got";
-                    // std::lock_guard<std::mutex> lk(mtx_);
-                    std::cout << "offset set";
-                    offset_ = offset;
-                    break;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        {
-            std::lock_guard<std::mutex> lk(mtx_);
-            calibrated_ = true;
-        }
-        cv_.notify_all();
-        std::cout << "Calibration complete.\n";
-    }
+    //     {
+    //         send_broadcast(devices_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::CAN_MODE,
+    //                        std::vector<int32_t>(devices_.size(), (uint32_t)10));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 1) MAX_CURRENT
+    //     {
+    //         send_broadcast(devices_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::MAX_CURRENT,
+    //                        std::vector<int32_t>(devices_.size(), c.current_limit_mA));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 2) CALIBRATE negative speed
+    //     {
+    //         send_broadcast(devices_,
+    //                        MsgKind::MOTOR_COMMAND,
+    //                        (uint8_t)MotorMode::CALIBRATE,
+    //                        std::vector<int32_t>(devices_.size(), c.backdrive_speed));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 3) wait for stall -> stop -> write zero
+    //     while (!shutting_down_)
+    //     {
+    //         {
+    //             std::lock_guard<std::mutex> lk(mtx_);
+    //             if (all_stalled_locked())
+    //             {
+    //                 send_broadcast(devices_,
+    //                                MsgKind::MOTOR_COMMAND,
+    //                                (uint8_t)MotorMode::CALIBRATE,
+    //                                std::vector<int32_t>(devices_.size(), 0));
+    //                 std::this_thread::sleep_for(500ms);
+    //                 send_broadcast(devices_,
+    //                                MsgKind::SET_MOTOR_PARAM,
+    //                                (uint8_t)ParamField::ENCODER_POS,
+    //                                std::vector<int32_t>(devices_.size(), c.encoder_zero_offset));
+    //                 std::cout << "encoder_zero set";
+    //                 JointAngles offset;
+    //                 offset.thumb_mcp = joint_angles_.thumb_mcp;
+    //                 offset.thumb_ip = joint_angles_.thumb_ip;
+    //                 offset.index_mcp = joint_angles_.index_mcp;
+    //                 offset.index_pip = joint_angles_.index_pip;
+    //                 offset.index_dip = joint_angles_.index_dip;
+    //                 offset.middle_mcp = joint_angles_.middle_mcp;
+    //                 offset.middle_pip = joint_angles_.middle_pip;
+    //                 offset.middle_dip = joint_angles_.middle_dip;
+    //                 offset.ring_mcp = joint_angles_.ring_mcp;
+    //                 offset.ring_pip = joint_angles_.ring_pip;
+    //                 offset.ring_dip = joint_angles_.ring_dip;
+    //                 offset.pinky_mcp = joint_angles_.pinky_mcp;
+    //                 offset.pinky_pip = joint_angles_.pinky_pip;
+    //                 offset.pinky_dip = joint_angles_.pinky_dip;
+    //                 std::cout << "offset got";
+    //                 // std::lock_guard<std::mutex> lk(mtx_);
+    //                 std::cout << "offset set";
+    //                 offset_ = offset;
+    //                 break;
+    //             }
+    //         }
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    //     }
+    //     {
+    //         std::lock_guard<std::mutex> lk(mtx_);
+    //         calibrated_ = true;
+    //     }
+    //     cv_.notify_all();
+    //     std::cout << "Calibration complete.\n";
+    // }
 
     void ControlInterface::start_control_loop()
     {
@@ -139,10 +164,11 @@ namespace grip
                                    { control_loop(); });
     }
 
-    void ControlInterface::submit_target(JointDevice dev, float radians)
+    void ControlInterface::submit_target(std::string ctrl_joint, float radians)
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
-        inbox_.emplace_back(dev, radians);
+        inbox_.emplace_back(ctrl_joint, radians);
+        // std::cout << ctrl_joint << radians << '\n';
     }
 
     void ControlInterface::drain_pending_targets_locked()
@@ -153,6 +179,7 @@ namespace grip
             auto [d, r] = inbox_.front();
             inbox_.pop_front();
             targets_rad_[d] = r;
+            std::cout << d << " " << r << '\n'; 
         }
     }
 
@@ -165,9 +192,10 @@ namespace grip
             {
                 const uint32_t dev_bits = (f.id & 0x01F);
                 const uint32_t kind_bits = (f.id & 0x3C0);
+                // std::cout << (int)dev_bits << " " << f.data.size() << "\n";
                 if (kind_bits == (uint32_t)MsgKind::MOTOR_TELEMETRY)
                 {
-                    auto dev = (JointDevice)dev_bits;
+                    auto dev = (int)dev_bits;
                     if (std::find(devices_.begin(), devices_.end(), dev) == devices_.end())
                         continue;
                     if (f.data.size() < 14)
@@ -212,81 +240,96 @@ namespace grip
 
     void ControlInterface::control_loop()
     {
+        {
+            send_broadcast(devices_,
+                           MsgKind::SET_MOTOR_PARAM,
+                           (uint8_t)ParamField::CAN_MODE,
+                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
+            // std::this_thread::sleep_for(10ms);
+            send_single(0x1e,
+                           MsgKind::SET_MOTOR_PARAM,
+                           (uint8_t)ParamField::CAN_MODE,
+                           (uint32_t)10);
+            // std::this_thread::sleep_for(10ms);
+        }
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
-        {
-            std::unique_lock<std::mutex> lk(mtx_);
-            cv_.wait(lk, [this]
-                     { return calibrated_ || shutting_down_; });
-        }
+        // {
+        //     std::unique_lock<std::mutex> lk(mtx_);
+        //     cv_.wait(lk, [this]
+        //              { return calibrated_ || shutting_down_; });
+        // }
         if (shutting_down_)
             return;
 
         while (!shutting_down_)
         {
             next += control_period_;
-            std::vector<std::pair<JointDevice, int32_t>> cmds;
+            std::vector<std::pair<int, int32_t>> cmds;
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
                 for (auto d : devices_)
                 {
+                    // std::cout << d << '\n';
                     int32_t enc = state_[d].encoder_counts;
-                    double tgt = targets_rad_[d];
+                    double tgt = targets_rad_[ctrl_key_[d]];
                     const std::string &key = joint_key_.at(d);
-                    int32_t mA = policy_.command_mA(key, tgt, enc);
+                    std::cout << key << ' ' << tgt << ' ' << enc << '\n';
+                    int32_t mA = policy_.command_mA(key, tgt, enc * 256);
                     cmds.push_back({d, mA});
                 }
             }
             for (auto &c : cmds)
                 send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
+                // std::cout << "commands: " << joint_key_.at(c.first) << " data: " << c.second << "\n";}
             std::this_thread::sleep_until(next);
         }
     }
 
-    void ControlInterface::send_broadcast(std::vector<JointDevice> devs, MsgKind kind, uint8_t field, const std::vector<int32_t> &values)
+    void ControlInterface::send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int32_t> &values)
     {
-        auto id = make_can_id(JointDevice::BROADCAST, kind);
+        auto id = make_can_id(0x1f, kind);
         auto p = pack_broadcast_payload(devs, field, values);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }
 
-    void ControlInterface::send_broadcast(std::vector<JointDevice> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2)
+    void ControlInterface::send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2)
     {
-        auto id = make_can_id(JointDevice::BROADCAST, kind);
+        auto id = make_can_id(0x1f, kind);
         auto p = pack_broadcast_payload(devs, field, values1, values2);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }
 
-    void ControlInterface::send_single(JointDevice dev, MsgKind kind, uint8_t field, int32_t value)
+    void ControlInterface::send_single(int dev, MsgKind kind, uint8_t field, int32_t value)
     {
         auto id = make_can_id(dev, kind);
         auto p = pack_single_payload(dev, field, value);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }
 
-    void ControlInterface::send_single(JointDevice dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2)
+    void ControlInterface::send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2)
     {
         auto id = make_can_id(dev, kind);
         auto p = pack_single_payload(dev, field, value1, value2);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }
 
-    bool ControlInterface::all_stalled_locked() const
-    {
-        for (auto d : devices_)
-        {
-            auto it = state_.find(d);
-            if (it == state_.end())
-                return false;
-            if (it->second.fault != (uint16_t)FaultCode::MOTOR_STALL)
-                return false;
-        }
-        return true;
-    }
+    // bool ControlInterface::all_stalled_locked() const
+    // {
+    //     for (auto d : devices_)
+    //     {
+    //         auto it = state_.find(d);
+    //         if (it == state_.end())
+    //             return false;
+    //         if (it->second.fault != (uint16_t)FaultCode::MOTOR_STALL)
+    //             return false;
+    //     }
+    //     return true;
+    // }
 
-    std::unordered_map<JointDevice, Telemetry> ControlInterface::snapshot() const
+    std::unordered_map<int, Telemetry> ControlInterface::snapshot() const
     {
         std::lock_guard<std::mutex> lk(mtx_);
         return state_;

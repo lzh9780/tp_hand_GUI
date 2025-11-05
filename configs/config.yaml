@@ -1,0 +1,12 @@
+can_device:
+  device_type: 33
+  device_index: 0
+  channel_index: 0
+  core_clock_hz: 60000000
+  termination_enabled: true
+  bit_timing:
+    arbitration: { tseg1: 14, tseg2: 3, sjw: 3, brp: 2 }
+    data_phase:  { tseg1: 1, tseg2: 0, sjw: 0, brp: 2 }
+
+models:
+  - demohand

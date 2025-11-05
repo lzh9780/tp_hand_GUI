@@ -16,17 +16,21 @@ struct CanDeviceSettings {
     TimingPair bit_timing{};
 };
 
-struct CalibrationSettings {
-    int32_t current_limit_mA{1500}, backdrive_speed{-200}, encoder_zero_offset{-10000};
-};
-
-struct TargetsConfig { double others_rad{1.5707963}, thumb_rad{2.4434610}; };
-
 struct PidGains { double kp{0.005}, ki{0.00005}, kd{0.0001}; };
 
 struct NativeJointConfig {
     int32_t linear_zero_counts{500};
     std::vector<double> feedforward_mA; // size 15 (0..140 step 10°)
+};
+
+struct MotorInfo {
+    int id;
+    std::vector<int> joint_map;
+};
+
+struct ModuleStruct {
+    std::vector<std::string> joints;
+    std::vector<MotorInfo> motors;
 };
 
 struct NativePolicySettings {
@@ -42,15 +46,21 @@ struct NativePolicySettings {
 
 struct AppSettings {
     CanDeviceSettings can_device{};
-    std::vector<std::string> joints;
-    TargetsConfig targets{};
-    CalibrationSettings calibration{};
+    std::vector<std::string> models;
+};
+
+struct HandSettings {
+    int hardware_version{0};
+    int software_version{0};
+    std::unordered_map<std::string, ModuleStruct> structs;
     NativePolicySettings native_policy{};
 };
 
 struct SettingsError : public std::runtime_error { using std::runtime_error::runtime_error; };
 
-AppSettings load_settings(const std::string& yaml_path);
+AppSettings load_app_settings(const std::string& yaml_path);
+HandSettings load_hand_settings(const std::string& yaml_path);
 void validate_settings(const AppSettings& s, const std::string& yaml_path);
+void validate_settings(const HandSettings& s, const std::string& path);
 
 } // namespace grip

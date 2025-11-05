@@ -11,6 +11,7 @@ class SidePanel;
 class TopPanel;
 class QTextEdit;
 class QThread;
+class QString;
 
 Q_DECLARE_METATYPE(QVector<float>)
 
@@ -20,8 +21,6 @@ class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     MainWindow(const grip::AppSettings& cfg,
-               const std::vector<grip::JointDevice>& devices,
-               grip::ControlInterface* ctrl,
                QWidget* parent=nullptr);
     ~MainWindow() override;
 
@@ -38,14 +37,16 @@ private slots:
     void onTopPanelDeviceConnect();
     void onTopPanelControlSwitch(const QString &msg);
     void readJointAngles();
+    void onTopPanelModelChange(const QString &model_name);
 
 private:
-    void buildUI(const QStringList& jointNames);
+    void buildUI();
 
 private:
-    std::vector<grip::JointDevice> devices_;
+    std::vector<int> devices_;
     grip::ControlInterface* ctrl_{nullptr};
     const grip::AppSettings cfg_;
+    grip::HandSettings hand_cfg_;
 
     QWidget* mainContent;
     QWidget* central;
@@ -54,4 +55,7 @@ private:
     QTextEdit* log_{nullptr};
     PyCamWorker* worker_ = nullptr;
     QThread* workerThread_ = nullptr;
+    std::string config_path_;
+    std::string action_path_;
+    QStringList joint_names;
 };

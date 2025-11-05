@@ -34,9 +34,7 @@ class ActionStore; // fwd
 class SidePanel : public QFrame {
     Q_OBJECT
 public:
-    explicit SidePanel(QWidget *parent,
-                       const QStringList& jointNames,
-                       ActionStore* store);
+    explicit SidePanel(QWidget *parent);
 
     // Read current slider values (angles in degrees)
     QList<int> jointDegrees() const;
@@ -47,6 +45,9 @@ public:
     void modeChange(const QString& mode);
     void applyCameraData(const QVector<double>& data);
     void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
+    void loadActions();
+    void loadSliders(const QStringList &jointNames);
+    void updateStore(ActionStore *store);
 
 signals:
     void valuesChanged();
@@ -69,7 +70,7 @@ private:
     // Build sections
     void buildControlRow();
     void buildActionsPanel();
-    void buildSliderPanel(const QStringList& jointNames);
+    void buildSliderPanel();
 
     // Helpers
     void applyActionToSliders(int actionIndex);

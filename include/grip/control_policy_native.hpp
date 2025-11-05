@@ -13,7 +13,7 @@ struct PidState { double kp{0.005}, ki{0.00005}, kd{0.0001}; };
 
 struct JointRuntime {
     int32_t linear_zero_counts{500};
-    std::vector<double> ff_mA;
+    // std::vector<double> ff_mA;
     std::deque<double> recent_targets; // <=5
     int64_t integral_err{0};
     int32_t prev_err{0};
@@ -40,7 +40,7 @@ private:
     double  pitch_mm_per_rev_{1.0};
     int     counts_per_rev_{262144};
 
-    std::vector<double> ff_x_deg_{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140};
+    // std::vector<double> ff_x_deg_{0,10,20,30,40,50,60,70,80,90,100,110,120,130,140};
     std::unordered_map<std::string, JointRuntime> table_;
 };
 
