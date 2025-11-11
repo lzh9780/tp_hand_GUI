@@ -66,7 +66,8 @@ MainWindow::~MainWindow()
         workerThread_->quit();
         workerThread_->wait();
     }
-    ctrl_->stop_all();
+    if (ctrl_)
+        ctrl_->stop_all();
 }
 
 void MainWindow::buildUI()
@@ -86,9 +87,19 @@ void MainWindow::buildUI()
 
     log_ = new QTextEdit;
     log_->setReadOnly(true);
+    // log_->setMaximumHeight(50);
+
+    orge_ = new OgreWidget(this);
+
+    // auto *mainPanel = new QWidget();
+    auto *mainLyt = new QSplitter(Qt::Vertical, this);
+    mainLyt->addWidget(orge_);
+    mainLyt->addWidget(log_);
+    mainLyt->setStretchFactor(0, 1);
+    mainLyt->setStretchFactor(1, 0);
 
     splitter->addWidget(side_);
-    splitter->addWidget(log_);
+    splitter->addWidget(mainLyt);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
 

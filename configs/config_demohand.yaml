@@ -22,13 +22,15 @@ hand_struct:
     joints:
       - PINKY
     motors: [{id: 3, param: [1]}]
-  # wrist:
-  #   joints:
-  #     - PITCH
-  #     - YAW
-  #   motors: [{id: 1, param: [0, 0]}, {id: 2, param: [0, 0]}]
+  wrist:
+    joints:
+      - PITCH
+      - YAW
+    motors: [{id: 1, param: [0, 0]}, {id: 2, param: [0, 0]}]
 
 control_policy: ["hall_protect", "cascaded_pid"]
+
+urdf_file: "Demo_urdf_v1.urdf"
 
 native_policy:
   pid: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 100Hz: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 10Hz: { kp: 0.005, ki: 0.00005, kd: 0.0001 }

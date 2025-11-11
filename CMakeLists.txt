@@ -6,7 +6,7 @@ option(BUILD_GUI "Build Qt GUI target" OFF)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_AUTOMOC ON)
+# set(CMAKE_AUTOMOC ON)
 
 if (MSVC)
   add_compile_options(/W4)
@@ -16,6 +16,16 @@ endif()
 
 find_package(yaml-cpp REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+find_package(OGRE REQUIRED)
+# find_package(OGRE REQUIRED OgreMain)
+
+# include(FetchContent)
+# FetchContent_Declare(
+#   tinyxml2
+#   GIT_REPOSITORY https://github.com/leethomason/tinyxml2.git
+#   GIT_TAG 10.0.0
+# )
+# FetchContent_MakeAvailable(tinyxml2)
 
 
 # ---- OpenCV (only for color utilities; not strictly needed if you keep manual BGR->RGB) ----
@@ -89,8 +99,11 @@ if (BUILD_GUI)
     src_gui/ActionStore.cpp
     src_gui/PyCamWorker.h
     src_gui/PyCamWorker.cpp
+    src_gui/OgreWidget.cpp
+    src_gui/UrdfLoader.cpp
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})
   target_link_libraries(grip_gui PRIVATE Python3::Python)
   target_compile_definitions(grip_gui PRIVATE WITH_QT_GUI=1)
   target_link_libraries(grip_gui PRIVATE
@@ -98,6 +111,8 @@ if (BUILD_GUI)
     ${QT_PACKAGE}::Widgets
     pybind11::embed
     ${OpenCV_LIBS}
+    ${OGRE_LIBRARIES}
+    tinyxml2
   )
   
   # target_link_libraries(grip_gui PRIVATE grip_core ${QT_PACKAGE}::Widgets)
