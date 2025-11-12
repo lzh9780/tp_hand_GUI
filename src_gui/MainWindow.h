@@ -54,7 +54,7 @@ private:
     SidePanel* side_{nullptr};
     TopPanel* top_{nullptr};
     QTextEdit* log_{nullptr};
-    OgreWidget* orge_;
+    OgreWidget* ogre_;
     PyCamWorker* worker_ = nullptr;
     QThread* workerThread_ = nullptr;
     std::string config_path_;

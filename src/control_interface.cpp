@@ -16,11 +16,11 @@ namespace grip
                                        std::chrono::milliseconds period)
         : policy_(hand_cfg.native_policy), control_period_(period)
     {
-        
-        
+
         hand_ = hand_cfg.structs;
-        for (const auto & [key, value] : hand_cfg.structs) {
-            for (const auto & m : value.motors)
+        for (const auto &[key, value] : hand_cfg.structs)
+        {
+            for (const auto &m : value.motors)
                 devices_.push_back(m.id);
         }
 
@@ -30,11 +30,15 @@ namespace grip
         joint_key_[4] = "middle_finger_mcp";
         joint_key_[6] = "ring_finger_mcp";
         joint_key_[3] = "pinky_mcp";
+        // joint_key_[1] = "PITCH";
+        // joint_key_[2] = "YAW";
         ctrl_key_[5] = "THUMB";
         ctrl_key_[7] = "INDEX_FINGER";
         ctrl_key_[4] = "MIDDLE_FINGER";
         ctrl_key_[6] = "RING_FINGER";
         ctrl_key_[3] = "PINKY";
+        ctrl_key_[1] = "PITCH";
+        ctrl_key_[2] = "YAW";
         /* To match the current algorithm. Remove later */
 
         std::sort(devices_.begin(), devices_.end(),
@@ -92,6 +96,75 @@ namespace grip
         }
     }
 
+    // void ControlInterface::run_calibration()
+    // {
+    //     using namespace std::chrono_literals;
+
+    //     {
+    //         send_broadcast(devices_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::CAN_MODE,
+    //                        std::vector<int32_t>(devices_.size(), (uint32_t)10));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 1) MAX_CURRENT
+    //     {
+    //         send_broadcast(devices_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::MAX_CURRENT,
+    //                        std::vector<int32_t>(devices_.size(), 1500));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 2) CALIBRATE negative speed
+    //     {
+    //         send_broadcast(devices_,
+    //                        MsgKind::MOTOR_COMMAND,
+    //                        (uint8_t)MotorMode::CALIBRATE,
+    //                        std::vector<int32_t>(devices_.size(), -100));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 3) wait for stall -> stop -> write zero
+    //     while (!shutting_down_)
+    //     {
+    //         {
+    //             std::lock_guard<std::mutex> lk(mtx_);
+    //             if (all_stalled_locked())
+    //             {
+    //                 send_broadcast(devices_,
+    //                                MsgKind::MOTOR_COMMAND,
+    //                                (uint8_t)MotorMode::CALIBRATE,
+    //                                std::vector<int32_t>(devices_.size(), 0));
+    //                 std::this_thread::sleep_for(500ms);
+    //                 send_broadcast(devices_,
+    //                                MsgKind::SET_MOTOR_PARAM,
+    //                                (uint8_t)ParamField::ENCODER_POS,
+    //                                std::vector<int32_t>(devices_.size(), -8));
+    //                 break;
+    //             }
+    //         }
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    //     }
+    //     {
+    //         std::lock_guard<std::mutex> lk(mtx_);
+    //         calibrated_ = true;
+    //     }
+    //     cv_.notify_all();
+    //     std::cout << "Calibration complete.\n\n\n\n";
+    // }
+
+    // bool ControlInterface::all_stalled_locked() const
+    // {
+    //     for (auto d : devices_)
+    //     {
+    //         auto it = state_.find(d);
+    //         if (it == state_.end())
+    //             return false;
+    //         if (it->second.fault != (uint16_t)FaultCode::MOTOR_STALL)
+    //             return false;
+    //     }
+    //     return true;
+    // }
+
     void ControlInterface::start_control_loop()
     {
         ctrl_thread_ = std::thread([this]
@@ -113,7 +186,7 @@ namespace grip
             auto [d, r] = inbox_.front();
             inbox_.pop_front();
             targets_rad_[d] = r;
-            // std::cout << d << " " << r << '\n'; 
+            // std::cout << d << " " << r << '\n';
         }
     }
 
@@ -145,15 +218,18 @@ namespace grip
                     std::lock_guard<std::mutex> lk(mtx_);
                     state_[dev] = t;
 #if GRIP_DEBUG_RX
+                    if ((int)dev == 1 || (int)dev == 2) 
                     std::cout << "dev=" << (int)dev << " iq=" << t.iq_mA << " enc=" << t.encoder_counts << "\n";
 #endif
-                } else if (kind_bits == (uint32_t)MsgKind::SENSOR_TELEMETRY) {
+                }
+                else if (kind_bits == (uint32_t)MsgKind::SENSOR_TELEMETRY)
+                {
                     std::lock_guard<std::mutex> lk(mtx_);
                     JointAngles j;
                     j.thumb_mcp = float(rd_i16(&f.data[0])) / 65536.0f * float(M_PI);
                     j.thumb_ip = float(rd_i16(&f.data[2])) / 65536.0f * float(M_PI);
                     j.index_mcp = float(rd_i16(&f.data[4])) >= 0 ? float(rd_i16(&f.data[4])) / 65536.0f * float(M_PI) * 6 / 5 : joint_angles_.index_mcp;
-                    j.index_pip = float(rd_i16(&f.data[6])) >= 0 ? float(rd_i16(&f.data[6])) / 65536.0f * float(M_PI)  * 6 / 5 : joint_angles_.index_pip;
+                    j.index_pip = float(rd_i16(&f.data[6])) >= 0 ? float(rd_i16(&f.data[6])) / 65536.0f * float(M_PI) * 6 / 5 : joint_angles_.index_pip;
                     j.index_dip = float(rd_i16(&f.data[8])) >= 0 ? float(rd_i16(&f.data[8])) / 65536.0f * float(M_PI) * 6 / 5 : joint_angles_.index_dip;
                     j.middle_mcp = float(rd_i16(&f.data[10])) / 65536.0f * float(M_PI);
                     j.middle_pip = float(rd_i16(&f.data[12])) / 65536.0f * float(M_PI);
@@ -166,11 +242,11 @@ namespace grip
                     j.pinky_dip = float(rd_i16(&f.data[26])) / 65536.0f * float(M_PI);
                     // std::cout << j.index_mcp <<" "<< j.index_pip<<" " << j.index_dip<<"\n";
                     // std::cout << float(rd_u16(&f.data[4])) <<" "<< float(rd_u16(&f.data[6]))<<" " << float(rd_u16(&f.data[8]))<<"\n";
-                    
-                    
+
                     double time_diff = (double(f.timestamp) - double(time_stamp_)) / 10000;
                     // std::cout << f.timestamp << " " << time_stamp_ << " " << time_diff << '\n';
-                    if (time_diff < 0.001) continue;
+                    if (time_diff < 0.001)
+                        continue;
                     // std::cout << "time_diff: " << time_diff << "\n";
                     // std::cout << "vel_mcp: " << ((j.index_mcp - joint_angles_.index_mcp) / time_diff) << "\n";
                     // std::cout << "vel_pip: " << ((j.index_pip - joint_angles_.index_pip) / time_diff) << "\n";
@@ -179,13 +255,15 @@ namespace grip
                     j_v.index_mcp = (j.index_mcp - joint_angles_.index_mcp) / time_diff;
                     j_v.index_pip = (j.index_pip - joint_angles_.index_pip) / time_diff;
                     j_v.index_dip = (j.index_dip - joint_angles_.index_dip) / time_diff;
-                    
+
                     joint_angles_ = j;
                     joint_vels_ = j_v;
                     time_stamp_ = f.timestamp;
-                } else if (kind_bits == (uint32_t)MsgKind::BOARDSTATE) {
+                }
+                else if (kind_bits == (uint32_t)MsgKind::BOARDSTATE)
+                {
                     uint16_t s = rd_i16(&f.data[0]);
-                    // std::cout << s << "\n";
+                    std::cout << s << "\n";
                     std::lock_guard<std::mutex> lk(mtx_);
                     board_state_ = int(s);
                 }
@@ -202,9 +280,9 @@ namespace grip
                            std::vector<int32_t>(devices_.size(), (uint32_t)10));
             // std::this_thread::sleep_for(10ms);
             send_single(0x1e,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::CAN_MODE,
-                           (uint32_t)10);
+                        MsgKind::SET_MOTOR_PARAM,
+                        (uint8_t)ParamField::CAN_MODE,
+                        (uint32_t)10);
             // std::this_thread::sleep_for(10ms);
         }
         using clock = std::chrono::steady_clock;
@@ -228,7 +306,7 @@ namespace grip
                 for (auto d : devices_)
                 {
                     // std::cout << "device: " << joint_key_.at(d);
-                    // if (d != JointDevice::INDEX_FINGER) 
+                    // if (d != JointDevice::INDEX_FINGER)
                     // {
                     //     int32_t enc = state_[d].encoder_counts;
                     //     double tgt = targets_rad_[ctrl_key_[d]];
@@ -237,31 +315,50 @@ namespace grip
                     //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
                     //     // std::cout << " control method: Hall, target: " << tgt << "\n";
                     //     cmds.push_back({d, mA});
-                    // } else 
-                    if (ctrl_key_[d] == "INDEX_FINGER") 
+                    // } else
+                    if (ctrl_key_[d] == "INDEX_FINGER")
                     {
                         int motor;
                         int32_t mA;
                         // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
-                        fc_step(&ctrl_, 
-                            FC_INDEX_MCP, 
-                            targets_rad_[ctrl_key_[d]],
-                            joint_angles_.index_mcp,
-                            joint_angles_.index_pip,
-                            joint_angles_.index_dip,
-                            joint_vels_.index_mcp,
-                            joint_vels_.index_pip,
-                            joint_vels_.index_dip,
-                            &motor,
-                            &mA
-                        );
+                        fc_step(&ctrl_,
+                                FC_INDEX_MCP,
+                                targets_rad_[ctrl_key_[d]],
+                                joint_angles_.index_mcp,
+                                joint_angles_.index_pip,
+                                joint_angles_.index_dip,
+                                joint_vels_.index_mcp,
+                                joint_vels_.index_pip,
+                                joint_vels_.index_dip,
+                                &motor,
+                                &mA);
                         cmds.push_back({d, mA});
+                    }
+                    else if (d == 1)
+                    {
+                        in.pitch = targets_rad_["PITCH"];
+                        in.yaw = targets_rad_["YAW"];
+                        in.roll = 0.0;
+                        in.left_counts = state_[1].encoder_counts*256;
+                        in.right_counts = state_[2].encoder_counts*256;
+                        // in.left_counts = 10000;
+                        // in.right_counts = 10000;
+
+                        if (auto wcmds = wrist_.step(in))
+                        {
+                            for (auto &c : *wcmds)
+                            {
+                                cmds.push_back({c.motor_id, c.command});
+                                // std::cout << c.motor_id << " " << c.command << "\n";
+                            }
+                        }
                     }
                 }
             }
-            for (auto &c : cmds)
+            for (auto &c : cmds){
                 send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
-                // std::cout << "commands: " << joint_key_.at(c.first) << " data: " << c.second << "\n";}
+                std::cout << "commands: " << c.first << " data: " << c.second << "\n";
+            }
             std::this_thread::sleep_until(next);
         }
     }
@@ -300,7 +397,7 @@ namespace grip
         return state_;
     }
 
-    JointAngles ControlInterface::get_joint_angles() const 
+    JointAngles ControlInterface::get_joint_angles() const
     {
         std::lock_guard<std::mutex> lk(mtx_);
         JointAngles j;

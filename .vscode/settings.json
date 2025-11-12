@@ -68,6 +68,8 @@
         "typeinfo": "cpp",
         "variant": "cpp",
         "valarray": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "shared_mutex": "cpp",
+        "cfenv": "cpp"
     }
 }

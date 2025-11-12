@@ -73,6 +73,7 @@ add_library(grip_core STATIC
   src/control_policy_native.cpp
   src/control_interface.cpp
   src/finger_ctrl.c
+  src/wrist_control.cpp
 )
 target_link_libraries(grip_core PUBLIC yaml-cpp zlgcanfd)
 set_target_properties(grip_core PROPERTIES POSITION_INDEPENDENT_CODE ON)

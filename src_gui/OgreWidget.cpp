@@ -86,7 +86,7 @@ void OgreWidget::onFrame()
 void OgreWidget::initOgre()
 {
     // Don’t pass plugins.cfg (we’ll load plugins manually)
-    mRoot = std::make_unique<Ogre::Root>("", "", "ogre.log");
+    mRoot = std::make_unique<Ogre::Root>("", "", "log/ogre.log");
 
     // ---- 1) Load renderer plugins explicitly ----
 #if defined(Q_OS_WIN)
@@ -180,7 +180,7 @@ void OgreWidget::initOgre()
     mScene = mRoot->createSceneManager(Ogre::ST_GENERIC);
     mCamera = mScene->createCamera("MainCamera");
     mCamera->setNearClipDistance(0.01f);
-    mCamera->setFarClipDistance(2000.0f);
+    mCamera->setFarClipDistance(200.0f);
     mCamera->setAutoAspectRatio(true);
 
     mViewport = mWindow->addViewport(mCamera);
@@ -189,7 +189,7 @@ void OgreWidget::initOgre()
     // Light
     auto *light = mScene->createLight("MainLight");
     auto *lnode = mScene->getRootSceneNode()->createChildSceneNode();
-    lnode->setPosition(3, 5, 8);
+    lnode->setPosition(0.3, 0.5, 0.8);
     lnode->attachObject(light);
 
     // Simple default material (so our ManualObjects have something valid)

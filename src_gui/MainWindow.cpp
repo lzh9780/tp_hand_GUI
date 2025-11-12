@@ -89,11 +89,11 @@ void MainWindow::buildUI()
     log_->setReadOnly(true);
     // log_->setMaximumHeight(50);
 
-    orge_ = new OgreWidget(this);
+    ogre_ = new OgreWidget(this);
 
     // auto *mainPanel = new QWidget();
     auto *mainLyt = new QSplitter(Qt::Vertical, this);
-    mainLyt->addWidget(orge_);
+    mainLyt->addWidget(ogre_);
     mainLyt->addWidget(log_);
     mainLyt->setStretchFactor(0, 1);
     mainLyt->setStretchFactor(1, 0);
@@ -169,9 +169,9 @@ void MainWindow::onTopPanelDeviceConnect()
         ctrl_->start_bus(cfg_.can_device);
         log_->append("Device Connected. ");
         log_->append("Start Calibration... ");
-        // ctrl_->run_calibration(cfg_.calibration);
-        while (ctrl_->get_board_state() != 1)
-            log_->append(".");
+        ctrl_->run_calibration();
+        // while (ctrl_->get_board_state() != 1)
+        //     log_->append(".");
         log_->append("Calibration Complete. ");
         ctrl_->start_control_loop();
         log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
@@ -235,4 +235,6 @@ void MainWindow::onTopPanelModelChange(const QString &model_name)
     qDebug() << config_path_.c_str();
     action_path_ = std::string("data/action_") + model_name.toUtf8().constData() + std::string(".json");
     qDebug() << action_path_.c_str();
+    // if (ogre_->loadURDF("robots/demohand/urdf/Demo_urdf_v1.urdf"))
+    //     log_->append("urdf loaded");
 }

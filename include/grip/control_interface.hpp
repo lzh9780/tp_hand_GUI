@@ -13,10 +13,11 @@
 #include "settings.hpp"
 #include "control_policy_native.hpp"
 #include "grip/finger_ctrl.h"
+#include "wrist_control.hpp"
 
 namespace grip {
 
-#define GRIP_DEBUG_RX 0
+#define GRIP_DEBUG_RX 1
 
 class ControlInterface {
 public:
@@ -41,11 +42,13 @@ public:
     std::unordered_map<int, Telemetry> snapshot() const;
     JointAngles get_joint_angles() const;
     int get_board_state() const;
+    void run_calibration();
 
 private:
     void receiver_loop();
     void control_loop();
-    // bool all_stalled_locked() const;
+    
+    bool all_stalled_locked() const;
 
     void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int32_t>& values);
     void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2);
@@ -67,6 +70,7 @@ private:
     NativePolicy policy_;
     JointAngles offset_;
     fc_ctx_t ctrl_;
+    Controller wrist_;
 
     // shared state
     std::unordered_map<int, Telemetry> state_;
@@ -87,6 +91,7 @@ private:
     // target inbox
     std::mutex inbox_mtx_;
     std::deque<std::pair<std::string,float>> inbox_;
+    IO in;
 };
 
 } // namespace grip
