@@ -1,0 +1,8 @@
+type: linear_actuator
+
+route: {min: 0, max: 100} # mm
+max_current: 3000 # mA
+max_velocity: 2000 # rpm
+ff_tau: 100
+
+device_id: 1

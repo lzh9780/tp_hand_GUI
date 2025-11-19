@@ -1,0 +1,8 @@
+type: rotary_actuator
+
+route: {min: -3.14, max: 3.14} # rad
+max_current: 3000 # mA
+max_velocity: 2000 # rpm
+ff_tau: 100
+
+device_id: 1

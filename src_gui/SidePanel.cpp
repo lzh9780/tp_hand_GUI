@@ -17,7 +17,7 @@
 #include <QPixmap>
 #include <cmath>
 
-static constexpr int kDegMin = 0; // degrees
+static constexpr int kDegMin = -50; // degrees
 static constexpr int kDegMax = 150;
 
 SidePanel::SidePanel(QWidget *parent)
@@ -245,7 +245,7 @@ void SidePanel::loadSliders(const QStringList &jointNames)
         auto *nameLbl = new QLabel(name);
         auto *valueLbl = new QLabel("  0");
         valueLabels_.append(valueLbl);
-        auto *currValueLbl = new QLabel("  (0)");
+        auto *currValueLbl = new QLabel("  (0.00)");
         currValueLabels_.append(currValueLbl);
         hl->addWidget(nameLbl);
         hl->addStretch(1);

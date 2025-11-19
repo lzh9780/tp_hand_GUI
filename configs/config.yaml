@@ -10,3 +10,5 @@ can_device:
 
 models:
   - demohand
+  - demo_linear
+  - demo_rotaty

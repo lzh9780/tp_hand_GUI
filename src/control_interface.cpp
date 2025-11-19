@@ -96,74 +96,79 @@ namespace grip
         }
     }
 
-    // void ControlInterface::run_calibration()
-    // {
-    //     using namespace std::chrono_literals;
+    void ControlInterface::run_calibration()
+    {
+        using namespace std::chrono_literals;
 
-    //     {
-    //         send_broadcast(devices_,
-    //                        MsgKind::SET_MOTOR_PARAM,
-    //                        (uint8_t)ParamField::CAN_MODE,
-    //                        std::vector<int32_t>(devices_.size(), (uint32_t)10));
-    //         std::this_thread::sleep_for(10ms);
-    //     }
-    //     // 1) MAX_CURRENT
-    //     {
-    //         send_broadcast(devices_,
-    //                        MsgKind::SET_MOTOR_PARAM,
-    //                        (uint8_t)ParamField::MAX_CURRENT,
-    //                        std::vector<int32_t>(devices_.size(), 1500));
-    //         std::this_thread::sleep_for(10ms);
-    //     }
-    //     // 2) CALIBRATE negative speed
-    //     {
-    //         send_broadcast(devices_,
-    //                        MsgKind::MOTOR_COMMAND,
-    //                        (uint8_t)MotorMode::CALIBRATE,
-    //                        std::vector<int32_t>(devices_.size(), -100));
-    //         std::this_thread::sleep_for(10ms);
-    //     }
-    //     // 3) wait for stall -> stop -> write zero
-    //     while (!shutting_down_)
-    //     {
-    //         {
-    //             std::lock_guard<std::mutex> lk(mtx_);
-    //             if (all_stalled_locked())
-    //             {
-    //                 send_broadcast(devices_,
-    //                                MsgKind::MOTOR_COMMAND,
-    //                                (uint8_t)MotorMode::CALIBRATE,
-    //                                std::vector<int32_t>(devices_.size(), 0));
-    //                 std::this_thread::sleep_for(500ms);
-    //                 send_broadcast(devices_,
-    //                                MsgKind::SET_MOTOR_PARAM,
-    //                                (uint8_t)ParamField::ENCODER_POS,
-    //                                std::vector<int32_t>(devices_.size(), -8));
-    //                 break;
-    //             }
-    //         }
-    //         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    //     }
-    //     {
-    //         std::lock_guard<std::mutex> lk(mtx_);
-    //         calibrated_ = true;
-    //     }
-    //     cv_.notify_all();
-    //     std::cout << "Calibration complete.\n\n\n\n";
-    // }
+        {
+            send_broadcast(devices_,
+                           MsgKind::SET_MOTOR_PARAM,
+                           (uint8_t)ParamField::CAN_MODE,
+                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
+            std::this_thread::sleep_for(10ms);
+        }
+        // 1) MAX_CURRENT
+        {
+            send_broadcast(devices_,
+                           MsgKind::SET_MOTOR_PARAM,
+                           (uint8_t)ParamField::MAX_CURRENT,
+                           std::vector<int32_t>(devices_.size(), 1500));
+            std::this_thread::sleep_for(10ms);
+        }
+        // 2) CALIBRATE negative speed
+        {
+            send_broadcast(devices_,
+                           MsgKind::MOTOR_COMMAND,
+                           (uint8_t)MotorMode::CALIBRATE,
+                           std::vector<int32_t>(devices_.size(), -100));
+            std::this_thread::sleep_for(10ms);
+        }
+        // 3) wait for stall -> stop -> write zero
+        while (!shutting_down_)
+        {
+            {
+                std::lock_guard<std::mutex> lk(mtx_);
+                if (all_stalled_locked())
+                {
+                    send_broadcast(devices_,
+                                   MsgKind::MOTOR_COMMAND,
+                                   (uint8_t)MotorMode::SPEED,
+                                   std::vector<int32_t>(devices_.size(), 0));
+                    std::this_thread::sleep_for(500ms);
+                    send_broadcast(devices_,
+                                   MsgKind::SET_MOTOR_PARAM,
+                                   (uint8_t)ParamField::ENCODER_POS,
+                                   std::vector<int32_t>(devices_.size(), -8));
+                    send_broadcast(devices_,
+                           MsgKind::SET_MOTOR_PARAM,
+                           (uint8_t)ParamField::MAX_CURRENT,
+                           std::vector<int32_t>(devices_.size(), 2500));
+            std::this_thread::sleep_for(10ms);
+                    break;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        {
+            std::lock_guard<std::mutex> lk(mtx_);
+            calibrated_ = true;
+        }
+        cv_.notify_all();
+        std::cout << "Calibration complete.\n\n\n\n";
+    }
 
-    // bool ControlInterface::all_stalled_locked() const
-    // {
-    //     for (auto d : devices_)
-    //     {
-    //         auto it = state_.find(d);
-    //         if (it == state_.end())
-    //             return false;
-    //         if (it->second.fault != (uint16_t)FaultCode::MOTOR_STALL)
-    //             return false;
-    //     }
-    //     return true;
-    // }
+    bool ControlInterface::all_stalled_locked() const
+    {
+        for (auto d : devices_)
+        {
+            auto it = state_.find(d);
+            if (it == state_.end())
+                return false;
+            if (it->second.fault != (uint16_t)FaultCode::MOTOR_STALL)
+                return false;
+        }
+        return true;
+    }
 
     void ControlInterface::start_control_loop()
     {
@@ -357,7 +362,7 @@ namespace grip
             }
             for (auto &c : cmds){
                 send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
-                std::cout << "commands: " << c.first << " data: " << c.second << "\n";
+                // std::cout << "commands: " << c.first << " data: " << c.second << "\n";
             }
             std::this_thread::sleep_until(next);
         }

@@ -17,7 +17,7 @@
 
 namespace grip {
 
-#define GRIP_DEBUG_RX 1
+#define GRIP_DEBUG_RX 0
 
 class ControlInterface {
 public:

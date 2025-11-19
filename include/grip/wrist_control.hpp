@@ -42,7 +42,7 @@ namespace grip
     int32_t right_center_counts{500000};
 
     // PID integral clamp (anti-windup)
-    double Imax{1.0e8}, Imin{-1.0e8};
+    double Imax{300000}, Imin{-300000};
 
     // Output clamps (your script clamps “velocity”; keep a generous range)
     int32_t vel_min{-300}, vel_max{300}; // same as script’s Max/Min_Velocity
@@ -110,8 +110,11 @@ namespace grip
     MotorPIDState left_pid_{}, right_pid_{};
 
     // motor IDs consistent with the script
-    static constexpr int kLeftMotorId = 2;
-    static constexpr int kRightMotorId = 1;
+    static constexpr int kLeftMotorId = 1;
+    static constexpr int kRightMotorId = 2;
+
+    double prev_cmd_L = 17.5;
+    double prev_cmd_R = 17.5;
   };
 
 } // namespace wrist
