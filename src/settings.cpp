@@ -45,6 +45,10 @@ namespace grip
         YAML::Node y = YAML::LoadFile(yaml_path);
         HandSettings hand;
 
+        if (auto n = y["type"]) {
+            hand.device_type = n.as<std::string>() == "hand" ? 0 : (n.as<std::string>() == "linear_actuator" ? 1 : 2);
+        }
+
         if (auto hardware = y["hardware_version"]) 
             hand.hardware_version = hardware.as<int32_t>(hand.hardware_version);
 

@@ -50,6 +50,7 @@ struct AppSettings {
 };
 
 struct HandSettings {
+    int device_type = 0;
     int hardware_version{0};
     int software_version{0};
     std::unordered_map<std::string, ModuleStruct> structs;

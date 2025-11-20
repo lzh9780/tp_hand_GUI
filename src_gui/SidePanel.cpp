@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QImage>
 #include <QPixmap>
+#include <QComboBox>
 #include <cmath>
 
 static constexpr int kDegMin = -50; // degrees
@@ -234,43 +235,74 @@ void SidePanel::buildSliderPanel()
     sliderScroll_->setWidgetResizable(true);
 }
 
+void SidePanel::loadSliderModule(QString name, int max, int min)
+{
+    auto *row = new QWidget;
+    auto *hl = new QHBoxLayout(row);
+    hl->setContentsMargins(6, 2, 6, 2);
+    auto *nameLbl = new QLabel(name);
+    nameLabels_.append(nameLbl);
+    auto *valEnter = new QLineEdit("0");
+    valueLabels_.append(valEnter);
+    auto *currValueLbl = new QLabel("  (0.00)");
+    currValueLabels_.append(currValueLbl);
+    hl->addWidget(nameLbl);
+    hl->addStretch(1);
+    hl->addWidget(valEnter);
+    hl->addWidget(currValueLbl);
+    sliderVBox_->addWidget(row);
+
+    // Slider row: [0 .. 140] degrees
+    auto *sRow = new QWidget;
+    auto *sl = new QHBoxLayout(sRow);
+    sl->setContentsMargins(12, 0, 12, 8);
+    auto *sMin = new QLabel(QString::number(min));
+    auto *slider = new QSlider(Qt::Horizontal);
+    slider->setRange(min, max);
+    slider->setValue(0);
+    auto *sMax = new QLabel(QString::number(max));
+    sl->addWidget(sMin);
+    sl->addWidget(slider);
+    sl->addWidget(sMax);
+    sliders_.append(slider);
+    sliderVBox_->addWidget(sRow);
+
+    connect(slider, &QSlider::valueChanged, this, &SidePanel::onAnySliderChanged);
+    connect(valEnter, &QLineEdit::editingFinished, this, &SidePanel::onValueEditChanged);
+}
+
 void SidePanel::loadSliders(const QStringList &jointNames)
 {
     for (const auto &name : jointNames)
     {
-        // Header row: label + dynamic numeric readout
-        auto *row = new QWidget;
-        auto *hl = new QHBoxLayout(row);
-        hl->setContentsMargins(6, 2, 6, 2);
-        auto *nameLbl = new QLabel(name);
-        auto *valueLbl = new QLabel("  0");
-        valueLabels_.append(valueLbl);
-        auto *currValueLbl = new QLabel("  (0.00)");
-        currValueLabels_.append(currValueLbl);
-        hl->addWidget(nameLbl);
-        hl->addStretch(1);
-        hl->addWidget(valueLbl);
-        hl->addWidget(currValueLbl);
-        sliderVBox_->addWidget(row);
-
-        // Slider row: [0 .. 140] degrees
-        auto *sRow = new QWidget;
-        auto *sl = new QHBoxLayout(sRow);
-        sl->setContentsMargins(12, 0, 12, 8);
-        auto *sMin = new QLabel(QString::number(kDegMin));
-        auto *slider = new QSlider(Qt::Horizontal);
-        slider->setRange(kDegMin, kDegMax);
-        slider->setValue(0);
-        auto *sMax = new QLabel(QString::number(kDegMax));
-        sl->addWidget(sMin);
-        sl->addWidget(slider);
-        sl->addWidget(sMax);
-        sliders_.append(slider);
-        sliderVBox_->addWidget(sRow);
-
-        connect(slider, &QSlider::valueChanged, this, &SidePanel::onAnySliderChanged);
+        loadSliderModule(name, kDegMax, kDegMin);
     }
     sliderVBox_->addStretch(1);
+}
+
+void SidePanel::loadActuatorControllor() {
+    loadSliderModule(QString("Max Velocity"), kDegMax, 0);
+    loadSliderModule(QString("Max Current"), kDegMax, 0);
+
+    auto *ctrlHl = new QHBoxLayout();
+    auto *mode_lable = new QLabel("Control Mode: "); 
+    mode_box = new QComboBox();
+    mode_box->addItem("Position");
+    mode_box->addItem("Velocity");
+    mode_box->addItem("Torque");
+    mode_box->addItem("MIT");
+    mode_box->setCurrentIndex(0);
+    ctrlHl->addWidget(mode_lable);
+    ctrlHl->addWidget(mode_box);
+    sliderVBox_->addLayout(ctrlHl);
+
+    loadSliderModule(QString("Position"), kDegMax, kDegMin);
+    loadSliderModule(QString("-"), kDegMax, kDegMin);
+
+    sliders_[3]->setEnabled(false);
+    valueLabels_[3]->setEnabled(false);
+
+    connect(mode_box, &QComboBox::currentTextChanged, this, &SidePanel::onControlChange);
 }
 
 // ============ slots ============
@@ -290,9 +322,16 @@ void SidePanel::onAnySliderChanged()
 {
     // Update numeric labels and echo in Follow mode
     for (int i = 0; i < sliders_.size(); ++i)
-        valueLabels_[i]->setText(QString("  %1").arg(sliders_[i]->value()));
+        valueLabels_[i]->setText(QString("%1").arg(sliders_[i]->value()));
     if (btnMode_->text() == "Mode: Follow")
         emit valuesChanged();
+}
+
+void SidePanel::onValueEditChanged() 
+{
+    for (int i = 0; i < valueLabels_.size(); ++i) {
+        sliders_[i]->setValue(atoi(valueLabels_[i]->text().toUtf8().constData()));
+    }
 }
 
 void SidePanel::onToggleMode()
@@ -562,4 +601,28 @@ void SidePanel::updateJoints(const float thumb, const float index, const float m
     //     l->setText("  (%1)".arg(sliders_[i]->value()));
     // }
     currValueLabels_[3]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
+}
+
+void SidePanel::onControlChange()
+{
+    auto curr_mode = mode_box->currentText();
+    if (curr_mode != "MIT") {
+        nameLabels_[2]->setText(mode_box->currentText());
+        sliders_[3]->setEnabled(false);
+        valueLabels_[3]->setEnabled(false);
+        nameLabels_[3]->setText("-");
+        valueLabels_[2]->setText(QString("0"));
+        valueLabels_[3]->setText(QString("0"));
+        sliders_[2]->setValue(0);
+        sliders_[3]->setValue(0);
+    } else {
+        nameLabels_[2]->setText("Position");
+        sliders_[3]->setEnabled(true);
+        valueLabels_[3]->setEnabled(true);
+        nameLabels_[3]->setText("Velocity");
+        valueLabels_[2]->setText(QString("0"));
+        valueLabels_[3]->setText(QString("0"));
+        sliders_[2]->setValue(0);
+        sliders_[3]->setValue(0);
+    }
 }

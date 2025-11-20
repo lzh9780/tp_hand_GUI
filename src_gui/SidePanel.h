@@ -14,6 +14,7 @@ class QPushButton;
 class QToolButton;
 class QLineEdit;
 class QImage;
+class QComboBox;
 
 class ActionStore; // fwd
 
@@ -47,6 +48,7 @@ public:
     void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
     void loadActions();
     void loadSliders(const QStringList &jointNames);
+    void loadActuatorControllor();
     void updateStore(ActionStore *store);
 
 signals:
@@ -64,7 +66,8 @@ private slots:
     // void onNameEditingFinished();
     void onToggleActions();
     void onToggleActionSets();
-    
+    void onControlChange();
+    void onValueEditChanged();
 
 private:
     // Build sections
@@ -78,6 +81,7 @@ private:
     bool validateNewActionName(const QString& n, const QString& o) const;
     void vialdate(QLineEdit* edit, QPushButton* btn);
     void onDeleteAction(QPushButton* btn);
+    void loadSliderModule(QString name, int max, int min);
 
 private:
     // Data
@@ -108,8 +112,12 @@ private:
     QScrollArea* actionScroll_{nullptr};
     QVBoxLayout* sliderVBox_{nullptr};
     QList<QSlider*> sliders_;
-    QList<QLabel*>  valueLabels_;  // number next to each slider
+    QList<QLineEdit*>  valueLabels_;  // number next to each slider
     QList<QLabel*>  currValueLabels_;
+    QList<QLabel*>  nameLabels_;
+
+    // UI: actuator
+    QComboBox* mode_box;
 
     // cache joint count
     int jointCount_{0};

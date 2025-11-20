@@ -165,32 +165,40 @@ void MainWindow::onTopPanelDeviceConnect()
     try
     {
         hand_cfg_ = grip::load_hand_settings(config_path_);
-        ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-        ctrl_->start_bus(cfg_.can_device);
+        // ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
+        // ctrl_->start_bus(cfg_.can_device);
         log_->append("Device Connected. ");
         log_->append("Start Calibration... ");
-        ctrl_->run_calibration();
+        // ctrl_->run_calibration();
         // while (ctrl_->get_board_state() != 1)
         //     log_->append(".");
         log_->append("Calibration Complete. ");
-        ctrl_->start_control_loop();
+        // ctrl_->start_control_loop();
         log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
         log_->append("Current control mode: " + side_->modeText());
         auto *store = new ActionStore(action_path_.c_str());
         store->load();
         side_->updateStore(store);
         side_->loadActions();
-        
-        for (const auto &[key, value] : hand_cfg_.structs)
-        {
-            for (auto &s : value.joints)
-                joint_names << QString::fromStdString(s);
-        }
-        side_->loadSliders(joint_names);
 
-        auto timer_ = new QTimer(this);
-        connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-        timer_->start(10);
+        qDebug() << hand_cfg_.device_type;
+        if (hand_cfg_.device_type == 0)
+        {
+            for (const auto &[key, value] : hand_cfg_.structs)
+            {
+                for (auto &s : value.joints)
+                    joint_names << QString::fromStdString(s);
+            }
+            side_->loadSliders(joint_names);
+            qDebug() << "Hand Controllor loaded";
+        } else {
+            side_->loadActuatorControllor();
+            qDebug() << "Actuator Controllor loaded";
+        }
+
+        // auto timer_ = new QTimer(this);
+        // connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+        // timer_->start(10);
     }
     catch (const std::exception &e)
     {
