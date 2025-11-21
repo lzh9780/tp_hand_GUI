@@ -3,6 +3,7 @@
 #include <QList>
 #include <QStringList>
 #include <QJsonArray>
+#include "grip/settings.hpp"
 
 class QSlider;
 class QLabel;
@@ -48,7 +49,7 @@ public:
     void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
     void loadActions();
     void loadSliders(const QStringList &jointNames);
-    void loadActuatorControllor();
+    void loadActuatorControllor(grip::ActuatorSettings act_cfg);
     void updateStore(ActionStore *store);
 
 signals:
@@ -68,6 +69,8 @@ private slots:
     void onToggleActionSets();
     void onControlChange();
     void onValueEditChanged();
+    void onMaxVelocityChanged();
+    void onMaxCurrentChanged();
 
 private:
     // Build sections
@@ -81,7 +84,7 @@ private:
     bool validateNewActionName(const QString& n, const QString& o) const;
     void vialdate(QLineEdit* edit, QPushButton* btn);
     void onDeleteAction(QPushButton* btn);
-    void loadSliderModule(QString name, int max, int min);
+    void loadSliderModule(QString name, float min, float max);
 
 private:
     // Data
@@ -115,9 +118,11 @@ private:
     QList<QLineEdit*>  valueLabels_;  // number next to each slider
     QList<QLabel*>  currValueLabels_;
     QList<QLabel*>  nameLabels_;
+    QList<std::pair<QLabel*, QLabel*>> valueLbls;
 
     // UI: actuator
     QComboBox* mode_box;
+    grip::ActuatorSettings act_cfg_;
 
     // cache joint count
     int jointCount_{0};

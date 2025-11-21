@@ -40,20 +40,29 @@ namespace grip
         return s;
     }
 
+    DeviceSettings load_device_settings(const std::string& yaml_path)
+    {
+        YAML::Node y = YAML::LoadFile(yaml_path);
+        DeviceSettings device;
+
+        if (auto n = y["type"]) {
+            device.device_type = n.as<std::string>() == "hand" ? 0 : (n.as<std::string>() == "linear_actuator" ? 1 : 2);
+        }
+
+        if (auto hardware = y["hardware_version"]) 
+            device.hardware_version = hardware.as<int32_t>(device.hardware_version);
+
+        if (auto software = y["software_version"]) 
+            device.software_version = software.as<int32_t>(device.software_version);
+        
+        return device;
+    }
+
+
     HandSettings load_hand_settings(const std::string& yaml_path)
     {
         YAML::Node y = YAML::LoadFile(yaml_path);
         HandSettings hand;
-
-        if (auto n = y["type"]) {
-            hand.device_type = n.as<std::string>() == "hand" ? 0 : (n.as<std::string>() == "linear_actuator" ? 1 : 2);
-        }
-
-        if (auto hardware = y["hardware_version"]) 
-            hand.hardware_version = hardware.as<int32_t>(hand.hardware_version);
-
-        if (auto software = y["software_version"]) 
-            hand.software_version = software.as<int32_t>(hand.software_version);
 
         if (auto n = y["hand_struct"]) {
             
@@ -117,6 +126,39 @@ namespace grip
         }
 
         return hand;
+    }
+
+    ActuatorSettings load_actuator_settings(const std::string& yaml_path)
+    {
+        YAML::Node y = YAML::LoadFile(yaml_path);
+        ActuatorSettings act;
+
+        if (auto r = y["route"]) {
+            act.route.first=r["min"].as<float_t>(act.route.first);
+            act.route.second=r["max"].as<float_t>(act.route.second);
+        }
+
+        if (auto mc = y["max_current"]) {
+            act.max_current=mc.as<int32_t>(act.max_current);
+        }
+
+        if (auto mv = y["max_velocity"]) {
+            act.max_vel=mv.as<int32_t>(act.max_vel);
+        }
+
+        if (auto p = y["psi_f"]) {
+            act.psi_f=p.as<float_t>(act.psi_f);
+        }
+
+        if (auto p = y["n_pole_pairs"]) {
+            act.n_pole_pairs=p.as<float_t>(act.n_pole_pairs);
+        }
+
+        if (auto p = y["device_id"]) {
+            act.device_id=p.as<float_t>(act.device_id);
+        }
+
+        return act;
     }
 
     void validate_settings(const AppSettings &s, const std::string &path)

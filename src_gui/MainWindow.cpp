@@ -137,7 +137,7 @@ void MainWindow::onSidePanelValuesChanged()
     auto deg = side_->jointDegrees();
     for (int i = 0; i < deg.size() && i < (int)joint_names.size(); ++i)
     {
-        float rad = float(deg[i]) * float(M_PI) / 180.0f;
+        float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
         ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
         // log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
     }
@@ -149,7 +149,7 @@ void MainWindow::onSidePanelCommitted()
     auto deg = side_->jointDegrees();
     for (int i = 0; i < deg.size() && i < (int)joint_names.size(); ++i)
     {
-        float rad = float(deg[i]) * float(M_PI) / 180.0f;
+        float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
         ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
     }
     log_->append("Execute: batch targets sent.");
@@ -164,7 +164,27 @@ void MainWindow::onTopPanelDeviceConnect()
 {
     try
     {
-        hand_cfg_ = grip::load_hand_settings(config_path_);
+        auto dev_cfg_ = grip::load_device_settings(config_path_);
+        if (dev_cfg_.device_type == 0)
+            hand_cfg_ = grip::load_hand_settings(config_path_);
+        else 
+            act_cfg_ = grip::load_actuator_settings(config_path_);
+
+        // qDebug() << dev_cfg_.device_type;
+        if (dev_cfg_.device_type == 0)
+        {
+            for (const auto &[key, value] : hand_cfg_.structs)
+            {
+                for (auto &s : value.joints)
+                    joint_names << QString::fromStdString(s);
+            }
+            side_->loadSliders(joint_names);
+            // qDebug() << "Hand Controllor loaded";
+        } else {
+            side_->loadActuatorControllor(act_cfg_);
+            // qDebug() << "Actuator Controllor loaded";
+        }
+
         // ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
         // ctrl_->start_bus(cfg_.can_device);
         log_->append("Device Connected. ");
@@ -180,21 +200,6 @@ void MainWindow::onTopPanelDeviceConnect()
         store->load();
         side_->updateStore(store);
         side_->loadActions();
-
-        qDebug() << hand_cfg_.device_type;
-        if (hand_cfg_.device_type == 0)
-        {
-            for (const auto &[key, value] : hand_cfg_.structs)
-            {
-                for (auto &s : value.joints)
-                    joint_names << QString::fromStdString(s);
-            }
-            side_->loadSliders(joint_names);
-            qDebug() << "Hand Controllor loaded";
-        } else {
-            side_->loadActuatorControllor();
-            qDebug() << "Actuator Controllor loaded";
-        }
 
         // auto timer_ = new QTimer(this);
         // connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
@@ -212,9 +217,9 @@ void MainWindow::onTopPanelControlSwitch(const QString &msg)
     side_->modeChange(msg);
     if (msg == "Start Camera")
     {
-        qDebug() << "Mode camera";
+        // qDebug() << "Mode camera";
         QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
-        qDebug() << "Thread started";
+        // qDebug() << "Thread started";
     }
     else
     {
@@ -240,9 +245,9 @@ void MainWindow::readJointAngles()
 void MainWindow::onTopPanelModelChange(const QString &model_name)
 {
     config_path_ = std::string("configs/config_") + model_name.toUtf8().constData() + std::string(".yaml");
-    qDebug() << config_path_.c_str();
+    // qDebug() << config_path_.c_str();
     action_path_ = std::string("data/action_") + model_name.toUtf8().constData() + std::string(".json");
-    qDebug() << action_path_.c_str();
+    // qDebug() << action_path_.c_str();
     // if (ogre_->loadURDF("robots/demohand/urdf/Demo_urdf_v1.urdf"))
     //     log_->append("urdf loaded");
 }

@@ -1,8 +1,13 @@
 type: linear_actuator
 
+hardware_version: 0
+software_version: 0
+
 route: {min: 0, max: 100} # mm
 max_current: 3000 # mA
 max_velocity: 2000 # rpm
+psi_f: 0.1
+n_pole_pairs: 4
 ff_tau: 100
 
 device_id: 1

@@ -4,31 +4,31 @@ hardware_version: 0
 software_version: 0
 
 hand_struct:
-  thumb:
-    joints:
-      - THUMB
-    motors: [{id: 5, param: [1]}]
-  index:
-    joints:
-      - INDEX_FINGER
-    motors: [{id: 7, param: [1]}]
-  middle:
-    joints:
-      - MIDDLE_FINGER
-    motors: [{id: 4, param: [1]}]
-  ring:
-    joints:
-      - RING_FINGER
-    motors: [{id: 6, param: [1]}]
-  pinky:
-    joints:
-      - PINKY
-    motors: [{id: 3, param: [1]}]
   wrist:
     joints:
       - PITCH
       - YAW
     motors: [{id: 1, param: [0, 0]}, {id: 2, param: [0, 0]}]
+  pinky:
+    joints:
+      - PINKY
+    motors: [{id: 3, param: [1]}]
+  ring:
+    joints:
+      - RING_FINGER
+    motors: [{id: 6, param: [1]}]
+  middle:
+    joints:
+      - MIDDLE_FINGER
+    motors: [{id: 4, param: [1]}]
+  index:
+    joints:
+      - INDEX_FINGER
+    motors: [{id: 7, param: [1]}]
+  thumb:
+    joints:
+      - THUMB
+    motors: [{id: 5, param: [1]}]
 
 control_policy: ["hall_protect", "cascaded_pid"]
 

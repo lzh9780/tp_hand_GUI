@@ -49,18 +49,32 @@ struct AppSettings {
     std::vector<std::string> models;
 };
 
-struct HandSettings {
-    int device_type = 0;
+struct DeviceSettings {
+    int device_type{0};
     int hardware_version{0};
     int software_version{0};
+};
+
+struct HandSettings {
     std::unordered_map<std::string, ModuleStruct> structs;
     NativePolicySettings native_policy{};
+};
+
+struct ActuatorSettings {
+    int max_vel{0};
+    int max_current{0};
+    std::pair<float, float> route{0, 0};
+    float psi_f{0.0};
+    int n_pole_pairs{0};
+    int device_id{0};
 };
 
 struct SettingsError : public std::runtime_error { using std::runtime_error::runtime_error; };
 
 AppSettings load_app_settings(const std::string& yaml_path);
+DeviceSettings load_device_settings(const std::string& yaml_path);
 HandSettings load_hand_settings(const std::string& yaml_path);
+ActuatorSettings load_actuator_settings(const std::string& yaml_path);
 void validate_settings(const AppSettings& s, const std::string& yaml_path);
 void validate_settings(const HandSettings& s, const std::string& path);
 
