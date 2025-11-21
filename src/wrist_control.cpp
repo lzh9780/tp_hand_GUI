@@ -146,8 +146,8 @@ namespace grip
     const double theta_f = filter_yaw(-in.yaw);
     (void)roll_f; // roll path kept as hook (script’s roll block is a stub)
 
-    std::cout << "pitch" << ": " << deg(phi_f) << "; ";
-    std::cout << "yaw" << ": " << deg(theta_f) << "\n";
+    // std::cout << "pitch" << ": " << deg(phi_f) << "; ";
+    // std::cout << "yaw" << ": " << deg(theta_f) << "\n";
 
     // 2) geometry → desired tendon displacements in mm
     auto LRmm = BT_solution(phi_f, theta_f);
@@ -169,8 +169,8 @@ namespace grip
     // 4) position errors (counts)
     int32_t eL = L_counts - in.left_counts;
     int32_t eR = R_counts - in.right_counts;
-    std::cout << "Left position error" << ": " << eL << "; ";
-    std::cout << "Right position error" << ": " << eR << "\n";
+    // std::cout << "Left position error" << ": " << eL << "; ";
+    // std::cout << "Right position error" << ": " << eR << "\n";
 
     // 5) PID per motor (position PID → velocity/current proxy)
     //    matches script: pos_error_int clamp ±1e8; derivative uses prev
@@ -181,14 +181,14 @@ namespace grip
     left_pid_.e_prev = static_cast<double>(eL);
 
     // Instantaneous equilibrium
-    if (fabs(eL) <= 10000)
+    if (fabs(eL) <= 20000) // 10000
     {
       eL = 0;
       left_pid_.e_int = 0;
     }
 
     double cmdL = cfg_.Kp_pitch * eL + cfg_.Ki_pitch * left_pid_.e_int + cfg_.Kd_pitch * dL;
-    cmdL = cmdL * 0.5;
+    cmdL = cmdL * 0.1;
 
     // right
     right_pid_.e_int += static_cast<double>(eR);
@@ -197,7 +197,7 @@ namespace grip
     right_pid_.e_prev = static_cast<double>(eR);
 
     // Instantaneous equilibrium
-    if (fabs(eR) <= 10000)
+    if (fabs(eR) <= 20000) // 10000
     {
       eR = 0;
       right_pid_.e_int = 0;
@@ -205,7 +205,7 @@ namespace grip
     }
 
     double cmdR = cfg_.Kp_pitch * eR + cfg_.Ki_pitch * right_pid_.e_int + cfg_.Kd_pitch * dR;
-    cmdR = cmdR * 0.5;
+    cmdR = cmdR * 0.1;
 
     // 6) clamp outputs (script uses velocity limits)
     int32_t outL = static_cast<int32_t>(std::lround(cmdL));
@@ -213,8 +213,8 @@ namespace grip
     outL = std::clamp(outL, cfg_.vel_min, cfg_.vel_max);
     outR = std::clamp(outR, cfg_.vel_min, cfg_.vel_max);
 
-    std::cout << "LeftMotor" << ": " << outL << "; ";
-    std::cout << "RightMotor" << ": " << outR << "\n\n";
+    // std::cout << "LeftMotor" << ": " << outL << "; ";
+    // std::cout << "RightMotor" << ": " << outR << "\n\n";
 
     return std::array<Result, 2>{Result{kLeftMotorId, outL}, Result{kRightMotorId, outR}};
   }

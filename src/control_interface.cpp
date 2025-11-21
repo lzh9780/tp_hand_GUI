@@ -268,7 +268,7 @@ namespace grip
                 else if (kind_bits == (uint32_t)MsgKind::BOARDSTATE)
                 {
                     uint16_t s = rd_i16(&f.data[0]);
-                    std::cout << s << "\n";
+                    // std::cout << s << "\n";
                     std::lock_guard<std::mutex> lk(mtx_);
                     board_state_ = int(s);
                 }

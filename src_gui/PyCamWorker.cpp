@@ -33,6 +33,7 @@ void PyCamWorker::start() {
             stop_fn_  = loop.attr("stop");
             get_latest_fn = loop.attr("get_frame");
             get_joint_fn = loop.attr("get_joints");
+            get_wrist_joint_fn = loop.attr("get_wrist_joints");
 
             start_fn();
         }
@@ -93,6 +94,7 @@ void PyCamWorker::onTick() {
         // py::tuple tup = get_latest_fn().cast<py::tuple>();
         py::array arr = get_latest_fn().cast<py::tuple>();// tup[0].cast<py::array>();
         py::dict d = get_joint_fn().cast<py::dict>();
+        py::dict wd = get_wrist_joint_fn().cast<py::dict>();
 
         // Data transform: finger_joint_Node -> finger_joint
         float thumb_joint = 180 - (d["thumb"]["ip"].cast<float>()) + 180 - d["thumb"]["mcp"].cast<float>();
@@ -100,6 +102,8 @@ void PyCamWorker::onTick() {
         float middle_joint = 180 - d["middle"]["pip"].cast<float>() + 180 - d["middle"]["mcp"].cast<float>();
         float ring_joint = 180 - d["ring"]["pip"].cast<float>() + 180 - d["ring"]["mcp"].cast<float>();
         float pinky_joint = 180 - d["pinky"]["pip"].cast<float>() + 180 - d["pinky"]["mcp"].cast<float>();
+        float pitch = wd["pitch"].cast<float>();
+        float yaw = wd["yaw"].cast<float>();
 
         // Data processing: bias
         thumb_joint += -12;
@@ -121,6 +125,8 @@ void PyCamWorker::onTick() {
         l.append(middle_joint);
         l.append(ring_joint);
         l.append(pinky_joint);
+        l.append(pitch);
+        l.append(yaw);
         emit newJoint(l);
 
         // PyMatView view = PyMatView::from_numpy(arr);

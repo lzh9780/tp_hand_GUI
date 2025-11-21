@@ -185,15 +185,15 @@ void MainWindow::onTopPanelDeviceConnect()
             // qDebug() << "Actuator Controllor loaded";
         }
 
-        // ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-        // ctrl_->start_bus(cfg_.can_device);
+        ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
+        ctrl_->start_bus(cfg_.can_device);
         log_->append("Device Connected. ");
         log_->append("Start Calibration... ");
-        // ctrl_->run_calibration();
+        ctrl_->run_calibration();
         // while (ctrl_->get_board_state() != 1)
         //     log_->append(".");
         log_->append("Calibration Complete. ");
-        // ctrl_->start_control_loop();
+        ctrl_->start_control_loop();
         log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
         log_->append("Current control mode: " + side_->modeText());
         auto *store = new ActionStore(action_path_.c_str());
@@ -201,9 +201,9 @@ void MainWindow::onTopPanelDeviceConnect()
         side_->updateStore(store);
         side_->loadActions();
 
-        // auto timer_ = new QTimer(this);
-        // connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-        // timer_->start(10);
+        auto timer_ = new QTimer(this);
+        connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+        timer_->start(10);
     }
     catch (const std::exception &e)
     {

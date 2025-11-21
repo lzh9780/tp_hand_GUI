@@ -18,7 +18,7 @@
 #include <QComboBox>
 #include <cmath>
 
-static constexpr int kDegMin = 0; // degrees
+static constexpr int kDegMin = -50; // degrees
 static constexpr int kDegMax = 150;
 
 SidePanel::SidePanel(QWidget *parent)
@@ -621,7 +621,7 @@ void SidePanel::applyCameraData(const QVector<double> &data)
     for (int i = 0; i < sliders_.size() && i < data.size(); ++i)
     {
         float f = data[i];
-        int v = std::clamp(int(f), kDegMin, kDegMax);
+        float v = std::clamp(float(f), float(kDegMin), float(kDegMax));
         sliders_[i]->setValue(v * 100);
     }
     emit valuesChanged();

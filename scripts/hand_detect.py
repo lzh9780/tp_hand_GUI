@@ -15,7 +15,7 @@ import pyrealsense2 as rs
 # -------------------------- Config --------------------------
 MODEL_PATH = "hand_landmarker.task"  # Put the .task model file in the same folder as this script
 COLOR_W, COLOR_H, FPS = 1280, 720, 30
-CLIPPING_DISTANCE_M = 0.5  # meters
+CLIPPING_DISTANCE_M = 1  # meters
 MASK_MEDIAN_KSIZE = 5      # median blur to denoise the mask (set 0/1 to disable)
 HALO_PIX = 12  # pixels; width of the allowed RGB "halo" around detected near objects (set 0 to disable)
 DRAW_CONNECTIONS = True
@@ -61,15 +61,25 @@ class HandDetector():
                                         "ring": {"mcp": [0], "pip": [0], "dip": [0], "sway": [0]}, 
                                         "pinky": {"mcp": [0], "pip": [0], "dip": [0], "sway": [0]}}
         
+
+        self.wrist_joints = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
+
+        self.previous_wrist_joints = {"pitch": [0], "yaw": [0], "roll": [0]}
+
         self.curr_img = None
         # self.hands = {"left": None, "right": None} # init
         # self.hands["left"] = self.finger_joints # left hand value
         # self.hands["right"] = deepcopy(self.finger_joints) # right hand value (need copy)
-        
+
         # Low Pass Filter
         self.low_pass_filter_size = 5
         
     def setup_realsense(self):
+        ctx = rs.context()
+        device = ctx.query_devices()
+        if len(device) == 0:
+            raise SystemExit
+        
         pipeline = rs.pipeline()
         config = rs.config()
         config.enable_stream(rs.stream.depth, COLOR_W, COLOR_H, rs.format.z16, FPS)
@@ -174,7 +184,7 @@ class HandDetector():
                 pts = [np.array([lm.x, lm.y, lm.z]) for lm in world_landmarks]
 
                 # 计算拇指 CMC 关节的两个角度（两自由度）：
-                #   CMC_rot（大拇指根部绕旋）：由三角形 WRIST-THUMB_MCP-INDEX_MCP 和 WRIST-INDEX_MCP-PINKY_MCP 两平面的法向量计算有符号夹角（外翻为负）
+                #   CMC_rot（大拇指根部绕旋）：由三角形 WRIST-THUMB_MCP-INDEX_MCP 和 WRIST-INDEX_MCP-PINKY_MCP 两平面的法向量计算有符号夹角（外翻为负）(pts[INDEX_MCP][0])
                 #   CMC_pull（大拇指根部合拢）：以 WRIST 为顶点，计算 THUMB_MCP、WRIST、INDEX_MCP 三点间的夹角
                 v_w_index = pts[INDEX_MCP] - pts[WRIST]
                 v_w_thumb = pts[THUMB_MCP] - pts[WRIST]
@@ -222,6 +232,18 @@ class HandDetector():
                 pinky_mcp  = self.calc_angle(pts[WRIST], pts[PINKY_MCP], pts[PINKY_PIP])
                 pinky_pip  = self.calc_angle(pts[PINKY_MCP], pts[PINKY_PIP], pts[PINKY_DIP])
                 pinky_dip  = self.calc_angle(pts[PINKY_PIP], pts[PINKY_DIP], pts[PINKY_TIP])
+
+                # 计算手腕的pitch roll yaw（可选）
+                # pitch 向前俯为正角度
+                pitch_z = pts[MIDDLE_MCP][2] - pts[WRIST][2]  # Z 轴差值
+                pitch_y = pts[MIDDLE_MCP][1] - pts[WRIST][1]  # Y 轴差值
+                pitch_y = pitch_y
+                pitch = -90 - math.degrees(math.atan2(pitch_y, pitch_z))
+
+                # yaw 向左拐为正角度 （右手坐标系）
+                yaw_x = pts[MIDDLE_MCP][0] - pts[WRIST][0]  # X 轴差值
+                yaw_y = pitch_y  # Y 轴差值
+                yaw = 90 + math.degrees(math.atan2(yaw_y, yaw_x))
                 
                 # 计算每根手指的侧摆角（相对于中指基准方向的偏斜角度）
                 # 手掌平面法向量：由手腕->食指MCP 和 手腕->小指MCP 两向量的叉积确定
@@ -344,6 +366,16 @@ class HandDetector():
                         self.previous_finger_joints["pinky"]["dip"].pop(0)
                     self.finger_joints["pinky"]["dip"] = np.mean(self.previous_finger_joints["pinky"]["dip"])
                     
+                    self.previous_wrist_joints["pitch"].append(pitch) # append to the list
+                    if len(self.previous_wrist_joints["pitch"]) > 20:
+                        self.previous_wrist_joints["pitch"].pop(0)
+                    self.wrist_joints["pitch"] = np.mean(self.previous_wrist_joints["pitch"])
+
+                    self.previous_wrist_joints["yaw"].append(yaw) # append to the list
+                    if len(self.previous_wrist_joints["yaw"]) > 10:
+                        self.previous_wrist_joints["yaw"].pop(0)
+                    self.wrist_joints["yaw"] = np.mean(self.previous_wrist_joints["yaw"])
+
                     # self.finger_joints["thumb"]["cmc_pull"] = thumb_cmc_pull
                     # self.finger_joints["thumb"]["mcp"] = thumb_mcp
                     # self.finger_joints["thumb"]["ip"]  = float(thumb_ip)
@@ -364,6 +396,9 @@ class HandDetector():
                     self.finger_joints["middle"]["sway"] = middle_sway-8.5
                     self.finger_joints["ring"]["sway"] = ring_sway-2.5
                     self.finger_joints["pinky"]["sway"] = pinky_sway-16.5
+                    
+                    print("pitch: ", self.wrist_joints["pitch"])
+                    print("yaw: ", self.wrist_joints["yaw"], "\n")
                     
                     # print(self.finger_joints)
 
@@ -393,7 +428,16 @@ class HandDetector():
                     #frame_rgb = cv2.cvtColor(align, cv2.COLOR_BGR2RGB)
                     #mp_frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
                     # Get frameset of color and depth
-                    frames = pipeline.wait_for_frames()
+                    try:
+                        frames = pipeline.wait_for_frames(timeout_ms=1000)
+                    except:
+                        ctx = rs.context()
+                        device = ctx.query_devices()
+                        if len(device) == 0:
+                            raise SystemExit
+                        else:
+                            raise TimeoutError
+                    
                     aligned_frames = align.process(frames)
                     depth_frame = aligned_frames.get_depth_frame()
                     color_frame = aligned_frames.get_color_frame()
@@ -494,5 +538,8 @@ class HandDetector():
     def get_joints(self):
         with self.lock:
             return self.finger_joints
-        
+    
+    def get_wrist_joints(self):
+        with self.lock:
+            return self.wrist_joints
         

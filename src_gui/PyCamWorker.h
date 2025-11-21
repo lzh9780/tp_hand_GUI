@@ -43,6 +43,7 @@ private:
     // std::unique_ptr<py::scoped_interpreter> interp_;
     py::object get_latest_fn;
     py::object get_joint_fn;
+    py::object get_wrist_joint_fn;
     py::object stop_fn_;
     py::object start_fn;
     QImage frameBGR_;
