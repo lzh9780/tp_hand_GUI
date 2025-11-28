@@ -311,33 +311,33 @@ namespace grip
                 for (auto d : devices_)
                 {
                     // std::cout << "device: " << joint_key_.at(d);
-                    if (d != 1 && d != 2)
-                    {
-                        int32_t enc = state_[d].encoder_counts;
-                        double tgt = targets_rad_[ctrl_key_[d]];
-                        const std::string &key = joint_key_.at(d);
-                        // std::cout << " encoder: " << enc;
-                        int32_t mA = policy_.command_mA(key, tgt, enc*256);
-                        // std::cout << " control method: Hall, target: " << tgt << "\n";
-                        cmds.push_back({d, mA});
-                    // } else
-                    // if (ctrl_key_[d] == "INDEX_FINGER")
+                    // if (d != 1 && d != 2)
                     // {
-                    //     int motor;
-                    //     int32_t mA;
-                    //     // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
-                    //     fc_step(&ctrl_,
-                    //             FC_INDEX_MCP,
-                    //             targets_rad_[ctrl_key_[d]],
-                    //             joint_angles_.index_mcp,
-                    //             joint_angles_.index_pip,
-                    //             joint_angles_.index_dip,
-                    //             joint_vels_.index_mcp,
-                    //             joint_vels_.index_pip,
-                    //             joint_vels_.index_dip,
-                    //             &motor,
-                    //             &mA);
+                    //     int32_t enc = state_[d].encoder_counts;
+                    //     double tgt = targets_rad_[ctrl_key_[d]];
+                    //     const std::string &key = joint_key_.at(d);
+                    //     // std::cout << " encoder: " << enc;
+                    //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
+                    //     // std::cout << " control method: Hall, target: " << tgt << "\n";
                     //     cmds.push_back({d, mA});
+                    // } else
+                    if (ctrl_key_[d] == "INDEX_FINGER")
+                    {
+                        int motor;
+                        int32_t mA;
+                        // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
+                        fc_step(&ctrl_,
+                                FC_INDEX_MCP,
+                                targets_rad_[ctrl_key_[d]],
+                                joint_angles_.index_mcp,
+                                joint_angles_.index_pip,
+                                joint_angles_.index_dip,
+                                joint_vels_.index_mcp,
+                                joint_vels_.index_pip,
+                                joint_vels_.index_dip,
+                                &motor,
+                                &mA);
+                        cmds.push_back({d, mA});
                     }
                     else if (d == 1)
                     {

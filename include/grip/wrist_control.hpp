@@ -45,7 +45,7 @@ namespace grip
     double Imax{300000}, Imin{-300000};
 
     // Output clamps (your script clamps “velocity”; keep a generous range)
-    int32_t vel_min{-300}, vel_max{300}; // same as script’s Max/Min_Velocity
+    int32_t vel_min{-600}, vel_max{600}; // same as script’s Max/Min_Velocity
   };
 
   struct IO
@@ -87,6 +87,11 @@ namespace grip
     double filter_roll(double roll_rad);
     double filter_yaw(double yaw_rad);
 
+    // filters
+    double filter_pitch_2(double pitch_rad);
+    double filter_roll_2(double roll_rad);
+    double filter_yaw_2(double yaw_rad);
+
     // convert mm <-> counts
     int32_t mm_to_counts(double mm) const
     {
@@ -105,6 +110,12 @@ namespace grip
     std::vector<double> buf_pitch_; // recent pitch targets
     std::vector<double> buf_roll_;
     std::vector<double> buf_yaw_;
+
+    double alpha_pitch;              // LPF 参数 α
+    double alpha_yaw;              // LPF 参数 α
+    double prev_pitch = 0.0;   // 低通状态
+    double prev_roll  = 0.0;   // 低通状态
+    double prev_yaw   = 0.0;   // 低通状态
 
     // PID states for left/right pitch/yaw motors (IDs 6/7)
     MotorPIDState left_pid_{}, right_pid_{};

@@ -19,6 +19,13 @@ namespace grip
     buf_pitch_.reserve(kPitchBuf);
     buf_roll_.reserve(kRollBuf);
     buf_yaw_.reserve(kYawBuf);
+
+    double fs = 100.0; // 采样频率
+    double fc = 18.0; // 截止频率
+    double fc_2 = 20.0; // 截止频率
+
+    alpha_pitch = (2 * M_PI * fc) / (2 * M_PI * fc + fs);
+    alpha_yaw = (2 * M_PI * fc_2) / (2 * M_PI * fc_2 + fs);
   }
 
   double Controller::filter_pitch(double pitch_rad)
@@ -32,7 +39,7 @@ namespace grip
     double last = buf_pitch_.front();
     double ddeg = fabs(deg(pitch_rad - last));
     int used = std::clamp((int)std::round(ddeg), 0, kPitchBuf);
-    // used = (int)std::round(used * 0.5); // for speeding
+    used = (int)std::round(used * 0.5); // for speeding
     if (used == 0)
       used = 1;
     // average last 'used' samples
@@ -52,7 +59,7 @@ namespace grip
     double last = buf_roll_.front();
     double ddeg = fabs(deg(roll_rad - last));
     int used = std::clamp((int)std::round(ddeg), 0, kRollBuf);
-    // used = (int)std::round(used * 0.5); // for speeding
+    used = (int)std::round(used * 0.5); // for speeding
     if (used == 0)
       used = 1;
     const int n = (int)buf_roll_.size();
@@ -71,7 +78,7 @@ namespace grip
     double last = buf_yaw_.front();
     double ddeg = fabs(deg(yaw_rad - last));
     int used = std::clamp((int)std::round(ddeg), 0, kYawBuf);
-    // used = (int)std::round(used * 0.5); // for speeding
+    used = (int)std::round(used * 0.5); // for speeding
     if (used == 0)
       used = 1;
     const int n = (int)buf_yaw_.size();
@@ -80,6 +87,28 @@ namespace grip
     for (int i = start; i < n; ++i)
       sum += buf_yaw_[i];
     return sum / (n - start);
+  }
+
+  double Controller::filter_pitch_2(double pitch_rad)
+  {
+    double p = prev_pitch + alpha_pitch * (pitch_rad - prev_pitch);
+    prev_pitch = p;
+    return p;
+  }
+
+  double Controller::filter_roll_2(double roll_rad)
+  {
+    double r = prev_roll + alpha_pitch * (roll_rad - prev_roll);
+    prev_roll = r;
+    return r;
+  }
+
+  double Controller::filter_yaw_2(double yaw_rad)
+  {
+    
+    double y = prev_yaw + alpha_yaw * (yaw_rad - prev_yaw);
+    prev_yaw = y;
+    return y;
   }
 
   // Geometric solver from the script: returns Left/Right motor target (mm)
@@ -141,19 +170,20 @@ namespace grip
   Controller::step(const IO &in)
   {
     // 1) filter targets
-    const double phi_f = filter_pitch(-in.pitch);
-    const double roll_f = filter_roll(in.roll);
-    const double theta_f = filter_yaw(-in.yaw);
+    const double phi_f = filter_pitch_2(-in.pitch);
+    const double roll_f = filter_roll_2(in.roll);
+    const double theta_f = filter_yaw_2(-in.yaw);
     (void)roll_f; // roll path kept as hook (script’s roll block is a stub)
 
-    // std::cout << "pitch" << ": " << deg(phi_f) << "; ";
-    // std::cout << "yaw" << ": " << deg(theta_f) << "\n";
+    std::cout << "pitch" << ": " << deg(phi_f) << "; ";
+    std::cout << "yaw" << ": " << deg(theta_f) << "\n";
 
     // 2) geometry → desired tendon displacements in mm
     auto LRmm = BT_solution(phi_f, theta_f);
     double L_mm = prev_cmd_L;
     double R_mm = prev_cmd_R;
-    if (LRmm) {
+    if (LRmm)
+    {
       // inputs is correct:
       L_mm = LRmm->first;
       R_mm = LRmm->second;
@@ -169,8 +199,8 @@ namespace grip
     // 4) position errors (counts)
     int32_t eL = L_counts - in.left_counts;
     int32_t eR = R_counts - in.right_counts;
-    // std::cout << "Left position error" << ": " << eL << "; ";
-    // std::cout << "Right position error" << ": " << eR << "\n";
+    std::cout << "Left position error" << ": " << eL << "; ";
+    std::cout << "Right position error" << ": " << eR << "\n";
 
     // 5) PID per motor (position PID → velocity/current proxy)
     //    matches script: pos_error_int clamp ±1e8; derivative uses prev
@@ -181,14 +211,14 @@ namespace grip
     left_pid_.e_prev = static_cast<double>(eL);
 
     // Instantaneous equilibrium
-    if (fabs(eL) <= 20000) // 10000
+    if (fabs(eL) <= 10000)
     {
       eL = 0;
       left_pid_.e_int = 0;
     }
 
     double cmdL = cfg_.Kp_pitch * eL + cfg_.Ki_pitch * left_pid_.e_int + cfg_.Kd_pitch * dL;
-    cmdL = cmdL * 0.1;
+    cmdL = cmdL * 0.3;
 
     // right
     right_pid_.e_int += static_cast<double>(eR);
@@ -197,7 +227,7 @@ namespace grip
     right_pid_.e_prev = static_cast<double>(eR);
 
     // Instantaneous equilibrium
-    if (fabs(eR) <= 20000) // 10000
+    if (fabs(eR) <= 10000)
     {
       eR = 0;
       right_pid_.e_int = 0;
@@ -205,7 +235,7 @@ namespace grip
     }
 
     double cmdR = cfg_.Kp_pitch * eR + cfg_.Ki_pitch * right_pid_.e_int + cfg_.Kd_pitch * dR;
-    cmdR = cmdR * 0.1;
+    cmdR = cmdR * 0.3;
 
     // 6) clamp outputs (script uses velocity limits)
     int32_t outL = static_cast<int32_t>(std::lround(cmdL));
@@ -213,8 +243,8 @@ namespace grip
     outL = std::clamp(outL, cfg_.vel_min, cfg_.vel_max);
     outR = std::clamp(outR, cfg_.vel_min, cfg_.vel_max);
 
-    // std::cout << "LeftMotor" << ": " << outL << "; ";
-    // std::cout << "RightMotor" << ": " << outR << "\n\n";
+    std::cout << "LeftMotor" << ": " << outL << "; ";
+    std::cout << "RightMotor" << ": " << outR << "\n\n";
 
     return std::array<Result, 2>{Result{kLeftMotorId, outL}, Result{kRightMotorId, outR}};
   }
