@@ -54,6 +54,21 @@ namespace grip
         fc_set_motor(&ctrl_, FC_INDEX_MCP, 0x07);
     }
 
+    ControlInterface::ControlInterface(const ActuatorSettings &actuator_cfg,
+                                       std::chrono::milliseconds period)
+        : policy_(actuator_cfg.native_policy), control_period_(period)
+    {
+        devices_.push_back(actuator_cfg.device_id);
+        state_[actuator_cfg.device_id] = Telemetry{};
+
+        targets_rad_["Max Velocity"] = 0.0f;
+        targets_rad_["Max Current"] = 0.0f;
+        targets_rad_["Position"] = 0.0f;
+        targets_rad_["Velocity"] = 0.0f;
+        targets_rad_["Torque"] = 0.0f;
+        targets_rad_["-"] = 0.0f;
+    }
+
     ControlInterface::~ControlInterface()
     {
         stop_all();
@@ -308,56 +323,75 @@ namespace grip
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
-                for (auto d : devices_)
+                if (hand_.size() != 0) 
                 {
-                    // std::cout << "device: " << joint_key_.at(d);
-                    // if (d != 1 && d != 2)
-                    // {
-                    //     int32_t enc = state_[d].encoder_counts;
-                    //     double tgt = targets_rad_[ctrl_key_[d]];
-                    //     const std::string &key = joint_key_.at(d);
-                    //     // std::cout << " encoder: " << enc;
-                    //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
-                    //     // std::cout << " control method: Hall, target: " << tgt << "\n";
-                    //     cmds.push_back({d, mA});
-                    // } else
-                    if (ctrl_key_[d] == "INDEX_FINGER")
+                    for (auto d : devices_)
                     {
-                        int motor;
-                        int32_t mA;
-                        // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
-                        fc_step(&ctrl_,
-                                FC_INDEX_MCP,
-                                targets_rad_[ctrl_key_[d]],
-                                joint_angles_.index_mcp,
-                                joint_angles_.index_pip,
-                                joint_angles_.index_dip,
-                                joint_vels_.index_mcp,
-                                joint_vels_.index_pip,
-                                joint_vels_.index_dip,
-                                &motor,
-                                &mA);
-                        cmds.push_back({d, mA});
-                    }
-                    else if (d == 1)
-                    {
-                        in.pitch = targets_rad_["PITCH"];
-                        in.yaw = targets_rad_["YAW"];
-                        in.roll = 0.0;
-                        in.left_counts = state_[1].encoder_counts*256;
-                        in.right_counts = state_[2].encoder_counts*256;
-                        // in.left_counts = 10000;
-                        // in.right_counts = 10000;
-
-                        if (auto wcmds = wrist_.step(in))
+                        // std::cout << "device: " << joint_key_.at(d);
+                        // if (d != 1 && d != 2)
+                        // {
+                        //     int32_t enc = state_[d].encoder_counts;
+                        //     double tgt = targets_rad_[ctrl_key_[d]];
+                        //     const std::string &key = joint_key_.at(d);
+                        //     // std::cout << " encoder: " << enc;
+                        //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
+                        //     // std::cout << " control method: Hall, target: " << tgt << "\n";
+                        //     cmds.push_back({d, mA});
+                        // } else
+                        if (ctrl_key_[d] == "INDEX_FINGER")
                         {
-                            for (auto &c : *wcmds)
+                            int motor;
+                            int32_t mA;
+                            // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
+                            fc_step(&ctrl_,
+                                    FC_INDEX_MCP,
+                                    targets_rad_[ctrl_key_[d]],
+                                    joint_angles_.index_mcp,
+                                    joint_angles_.index_pip,
+                                    joint_angles_.index_dip,
+                                    joint_vels_.index_mcp,
+                                    joint_vels_.index_pip,
+                                    joint_vels_.index_dip,
+                                    &motor,
+                                    &mA);
+                            cmds.push_back({d, mA});
+                        }
+                        else if (d == 1)
+                        {
+                            in.pitch = targets_rad_["PITCH"];
+                            in.yaw = targets_rad_["YAW"];
+                            in.roll = 0.0;
+                            in.left_counts = state_[1].encoder_counts*256;
+                            in.right_counts = state_[2].encoder_counts*256;
+                            // in.left_counts = 10000;
+                            // in.right_counts = 10000;
+
+                            if (auto wcmds = wrist_.step(in))
                             {
-                                cmds.push_back({c.motor_id, c.command});
-                                // std::cout << c.motor_id << " " << c.command << "\n";
+                                for (auto &c : *wcmds)
+                                {
+                                    cmds.push_back({c.motor_id, c.command});
+                                    // std::cout << c.motor_id << " " << c.command << "\n";
+                                }
                             }
                         }
                     }
+                } else {
+                    int cmd_type = (uint8_t)MotorMode::HALL_GUARD;
+                    int cmd_val = 0;
+                    // std::lock_guard<std::mutex> lk(mtx_);
+                    if (mode_ == "Position") {
+                        cmd_type = (uint8_t)MotorMode::HALL_GUARD;
+                        cmd_val = (int16_t) (targets_rad_["Position"] / 6.28 * 65535);
+                    } else if (mode_ == "Velocity") {
+                        cmd_type = (uint8_t)MotorMode::SPEED;
+                        cmd_val = (int16_t) targets_rad_["Velocity"];
+                        std::cout << "Velocity cmd sent "<< cmd_val << "\n";
+                    } else if (mode_ == "Torque") {
+                        cmd_type = (uint8_t)MotorMode::TORQUE_STEP;
+                        cmd_val = (int16_t) (targets_rad_["Torque"]);
+                    }
+                    send_single(1, MsgKind::MOTOR_COMMAND, (uint8_t)cmd_type, (int16_t)cmd_val, (int16_t)0);
                 }
             }
             for (auto &c : cmds){
@@ -426,6 +460,12 @@ namespace grip
     int ControlInterface::get_board_state() const
     {
         return board_state_;
+    }
+
+    void ControlInterface::set_control_mode(std::string mode)
+    {
+        // std::lock_guard<std::mutex> lk(mtx_);
+        mode_ = mode;
     }
 
 } // namespace grip

@@ -51,6 +51,7 @@ public:
     void loadSliders(const QStringList &jointNames);
     void loadActuatorControllor(grip::ActuatorSettings act_cfg);
     void updateStore(ActionStore *store);
+    std::string get_control_mode();
 
 signals:
     void valuesChanged();

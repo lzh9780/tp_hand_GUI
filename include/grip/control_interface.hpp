@@ -24,6 +24,9 @@ public:
     // build with device list and a joint_key lookup
     ControlInterface(const HandSettings& hand_cfg,
                      std::chrono::milliseconds control_period = std::chrono::milliseconds(1));
+    
+    ControlInterface(const ActuatorSettings& actuator_cfg,
+                     std::chrono::milliseconds control_period = std::chrono::milliseconds(1));
 
     ~ControlInterface();
 
@@ -42,6 +45,7 @@ public:
     std::unordered_map<int, Telemetry> snapshot() const;
     JointAngles get_joint_angles() const;
     int get_board_state() const;
+    void set_control_mode(std::string mode);
     void run_calibration();
 
 private:
@@ -64,7 +68,7 @@ private:
 
     // model
     std::vector<int> devices_;
-    std::unordered_map<std::string, ModuleStruct> hand_;
+    std::unordered_map<std::string, ModuleStruct> hand_{};
     std::unordered_map<int, std::string> joint_key_; // Matched the current algorithm. Will be removed later
     std::unordered_map<int, std::string> ctrl_key_; // Matched the current algorithm. Will be removed later
     NativePolicy policy_;
@@ -79,6 +83,7 @@ private:
     JointAngles joint_vels_;
     uint32_t time_stamp_ = 0;
     int board_state_;
+    std::string mode_{"Position"};
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

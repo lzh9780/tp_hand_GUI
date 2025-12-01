@@ -47,6 +47,7 @@ private:
     std::vector<int> devices_;
     grip::ControlInterface* ctrl_{nullptr};
     const grip::AppSettings cfg_;
+    grip::DeviceSettings dev_cfg_;
     grip::HandSettings hand_cfg_;
     grip::ActuatorSettings act_cfg_;
 

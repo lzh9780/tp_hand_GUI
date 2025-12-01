@@ -682,3 +682,7 @@ void SidePanel::onControlChange()
         valueLbls[3].second->setText(QString::number((max_vel)));
     }
 }
+
+std::string SidePanel::get_control_mode() {
+    return mode_box->currentText().toUtf8().constData();
+}

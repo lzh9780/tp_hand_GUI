@@ -39,7 +39,7 @@ namespace grip
     double last = buf_pitch_.front();
     double ddeg = fabs(deg(pitch_rad - last));
     int used = std::clamp((int)std::round(ddeg), 0, kPitchBuf);
-    used = (int)std::round(used * 0.5); // for speeding
+    used = (int)std::round(used * 1.0); // for speeding
     if (used == 0)
       used = 1;
     // average last 'used' samples
@@ -59,7 +59,7 @@ namespace grip
     double last = buf_roll_.front();
     double ddeg = fabs(deg(roll_rad - last));
     int used = std::clamp((int)std::round(ddeg), 0, kRollBuf);
-    used = (int)std::round(used * 0.5); // for speeding
+    used = (int)std::round(used * 1.0); // for speeding
     if (used == 0)
       used = 1;
     const int n = (int)buf_roll_.size();
@@ -78,7 +78,7 @@ namespace grip
     double last = buf_yaw_.front();
     double ddeg = fabs(deg(yaw_rad - last));
     int used = std::clamp((int)std::round(ddeg), 0, kYawBuf);
-    used = (int)std::round(used * 0.5); // for speeding
+    used = (int)std::round(used * 1.0); // for speeding
     if (used == 0)
       used = 1;
     const int n = (int)buf_yaw_.size();

@@ -67,6 +67,7 @@ struct ActuatorSettings {
     float psi_f{0.0};
     int n_pole_pairs{0};
     int device_id{0};
+    NativePolicySettings native_policy{};
 };
 
 struct SettingsError : public std::runtime_error { using std::runtime_error::runtime_error; };

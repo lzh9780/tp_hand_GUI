@@ -9,6 +9,7 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QStringList>
+#include <iostream>
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -139,9 +140,18 @@ void MainWindow::onSidePanelValuesChanged()
     {
         float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
         ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
-        // log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
+        std::cout << "cmd_type: " << joint_names[i].toUtf8().constData() << ", val: " << rad << "\n";
+        log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
     }
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
+    if (dev_cfg_.device_type == 0)
+        ctrl_->set_control_mode("Position");
+    else {
+        float rad = float(deg[2]);
+        ctrl_->submit_target(side_->get_control_mode(), rad);
+        ctrl_->set_control_mode(side_->get_control_mode());
+        
+    }
 }
 
 void MainWindow::onSidePanelCommitted()
@@ -164,7 +174,7 @@ void MainWindow::onTopPanelDeviceConnect()
 {
     try
     {
-        auto dev_cfg_ = grip::load_device_settings(config_path_);
+        dev_cfg_ = grip::load_device_settings(config_path_);
         if (dev_cfg_.device_type == 0)
             hand_cfg_ = grip::load_hand_settings(config_path_);
         else 
@@ -185,25 +195,32 @@ void MainWindow::onTopPanelDeviceConnect()
             // qDebug() << "Actuator Controllor loaded";
         }
 
-        ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-        ctrl_->start_bus(cfg_.can_device);
-        log_->append("Device Connected. ");
-        log_->append("Start Calibration... ");
-        ctrl_->run_calibration();
-        // while (ctrl_->get_board_state() != 1)
-        //     log_->append(".");
-        log_->append("Calibration Complete. ");
-        ctrl_->start_control_loop();
-        log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
-        log_->append("Current control mode: " + side_->modeText());
-        auto *store = new ActionStore(action_path_.c_str());
-        store->load();
-        side_->updateStore(store);
-        side_->loadActions();
+        if (dev_cfg_.device_type == 0) {
+            ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
+            ctrl_->start_bus(cfg_.can_device);
+            log_->append("Device Connected. ");
+            log_->append("Start Calibration... ");
+            ctrl_->run_calibration();
+            // while (ctrl_->get_board_state() != 1)
+            //     log_->append(".");
+            log_->append("Calibration Complete. ");
+            ctrl_->start_control_loop();
+            log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
+            log_->append("Current control mode: " + side_->modeText());
+            auto *store = new ActionStore(action_path_.c_str());
+            store->load();
+            side_->updateStore(store);
+            side_->loadActions();
 
-        auto timer_ = new QTimer(this);
-        connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-        timer_->start(10);
+            auto timer_ = new QTimer(this);
+            connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+            timer_->start(10);
+        } else {
+            ctrl_ = new grip::ControlInterface(act_cfg_, std::chrono::milliseconds(10));
+            ctrl_->start_bus(cfg_.can_device);
+            log_->append("Device Connected. ");
+            ctrl_->start_control_loop();
+        }
     }
     catch (const std::exception &e)
     {
