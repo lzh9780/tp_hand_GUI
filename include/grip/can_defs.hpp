@@ -56,4 +56,27 @@ struct JointAngles {
     float pinky_dip = 0;
 };
 
+struct JointState
+{
+    float position;
+    float velocity;
+    float effort;
+};
+
+struct DofInfo
+{
+    std::string name;
+    float target{0};
+    std::vector<std::string> js;
+    std::vector<int> ms;
+};
+
+struct ModuleState
+{
+    std::vector<DofInfo> dofs;
+    std::unordered_map<std::string, JointState> joints;
+    std::unordered_map<int, Telemetry> motors;
+    int control_mode;
+};
+
 } // namespace grip

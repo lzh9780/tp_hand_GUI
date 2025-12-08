@@ -39,6 +39,7 @@ private slots:
     void onTopPanelControlSwitch(const QString &msg);
     void readJointAngles();
     void onTopPanelModelChange(const QString &model_name);
+    // void onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode);
 
 private:
     void buildUI();

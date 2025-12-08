@@ -69,8 +69,14 @@ namespace grip
             for (auto m = n.begin(); m != n.end(); ++m)
                 {
                     ModuleStruct ms;
+                    int counter = 0;
                     for (const auto name : m->second["joints"]) {
-                        ms.joints.push_back(name.as<std::string>());
+                        JointInfo j;
+                        j.name = name.as<std::string>();
+                        j.route.first = m->second["route"][counter]["min"].as<float_t>(j.route.first);
+                        j.route.second = m->second["route"][counter]["max"].as<float_t>(j.route.second);
+                        ms.joints.push_back(j);
+                        counter += 1;
                     }
                     for (const auto motor : m->second["motors"]) {
                         MotorInfo mi;
@@ -85,6 +91,18 @@ namespace grip
                     hand.structs[m->first.as<std::string>()] = std::move(ms);
                 }
         } 
+
+        if (auto p = y["control_policy"]) {
+            for (auto const policy : p) {
+                hand.control_policies.push_back(policy.as<std::string>());
+            }
+        }
+
+        if (auto p = y["wrist_control_policy"]) {
+            for (auto const policy : p) {
+                hand.wrist_control.push_back(policy.as<std::string>());
+            }
+        }
 
         if (auto n = y["native_policy"])
         {

@@ -28,8 +28,13 @@ struct MotorInfo {
     std::vector<int> joint_map;
 };
 
+struct JointInfo {
+    std::string name;
+    std::pair<float, float> route;
+};
+
 struct ModuleStruct {
-    std::vector<std::string> joints;
+    std::vector<JointInfo> joints;
     std::vector<MotorInfo> motors;
 };
 
@@ -57,6 +62,8 @@ struct DeviceSettings {
 
 struct HandSettings {
     std::unordered_map<std::string, ModuleStruct> structs;
+    std::vector<std::string> control_policies;
+    std::vector<std::string> wrist_control;
     NativePolicySettings native_policy{};
 };
 

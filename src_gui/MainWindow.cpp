@@ -118,6 +118,7 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::valuesChanged, this, &MainWindow::onSidePanelValuesChanged);
     connect(side_, &SidePanel::committed, this, &MainWindow::onSidePanelCommitted);
     connect(side_, &SidePanel::notify, this, &MainWindow::onSidePanelNotify);
+    // connect(side_, &SidePanel::mode_change, this, &MainWindow::onSidePanelControlModeChaneg);
     connect(top_, &TopPanel::deviceConnect, this, &MainWindow::onTopPanelDeviceConnect);
     connect(top_, &TopPanel::controlSwitch, this, &MainWindow::onTopPanelControlSwitch);
     connect(top_, &TopPanel::modelChange, this, &MainWindow::onTopPanelModelChange);
@@ -183,13 +184,14 @@ void MainWindow::onTopPanelDeviceConnect()
         // qDebug() << dev_cfg_.device_type;
         if (dev_cfg_.device_type == 0)
         {
-            for (const auto &[key, value] : hand_cfg_.structs)
-            {
-                for (auto &s : value.joints)
-                    joint_names << QString::fromStdString(s);
-            }
-            side_->loadSliders(joint_names);
+            // for (const auto &[key, value] : hand_cfg_.structs)
+            // {
+            //     for (auto &s : value.joints)
+            //         joint_names << QString::fromStdString(s);
+            // }
+            // side_->loadSliders(joint_names);
             // qDebug() << "Hand Controllor loaded";
+            side_->loadHandControllor(hand_cfg_);
         } else {
             side_->loadActuatorControllor(act_cfg_);
             // qDebug() << "Actuator Controllor loaded";
@@ -197,10 +199,10 @@ void MainWindow::onTopPanelDeviceConnect()
 
         if (dev_cfg_.device_type == 0) {
             ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-            ctrl_->start_bus(cfg_.can_device);
+            // ctrl_->start_bus(cfg_.can_device);
             log_->append("Device Connected. ");
             log_->append("Start Calibration... ");
-            ctrl_->run_calibration();
+            // ctrl_->run_calibration();
             // while (ctrl_->get_board_state() != 1)
             //     log_->append(".");
             log_->append("Calibration Complete. ");
@@ -212,9 +214,9 @@ void MainWindow::onTopPanelDeviceConnect()
             side_->updateStore(store);
             side_->loadActions();
 
-            auto timer_ = new QTimer(this);
-            connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-            timer_->start(10);
+            // auto timer_ = new QTimer(this);
+            // connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+            // timer_->start(10);
         } else {
             ctrl_ = new grip::ControlInterface(act_cfg_, std::chrono::milliseconds(10));
             ctrl_->start_bus(cfg_.can_device);
@@ -244,6 +246,11 @@ void MainWindow::onTopPanelControlSwitch(const QString &msg)
         QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
     }
 }
+
+// void MainWindow::onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode)
+// {
+//     ctrl_->set_module_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
+// }
 
 void MainWindow::readJointAngles()
 {

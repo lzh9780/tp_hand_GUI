@@ -34,6 +34,7 @@ public:
     void start_bus(const CanDeviceSettings& cfg);
     void stop_all();
     // void run_calibration(const CalibrationSettings& calib);
+    void run_calibration();
 
     // loops
     void start_control_loop();
@@ -46,7 +47,7 @@ public:
     JointAngles get_joint_angles() const;
     int get_board_state() const;
     void set_control_mode(std::string mode);
-    void run_calibration();
+    void set_module_control_mode(std::string module, std::string mode);
 
 private:
     void receiver_loop();
@@ -84,6 +85,7 @@ private:
     uint32_t time_stamp_ = 0;
     int board_state_;
     std::string mode_{"Position"};
+    std::unordered_map<std::string, std::string> module_control_mode;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

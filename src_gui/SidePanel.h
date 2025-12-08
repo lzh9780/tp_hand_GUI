@@ -48,7 +48,8 @@ public:
     void applyCameraData(const QVector<double>& data);
     void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
     void loadActions();
-    void loadSliders(const QStringList &jointNames);
+    // void loadSliders(const QStringList &jointNames);
+    void loadHandControllor(grip::HandSettings hand_cfg);
     void loadActuatorControllor(grip::ActuatorSettings act_cfg);
     void updateStore(ActionStore *store);
     std::string get_control_mode();
@@ -57,6 +58,7 @@ signals:
     void valuesChanged();
     void committed();                  // Execute in Setup mode
     void notify(const QString& msg);   // status/log message
+    void mode_change(const QString& module, const QString& control_mode);   // status/log message
 
 private slots:
     void onAnySliderChanged();
@@ -68,7 +70,7 @@ private slots:
     // void onNameEditingFinished();
     void onToggleActions();
     void onToggleActionSets();
-    void onControlChange();
+    void onControlChanged();
     void onValueEditChanged();
     void onMaxVelocityChanged();
     void onMaxCurrentChanged();

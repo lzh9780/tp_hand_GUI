@@ -4,38 +4,45 @@ hardware_version: 0
 software_version: 0
 
 hand_struct:
-  wrist:
+  WRIST:
     joints:
-      - PITCH
-      - YAW
+      - pitch
+      - yaw
+    route: [{max: 50, min: -30}, {max: 21, min: -21}]
     motors: [{id: 1, param: [0, 0]}, {id: 2, param: [0, 0]}]
-  pinky:
+  PINKY:
     joints:
-      - PINKY
+      - pinky
+    route: [{max: 150, min: 0}]
     motors: [{id: 3, param: [1]}]
-  ring:
+  RING_FINGER:
     joints:
-      - RING_FINGER
+      - ring
+    route: [{max: 150, min: 0}]
     motors: [{id: 6, param: [1]}]
-  middle:
+  MIDDLE_FINGER:
     joints:
-      - MIDDLE_FINGER
+      - middle
+    route: [{max: 150, min: 0}]
     motors: [{id: 4, param: [1]}]
-  index:
+  INDEX_FINGER:
     joints:
-      - INDEX_FINGER
+      - index
+    route: [{max: 150, min: 0}]
     motors: [{id: 7, param: [1]}]
-  thumb:
+  THUMB:
     joints:
-      - THUMB
+      - thumb
+    route: [{max: 150, min: 0}]
     motors: [{id: 5, param: [1]}]
 
 control_policy: ["hall_protect", "cascaded_pid"]
+wrist_control_policy: ["default", "soft"]
 
 urdf_file: "Demo_urdf_v1.urdf"
 
 native_policy:
-  pid: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 100Hz: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 10Hz: { kp: 0.005, ki: 0.00005, kd: 0.0001 }
+  pid: { kp: 0.003, ki: 0.0003, kd: 0.0003 } # Best with 100Hz: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 10Hz: { kp: 0.005, ki: 0.00005, kd: 0.0001 }
   current_limits_mA: { min: -3000, max: 3000 }
   initial_theta_rad: 0.74918
   geometry:

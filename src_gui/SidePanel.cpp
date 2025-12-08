@@ -272,13 +272,42 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     connect(valEnter, &QLineEdit::editingFinished, this, &SidePanel::onValueEditChanged);
 }
 
-void SidePanel::loadSliders(const QStringList &jointNames)
-{
-    for (const auto &name : jointNames)
-    {
-        loadSliderModule(name, kDegMin, kDegMax);
+// void SidePanel::loadSliders(const QStringList &jointNames)
+// {
+//     for (const auto &name : jointNames)
+//     {
+//         loadSliderModule(name, kDegMin, kDegMax);
+//     }
+//     sliderVBox_->addStretch(1);
+// }
+
+void SidePanel::loadHandControllor(grip::HandSettings hand_cfg) {
+    for (auto s : hand_cfg.structs) {
+        auto *ctrlHl = new QHBoxLayout();
+        auto *mode_lable = new QLabel(s.first.c_str()); 
+        mode_box = new QComboBox();
+
+        if (s.first != "WRIST") {
+            for (auto p : hand_cfg.control_policies) {
+                mode_box->addItem(p.c_str());
+            }
+        } else {
+            for (auto p : hand_cfg.wrist_control) {
+                mode_box->addItem(p.c_str());
+            }
+        }
+        ctrlHl->addWidget(mode_lable);
+        ctrlHl->addWidget(mode_box);
+        sliderVBox_->addLayout(ctrlHl);
+
+        for (auto j : s.second.joints) {
+            loadSliderModule(QString(j.name.c_str()), j.route.first, j.route.second);
+        }
+
+        connect(mode_box, &QComboBox::currentTextChanged,
+                this, [=]()
+                { emit mode_change(mode_lable->text(), mode_box->currentText()); });
     }
-    sliderVBox_->addStretch(1);
 }
 
 void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg) {
@@ -305,7 +334,7 @@ void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg) {
     valueLabels_[3]->setEnabled(false);
     sliderVBox_->addStretch(1);
 
-    connect(mode_box, &QComboBox::currentTextChanged, this, &SidePanel::onControlChange);
+    connect(mode_box, &QComboBox::currentTextChanged, this, &SidePanel::onControlChanged);
     connect(sliders_[0], &QSlider::valueChanged, this, &SidePanel::onMaxVelocityChanged);
     connect(sliders_[1], &QSlider::valueChanged, this, &SidePanel::onMaxCurrentChanged);
 }
@@ -635,7 +664,7 @@ void SidePanel::updateJoints(const float thumb, const float index, const float m
     currValueLabels_[3]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
 }
 
-void SidePanel::onControlChange()
+void SidePanel::onControlChanged()
 {
     auto curr_mode = mode_box->currentText();
     if (curr_mode != "MIT") {
