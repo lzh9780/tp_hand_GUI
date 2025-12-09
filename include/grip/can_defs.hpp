@@ -4,14 +4,15 @@
 
 namespace grip {
 
-// enum class JointDevice : uint32_t {
-//     PINKY_FINGER  = 0x03,
-//     MIDDLE_FINGER = 0x04,
-//     THUMB         = 0x05,
-//     RING_FINGER   = 0x06,
-//     INDEX_FINGER  = 0x07,
-//     BROADCAST     = 0x1F
-// };
+enum class JointDevice : uint32_t {
+    // PINKY_FINGER  = 0x03,
+    // MIDDLE_FINGER = 0x04,
+    // THUMB         = 0x05,
+    // RING_FINGER   = 0x06,
+    // INDEX_FINGER  = 0x07,
+    CENTER_BOARD  = 0x1E,
+    BROADCAST     = 0x1F
+};
 
 enum class HandSide  : uint32_t { LEFT = 0x00, RIGHT = 0x20 };
 enum class Direction : uint32_t { FORWARD = 0x400 };

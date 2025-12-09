@@ -10,7 +10,7 @@ namespace grip
     //                                    const std::unordered_map<int, std::string> &joint_key_of,
     //                                    const NativePolicySettings &policy_cfg,
     //                                    std::chrono::milliseconds period)
-    //     : devices_(devices), joint_key_(joint_key_of), policy_(policy_cfg), control_period_(period)
+    //     : motors_(devices), joint_key_(joint_key_of), policy_(policy_cfg), control_period_(period)
 
     ControlInterface::ControlInterface(const HandSettings &hand_cfg,
                                        std::chrono::milliseconds period)
@@ -21,34 +21,20 @@ namespace grip
         for (const auto &[key, value] : hand_cfg.structs)
         {
             for (const auto &m : value.motors)
-                devices_.push_back(m.id);
+                motors_.push_back(m);
+            
+            for (const auto &d : value.dofs)
+                targets_rad_[d.name] = 0.0f;
+
+            for (const auto &j : value.joints)
+                joints_.push_back(j);
         }
 
-        /* To match the current algorithm. Remove later */
-        joint_key_[5] = "thumb_mcp";
-        joint_key_[7] = "index_finger_mcp";
-        joint_key_[4] = "middle_finger_mcp";
-        joint_key_[6] = "ring_finger_mcp";
-        joint_key_[3] = "pinky_mcp";
-        // joint_key_[1] = "PITCH";
-        // joint_key_[2] = "YAW";
-        ctrl_key_[5] = "THUMB";
-        ctrl_key_[7] = "INDEX_FINGER";
-        ctrl_key_[4] = "MIDDLE_FINGER";
-        ctrl_key_[6] = "RING_FINGER";
-        ctrl_key_[3] = "PINKY";
-        ctrl_key_[1] = "PITCH";
-        ctrl_key_[2] = "YAW";
-        /* To match the current algorithm. Remove later */
-
-        std::sort(devices_.begin(), devices_.end(),
+        std::sort(motors_.begin(), motors_.end(),
                   [](int a, int b)
                   { return (uint32_t)a < (uint32_t)b; });
-        for (auto d : devices_)
-        {
+        for (auto d : motors_)
             state_[d] = Telemetry{};
-            targets_rad_[ctrl_key_[d]] = 0.0f;
-        }
 
         fc_init(&ctrl_);
         fc_set_motor(&ctrl_, FC_INDEX_MCP, 0x07);
@@ -58,7 +44,7 @@ namespace grip
                                        std::chrono::milliseconds period)
         : policy_(actuator_cfg.native_policy), control_period_(period)
     {
-        devices_.push_back(actuator_cfg.device_id);
+        motors_.push_back(actuator_cfg.device_id);
         state_[actuator_cfg.device_id] = Telemetry{};
 
         targets_rad_["Max Velocity"] = 0.0f;
@@ -116,26 +102,26 @@ namespace grip
         using namespace std::chrono_literals;
 
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
+                           std::vector<int32_t>(motors_.size(), (uint32_t)10));
             std::this_thread::sleep_for(10ms);
         }
         // 1) MAX_CURRENT
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(devices_.size(), 1500));
+                           std::vector<int32_t>(motors_.size(), 1500));
             std::this_thread::sleep_for(10ms);
         }
         // 2) CALIBRATE negative speed
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::MOTOR_COMMAND,
                            (uint8_t)MotorMode::CALIBRATE,
-                           std::vector<int32_t>(devices_.size(), -100));
+                           std::vector<int32_t>(motors_.size(), -100));
             std::this_thread::sleep_for(10ms);
         }
         // 3) wait for stall -> stop -> write zero
@@ -145,19 +131,19 @@ namespace grip
                 std::lock_guard<std::mutex> lk(mtx_);
                 if (all_stalled_locked())
                 {
-                    send_broadcast(devices_,
+                    send_broadcast(motors_,
                                    MsgKind::MOTOR_COMMAND,
                                    (uint8_t)MotorMode::SPEED,
-                                   std::vector<int32_t>(devices_.size(), 0));
+                                   std::vector<int32_t>(motors_.size(), 0));
                     std::this_thread::sleep_for(500ms);
-                    send_broadcast(devices_,
+                    send_broadcast(motors_,
                                    MsgKind::SET_MOTOR_PARAM,
                                    (uint8_t)ParamField::ENCODER_POS,
-                                   std::vector<int32_t>(devices_.size(), -8));
-                    send_broadcast(devices_,
+                                   std::vector<int32_t>(motors_.size(), -8));
+                    send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(devices_.size(), 2500));
+                           std::vector<int32_t>(motors_.size(), 2500));
             std::this_thread::sleep_for(10ms);
                     break;
                 }
@@ -174,7 +160,7 @@ namespace grip
 
     bool ControlInterface::all_stalled_locked() const
     {
-        for (auto d : devices_)
+        for (auto d : motors_)
         {
             auto it = state_.find(d);
             if (it == state_.end())
@@ -223,7 +209,7 @@ namespace grip
                 if (kind_bits == (uint32_t)MsgKind::MOTOR_TELEMETRY)
                 {
                     auto dev = (int)dev_bits;
-                    if (std::find(devices_.begin(), devices_.end(), dev) == devices_.end())
+                    if (std::find(motors_.begin(), motors_.end(), dev) == motors_.end())
                         continue;
                     if (f.data.size() < 14)
                         continue;
@@ -286,6 +272,9 @@ namespace grip
                     // std::cout << s << "\n";
                     std::lock_guard<std::mutex> lk(mtx_);
                     board_state_ = int(s);
+                    if (board_state_ == 1) 
+                        calibrated_ = true;
+                    else calibrated_ = false;
                 }
             }
         }
@@ -294,10 +283,10 @@ namespace grip
     void ControlInterface::control_loop()
     {
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
+                           std::vector<int32_t>(motors_.size(), (uint32_t)10));
             // std::this_thread::sleep_for(10ms);
             send_single(0x1e,
                         MsgKind::SET_MOTOR_PARAM,
@@ -308,11 +297,11 @@ namespace grip
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
-        // {
-        //     std::unique_lock<std::mutex> lk(mtx_);
-        //     cv_.wait(lk, [this]
-        //              { return calibrated_ || shutting_down_; });
-        // }
+        {
+            std::unique_lock<std::mutex> lk(mtx_);
+            cv_.wait(lk, [this]
+                     { return calibrated_ || shutting_down_; });
+        }
         if (shutting_down_)
             return;
 
@@ -325,57 +314,7 @@ namespace grip
                 drain_pending_targets_locked();
                 if (hand_.size() != 0) 
                 {
-                    for (auto d : devices_)
-                    {
-                        // std::cout << "device: " << joint_key_.at(d);
-                        // if (d != 1 && d != 2)
-                        // {
-                        //     int32_t enc = state_[d].encoder_counts;
-                        //     double tgt = targets_rad_[ctrl_key_[d]];
-                        //     const std::string &key = joint_key_.at(d);
-                        //     // std::cout << " encoder: " << enc;
-                        //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
-                        //     // std::cout << " control method: Hall, target: " << tgt << "\n";
-                        //     cmds.push_back({d, mA});
-                        // } else
-                        if (ctrl_key_[d] == "INDEX_FINGER")
-                        {
-                            int motor;
-                            int32_t mA;
-                            // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
-                            fc_step(&ctrl_,
-                                    FC_INDEX_MCP,
-                                    targets_rad_[ctrl_key_[d]],
-                                    joint_angles_.index_mcp,
-                                    joint_angles_.index_pip,
-                                    joint_angles_.index_dip,
-                                    joint_vels_.index_mcp,
-                                    joint_vels_.index_pip,
-                                    joint_vels_.index_dip,
-                                    &motor,
-                                    &mA);
-                            cmds.push_back({d, mA});
-                        }
-                        else if (d == 1)
-                        {
-                            in.pitch = targets_rad_["PITCH"];
-                            in.yaw = targets_rad_["YAW"];
-                            in.roll = 0.0;
-                            in.left_counts = state_[1].encoder_counts*256;
-                            in.right_counts = state_[2].encoder_counts*256;
-                            // in.left_counts = 10000;
-                            // in.right_counts = 10000;
-
-                            if (auto wcmds = wrist_.step(in))
-                            {
-                                for (auto &c : *wcmds)
-                                {
-                                    cmds.push_back({c.motor_id, c.command});
-                                    // std::cout << c.motor_id << " " << c.command << "\n";
-                                }
-                            }
-                        }
-                    }
+                    return;
                 } else {
                     int cmd_type = (uint8_t)MotorMode::HALL_GUARD;
                     int cmd_val = 0;

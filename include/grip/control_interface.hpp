@@ -68,10 +68,9 @@ private:
     uint32_t bus_channel_{0};
 
     // model
-    std::vector<int> devices_;
+    std::vector<int> motors_;
+    std::vector<std::string> joints_;
     std::unordered_map<std::string, ModuleStruct> hand_{};
-    std::unordered_map<int, std::string> joint_key_; // Matched the current algorithm. Will be removed later
-    std::unordered_map<int, std::string> ctrl_key_; // Matched the current algorithm. Will be removed later
     NativePolicy policy_;
     JointAngles offset_;
     fc_ctx_t ctrl_;
