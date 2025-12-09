@@ -46,6 +46,7 @@ SidePanel::SidePanel(QWidget *parent)
     splitter->addWidget(sliderScroll_);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(2, 2);
 
     root->addWidget(controlRow_);
     root->addWidget(splitter);

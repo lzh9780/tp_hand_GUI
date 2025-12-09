@@ -90,18 +90,20 @@ void MainWindow::buildUI()
     log_->setReadOnly(true);
     // log_->setMaximumHeight(50);
 
-    ogre_ = new OgreWidget(this);
+    // ogre_ = new OgreWidget(this);
+    motor_ = new MotorPanel(this);
 
     // auto *mainPanel = new QWidget();
     auto *mainLyt = new QSplitter(Qt::Vertical, this);
-    mainLyt->addWidget(ogre_);
+    // mainLyt->addWidget(ogre_);
+    mainLyt->addWidget(motor_);
     mainLyt->addWidget(log_);
     mainLyt->setStretchFactor(0, 1);
     mainLyt->setStretchFactor(1, 0);
 
     splitter->addWidget(side_);
     splitter->addWidget(mainLyt);
-    splitter->setStretchFactor(0, 0);
+    splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 1);
 
     lay->addWidget(splitter);
@@ -176,8 +178,9 @@ void MainWindow::onTopPanelDeviceConnect()
     try
     {
         dev_cfg_ = grip::load_device_settings(config_path_);
-        if (dev_cfg_.device_type == 0)
+        if (dev_cfg_.device_type == 0){
             hand_cfg_ = grip::load_hand_settings(config_path_);
+            motor_->load(hand_cfg_);}
         else 
             act_cfg_ = grip::load_actuator_settings(config_path_);
 

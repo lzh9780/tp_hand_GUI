@@ -102,6 +102,7 @@ if (BUILD_GUI)
     src_gui/PyCamWorker.cpp
     src_gui/OgreWidget.cpp
     src_gui/UrdfLoader.cpp
+    src_gui/MotorPanel.cpp
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})

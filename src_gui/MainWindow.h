@@ -6,7 +6,8 @@
 #include "grip/settings.hpp"
 #include "ActionStore.hpp"
 #include "PyCamWorker.h"
-#include "OgreWidget.h"
+// #include "OgreWidget.h"
+#include "MotorPanel.hpp"
 
 class SidePanel;
 class TopPanel;
@@ -57,7 +58,8 @@ private:
     SidePanel* side_{nullptr};
     TopPanel* top_{nullptr};
     QTextEdit* log_{nullptr};
-    OgreWidget* ogre_;
+    // OgreWidget* ogre_;
+    MotorPanel* motor_;
     PyCamWorker* worker_ = nullptr;
     QThread* workerThread_ = nullptr;
     std::string config_path_;
