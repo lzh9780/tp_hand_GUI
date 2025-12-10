@@ -1,12 +1,16 @@
 #pragma once
 #include <QWidget>
 #include <QTimer>
+#include <QVector3D>
+#include <unordered_map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <array>
 #include <OgreVector3.h>
 #include <OgreQuaternion.h>
+#include <OgreMovableObject.h>
+#include <OgreMaterialManager.h>
 
 namespace Ogre
 {
@@ -18,19 +22,59 @@ namespace Ogre
     class Viewport;
     class ManualObject;
     class Entity;
-    // class Vector3;
-    // class Quaternion;
 }
 
-#include "UrdfLoader.h" // The general loader you wrote
+#include "UrdfLoader.h"
 
-// Internal representation of a built joint in the scene
+// Per-joint runtime info
+enum class BuiltJointKind
+{
+    Fixed,
+    Revolute,
+    Continuous,
+    Prismatic
+};
+
 struct BuiltJoint
 {
-    Ogre::SceneNode *originNode{nullptr}; // applies joint origin pose
-    Ogre::SceneNode *axisNode{nullptr};   // rotates/translates along joint axis
-    UrdfJoint spec;                       // full URDF joint spec (type/axis/limits)
-    float pos{0.0f};                      // angle (rad) for revolute/continuous; meters for prismatic
+    Ogre::SceneNode *originNode{nullptr}; // joint origin pose
+    Ogre::SceneNode *axisNode{nullptr};   // rotates/translates child subtree
+    UrdfJoint spec;
+    float pos{0.f}; // rad for rot, meters for prismatics
+};
+
+struct RobotInstance
+{
+    std::string name;                                             // "cmd" / "fb" etc.
+    Ogre::SceneNode *root{nullptr};                               // root node for this instance
+    std::unordered_map<std::string, Ogre::SceneNode *> linkNodes; // link -> node
+    std::unordered_map<std::string, BuiltJoint> joints;           // joint -> nodes/spec
+    bool transparent{false};                                      // render as ghost?
+};
+
+// Forward decl for RTSS
+namespace Ogre
+{
+    namespace RTShader
+    {
+        class ShaderGenerator;
+    }
+}
+
+// Minimal RTSS technique resolver that works across Ogre 1.12 builds
+class RtssTechniqueResolver : public Ogre::MaterialManager::Listener
+{
+public:
+    explicit RtssTechniqueResolver(Ogre::RTShader::ShaderGenerator *sg) : mSG(sg) {}
+    Ogre::Technique *handleSchemeNotFound(
+        uint16_t schemeIndex,
+        const Ogre::String &schemeName,
+        Ogre::Material *originalMaterial,
+        unsigned short lodIndex,
+        const Ogre::Renderable *rend) override;
+
+private:
+    Ogre::RTShader::ShaderGenerator *mSG{nullptr};
 };
 
 class OgreWidget : public QWidget
@@ -40,45 +84,114 @@ public:
     explicit OgreWidget(QWidget *parent = nullptr);
     ~OgreWidget() override;
 
-    // Ogre init is deferred to showEvent(); you can load a URDF any time
-    bool loadURDF(const std::string &path);
+    struct JointInfo
+    {
+        std::string name;
+        JointType type;
+        float lower; // if no limits: lower==upper to signal "no clamp"
+        float upper;
+        float value; // current pos (rad or m)
+    };
 
-    // Set individual joint (angle in radians for revolute/continuous, meters for prismatic)
-    void setJointPosition(const std::string &jointName, float position);
+    // Load URDF file (absolute or relative). Returns true on success.
+    bool loadURDF(const std::string &urdf_path);
 
-    // Bulk update
-    void setJointPositions(const std::unordered_map<std::string, float> &q);
+    // Set joint position (rad or m). Ignored if name not found.
+    void setJointPosition(const std::string &joint, float value);
+    void setJointPositions(const std::unordered_map<std::string, float> &qmap);
 
-    // Query joint names/types (handy for building UI)
-    std::vector<std::pair<std::string, JointType>> listJoints() const;
+    // Simple camera API (focus/orbit target)
+    void setCameraTarget(const QVector3D &t);
+    void resetView(); // sensible default view
+
+    // Enumerate all joints (order is unspecified)
+    std::vector<JointInfo> jointsInfo() const;
+    // Optional getter
+    bool getJointPosition(const std::string &name, float &out) const;
+
+    bool loadURDFDual(const std::string &urdf_path,
+                      const std::string &cmdName = "cmd",
+                      const std::string &fbName = "fb");
+
+    void setJointPosition(const std::string &instance,
+                          const std::string &joint, float value);
+    void setJointPositions(const std::string &instance,
+                           const std::unordered_map<std::string, float> &q);
 
 protected:
-    void showEvent(QShowEvent *e) override;
-    void resizeEvent(QResizeEvent *e) override;
+    // Qt lifecycle
+    void showEvent(QShowEvent *) override;
+    void resizeEvent(QResizeEvent *) override;
+
+    // Mouse navigation
+    void mousePressEvent(QMouseEvent *) override;
+    void mouseMoveEvent(QMouseEvent *) override;
+    void mouseReleaseEvent(QMouseEvent *) override;
+    void wheelEvent(QWheelEvent *) override;
 
 private slots:
     void onFrame();
 
 private:
-    // Ogre init / scene build
+    // --- Ogre bootstrap ---
     void initOgre();
+    void selectAndInitRenderSystem();
+    void enableRTSS(); // Runtime Shader System (GL3Plus friendly)
+
+    // --- Scene building / teardown ---
     void clearScene();
-    void buildSceneFromURDF();
-    void buildLinkNode(const UrdfLink &link);
-    void attachVisual(Ogre::SceneNode *linkNode, const UrdfVisual &visual, int idx);
+    void buildSceneFromURDF(const std::string &urdf_path); // uses mModel
+    void buildLinkNode(const UrdfLink &L);
+    void attachVisual(Ogre::SceneNode *linkNode, const UrdfVisual &V, int idx, const std::string &urdf_dir);
 
-    // Geometry helpers
+    void clearInstances(); // remove all instances but keep grid/camera/light
+    void buildInstance(const std::string &instance,
+                       bool transparent,
+                       const std::string &urdf_dir);
+
+    void attachVisualToInstance(RobotInstance &R,
+                                const std::string &linkName,
+                                const UrdfVisual &V,
+                                int idx,
+                                const std::string &urdf_dir);
+
+    void applyJointPose(RobotInstance &R, BuiltJoint &bj);
+    void setNodeTreeMaterial(Ogre::SceneNode *node, const std::string &matName);
+    void ensureBaseMaterials(); // "DefaultWhite" + "GhostWhite"
+
+    // --- Geometry helpers ---
     Ogre::ManualObject *createBoxMO(const std::string &name, float sx, float sy, float sz);
-    Ogre::ManualObject *createCylinderMO(const std::string &name, float radius, float length, int segments = 24);
+    Ogre::ManualObject *createCylinderMO(const std::string &name, float radius, float length, int seg = 32);
     Ogre::ManualObject *createSphereMO(const std::string &name, float radius, int rings = 16, int segs = 24);
-    Ogre::Entity *createMeshEntityOrNull(const std::string &name, const std::string &meshFile);
+    Ogre::ManualObject *createGridMO(const std::string &name, int halfLines = 20, float spacing = 0.1f); // RViz-ish grid
 
-    // Math helpers
-    static Ogre::Quaternion fromRPY(float roll, float pitch, float yaw);
+    // Mesh loader: try native Ogre (.mesh), else Assimp → ManualObject
+    Ogre::MovableObject *createAnyMeshOrManual(const std::string &name,
+                                               const std::string &absPath,
+                                               const std::array<float, 3> &scale);
+
+    // --- Math helpers ---
+    static Ogre::Quaternion fromRPY(float r, float p, float y);
     static Ogre::Vector3 normAxis(const std::array<float, 3> &a);
 
-    // Apply a single joint transform (pos already clamped if needed)
+    // --- Joint application ---
     void applyJointPose(BuiltJoint &bj);
+
+    // --- Paths ---
+    static std::string resolvePathRelative(const std::string &baseFile, const std::string &uri);
+
+    // --- Camera control state ---
+    void updateCamera();
+    QPoint mLastMouse;
+    bool mLDown{false}, mMDown{false}, mRDown{false};
+    // Orbit camera parameters (target in world, spherical angles)
+    QVector3D mTarget{0.f, 0.f, 0.f};
+    float mDistance{1.5f}; // meters
+    float mYaw{0.0f};      // around +Z (radians)
+    float mPitch{0.3f};    // radians, clamp[-1.4, +1.4]
+    float mPanSpeed{0.0025f};
+    float mOrbitSpeed{0.0055f};
+    float mZoomSpeed{0.12f};
 
 private:
     // Ogre
@@ -87,16 +200,14 @@ private:
     Ogre::SceneManager *mScene{nullptr};
     Ogre::Camera *mCamera{nullptr};
     Ogre::Viewport *mViewport{nullptr};
-    bool mOgreInited{false};
-
     QTimer mTimer;
+    bool mOgreInited{false};
+    Ogre::RTShader::ShaderGenerator *mSG{nullptr};
+    RtssTechniqueResolver* mRtssListener{nullptr};
 
-    // URDF model
+    // URDF
     UrdfModel mModel;
-
-    // Link name -> node (the node that holds that link's visuals)
-    std::unordered_map<std::string, Ogre::SceneNode *> mLinkNodes;
-
-    // Joint name -> nodes/spec
+    std::unordered_map<std::string, Ogre::SceneNode *> mLinkNodes; // link name -> node with visuals
     std::unordered_map<std::string, BuiltJoint> mBuiltJoints;
+    std::unordered_map<std::string, RobotInstance> mRobots; // instance name -> data
 };
