@@ -33,20 +33,20 @@ SidePanel::SidePanel(QWidget *parent)
     buildSliderPanel();
 
     // auto *vb = new QVBoxLayout();
-    img_label_ = new QLabel();
-    img_label_->hide();
+    // img_label_ = new QLabel();
+    // img_label_->hide();
 
     // vb->addWidget(img_label_);
     // vb->addWidget(actionScroll_);
 
     // Splitter: actions (top) + sliders (bottom)
     auto *splitter = new QSplitter(Qt::Vertical, this);
-    splitter->addWidget(img_label_);
+    // splitter->addWidget(img_label_);
     splitter->addWidget(actionScroll_);
     splitter->addWidget(sliderScroll_);
+    // splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
-    splitter->setStretchFactor(2, 2);
 
     root->addWidget(controlRow_);
     root->addWidget(splitter);
@@ -613,12 +613,12 @@ void SidePanel::vialdate(QLineEdit *edit, QPushButton *btn)
                        { edit->setProperty("vaildating", false); });
 }
 
-void SidePanel::setFrame(const QImage img)
-{
-    // qDebug() << "Drawing frame";
-    auto pm = QPixmap::fromImage(img).scaled(img_label_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation); //(img);
-    img_label_->setPixmap(pm);
-}
+// void SidePanel::setFrame(const QImage img)
+// {
+//     // qDebug() << "Drawing frame";
+//     auto pm = QPixmap::fromImage(img).scaled(img_label_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation); //(img);
+//     img_label_->setPixmap(pm);
+// }
 
 void SidePanel::modeChange(const QString &mode)
 {
@@ -626,22 +626,22 @@ void SidePanel::modeChange(const QString &mode)
     if (mode == "Start Camera")
     {
         for (auto s : sliders_)
-        {
             s->setEnabled(false);
-        }
-        actionScroll_->hide();
-        controlRow_->hide();
-        img_label_->show();
+        for (auto e : valueLabels_)
+            e->setEnabled(false);
+        // actionScroll_->hide();
+        // controlRow_->hide();
+        // img_label_->show();
     }
     else
     {
         for (auto s : sliders_)
-        {
             s->setEnabled(true);
-        }
-        actionScroll_->show();
-        controlRow_->show();
-        img_label_->hide();
+        for (auto e : valueLabels_)
+            e->setEnabled(true);
+        // actionScroll_->show();
+        // controlRow_->show();
+        // img_label_->hide();
     }
 }
 

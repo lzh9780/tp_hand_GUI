@@ -175,8 +175,8 @@ namespace grip
     const double theta_f = filter_yaw_2(-in.yaw);
     (void)roll_f; // roll path kept as hook (script’s roll block is a stub)
 
-    std::cout << "pitch" << ": " << deg(phi_f) << "; ";
-    std::cout << "yaw" << ": " << deg(theta_f) << "\n";
+    // std::cout << "pitch" << ": " << deg(phi_f) << "; ";
+    // std::cout << "yaw" << ": " << deg(theta_f) << "\n";
 
     // 2) geometry → desired tendon displacements in mm
     auto LRmm = BT_solution(phi_f, theta_f);
@@ -199,8 +199,8 @@ namespace grip
     // 4) position errors (counts)
     int32_t eL = L_counts - in.left_counts;
     int32_t eR = R_counts - in.right_counts;
-    std::cout << "Left position error" << ": " << eL << "; ";
-    std::cout << "Right position error" << ": " << eR << "\n";
+    // std::cout << "Left position error" << ": " << eL << "; ";
+    // std::cout << "Right position error" << ": " << eR << "\n";
 
     // 5) PID per motor (position PID → velocity/current proxy)
     //    matches script: pos_error_int clamp ±1e8; derivative uses prev
@@ -243,8 +243,8 @@ namespace grip
     outL = std::clamp(outL, cfg_.vel_min, cfg_.vel_max);
     outR = std::clamp(outR, cfg_.vel_min, cfg_.vel_max);
 
-    std::cout << "LeftMotor" << ": " << outL << "; ";
-    std::cout << "RightMotor" << ": " << outR << "\n\n";
+    // std::cout << "LeftMotor" << ": " << outL << "; ";
+    // std::cout << "RightMotor" << ": " << outR << "\n\n";
 
     return std::array<Result, 2>{Result{kLeftMotorId, outL}, Result{kRightMotorId, outR}};
   }

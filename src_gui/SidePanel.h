@@ -43,7 +43,7 @@ public:
 
     // Mode string exactly as UI shows it ("Mode: Follow"/"Mode: Setup")
     QString modeText() const;
-    void setFrame(const QImage img);
+    // void setFrame(const QImage img);
     void modeChange(const QString& mode);
     void applyCameraData(const QVector<double>& data);
     void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
@@ -117,8 +117,8 @@ private:
     QScrollArea* sliderScroll_{nullptr};
     QScrollArea* actionScroll_{nullptr};
     QVBoxLayout* sliderVBox_{nullptr};
-    QList<QSlider*> sliders_;
-    QList<QLineEdit*>  valueLabels_;  // number next to each slider
+    QList<QSlider*> sliders_{};
+    QList<QLineEdit*>  valueLabels_{};  // number next to each slider
     QList<QLabel*>  currValueLabels_;
     QList<QLabel*>  nameLabels_;
     QList<std::pair<QLabel*, QLabel*>> valueLbls;

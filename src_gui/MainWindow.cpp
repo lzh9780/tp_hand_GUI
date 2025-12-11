@@ -9,7 +9,12 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QStringList>
+#include <QMenuBar>
+#include <QTabWidget>
 #include <iostream>
+
+#include "Connector.hpp"
+#include "CameraWidget.hpp"
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -33,7 +38,7 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
 
     // Display frames
     connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage &img)
-            { side_->setFrame(img); });
+            { camera_->setFrame(img); });
 
     connect(worker_, &PyCamWorker::newJoint, this, [this](const QVector<double> &joints)
             { side_->applyCameraData(joints); });
@@ -45,7 +50,7 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
         log_->append(QString("Error: %1").arg(e)); });
 
     connect(worker_, &PyCamWorker::runningChanged, this, [this](bool r)
-            { top_->onChange(r); });
+            { camera_->onChange(r); });
 
     // connect(this, &MainWindow::requestStop, worker_, &PyCamWorker::stop, Qt::QueuedConnection);
 
@@ -74,14 +79,15 @@ MainWindow::~MainWindow()
 void MainWindow::buildUI()
 {
     central = new QWidget(this);
-    auto *rootLayout = new QVBoxLayout(central);
+    auto *rootLayout = new QHBoxLayout(central);
     rootLayout->setSpacing(5);
 
-    top_ = new TopPanel(this, cfg_.models);
-    rootLayout->addWidget(top_);
+    connect_ = new Connector(this, cfg_.models);
+    // top_ = new TopPanel(this, cfg_.models);
+    // rootLayout->addWidget(top_);
 
     mainContent = new QWidget;
-    auto *lay = new QHBoxLayout();
+    // auto *lay = new QHBoxLayout();
     auto *splitter = new QSplitter(Qt::Horizontal, this);
 
     side_ = new SidePanel(this);
@@ -92,12 +98,21 @@ void MainWindow::buildUI()
 
     // ogre_ = new OgreWidget(this);
     motor_ = new MotorPanel(this);
+    camera_ = new CameraWidget(this);
+
+    upperTabs = new QTabWidget();
+    lowerTabs = new QTabWidget();
+
+    upperTabs->setTabsClosable(true);
+    lowerTabs->setTabsClosable(true);
+    upperTabs->addTab(connect_, "Connector");
+    lowerTabs->addTab(log_, "Log");
 
     // auto *mainPanel = new QWidget();
     auto *mainLyt = new QSplitter(Qt::Vertical, this);
     // mainLyt->addWidget(ogre_);
-    mainLyt->addWidget(motor_);
-    mainLyt->addWidget(log_);
+    mainLyt->addWidget(upperTabs);
+    mainLyt->addWidget(lowerTabs);
     mainLyt->setStretchFactor(0, 1);
     mainLyt->setStretchFactor(1, 0);
 
@@ -106,12 +121,12 @@ void MainWindow::buildUI()
     splitter->setStretchFactor(0, 1);
     splitter->setStretchFactor(1, 1);
 
-    lay->addWidget(splitter);
-    lay->setContentsMargins(5, 0, 5, 5);
+    rootLayout->addWidget(splitter);
+    // lay->setContentsMargins(5, 0, 5, 5);
 
-    mainContent->setLayout(lay);
-    mainContent->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    rootLayout->addWidget(mainContent);
+    // mainContent->setLayout(lay);
+    // mainContent->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    // rootLayout->addWidget(mainContent);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     central->setLayout(rootLayout);
 
@@ -121,9 +136,17 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::committed, this, &MainWindow::onSidePanelCommitted);
     connect(side_, &SidePanel::notify, this, &MainWindow::onSidePanelNotify);
     // connect(side_, &SidePanel::mode_change, this, &MainWindow::onSidePanelControlModeChaneg);
-    connect(top_, &TopPanel::deviceConnect, this, &MainWindow::onTopPanelDeviceConnect);
-    connect(top_, &TopPanel::controlSwitch, this, &MainWindow::onTopPanelControlSwitch);
-    connect(top_, &TopPanel::modelChange, this, &MainWindow::onTopPanelModelChange);
+    connect(connect_, &Connector::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
+    connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
+    connect(connect_, &Connector::modelChange, this, &MainWindow::onConnectorModelChange);
+    connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
+    connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
+
+    auto* tabsMenu = menuBar()->addMenu("&Tabs");
+    auto* actDiagram = tabsMenu->addAction("Open &Diagrams");
+    auto* actOpenDetect = tabsMenu->addAction("Open &Hand Detect");
+
+    connect(actOpenDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -173,7 +196,7 @@ void MainWindow::onSidePanelNotify(const QString &msg)
     log_->append(msg);
 }
 
-void MainWindow::onTopPanelDeviceConnect()
+void MainWindow::onConnectorDeviceConnect()
 {
     try
     {
@@ -234,7 +257,7 @@ void MainWindow::onTopPanelDeviceConnect()
     }
 }
 
-void MainWindow::onTopPanelControlSwitch(const QString &msg)
+void MainWindow::onCameraWidgetControlSwitch(const QString &msg)
 {
     side_->modeChange(msg);
     if (msg == "Start Camera")
@@ -269,7 +292,7 @@ void MainWindow::readJointAngles()
     side_->updateJoints(thumb_angle, index_angle, middle_angle, ring_angle, pinky_angle);
 }
 
-void MainWindow::onTopPanelModelChange(const QString &model_name)
+void MainWindow::onConnectorModelChange(const QString &model_name)
 {
     config_path_ = std::string("configs/config_") + model_name.toUtf8().constData() + std::string(".yaml");
     // qDebug() << config_path_.c_str();
@@ -277,4 +300,19 @@ void MainWindow::onTopPanelModelChange(const QString &model_name)
     // qDebug() << action_path_.c_str();
     // if (ogre_->loadURDF("robots/demohand/urdf/Demo_urdf_v1.urdf"))
     //     log_->append("urdf loaded");
+}
+
+void MainWindow::onUpperTabCloseRequested(int idx)
+{
+    upperTabs->removeTab(idx);
+}
+
+void MainWindow::onLowerTabCloseRequested(int idx)
+{
+    lowerTabs->removeTab(idx);
+}
+
+void MainWindow::openCameraTab()
+{
+    upperTabs->addTab(camera_, "Hand Detect");
 }
