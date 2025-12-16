@@ -14,6 +14,8 @@
 #include "control_policy_native.hpp"
 #include "grip/finger_ctrl.h"
 #include "wrist_control.hpp"
+#include "HandControl.hpp"
+#include "ModuleRt.hpp"
 
 namespace grip {
 
@@ -69,13 +71,13 @@ private:
 
     // model
     std::vector<int> devices_;
-    std::unordered_map<std::string, ModuleStruct> hand_{};
-    std::unordered_map<int, std::string> joint_key_; // Matched the current algorithm. Will be removed later
-    std::unordered_map<int, std::string> ctrl_key_; // Matched the current algorithm. Will be removed later
-    NativePolicy policy_;
-    JointAngles offset_;
-    fc_ctx_t ctrl_;
-    Controller wrist_;
+    std::unordered_map<std::string, ModuleState> hand_{};
+    // std::unordered_map<int, std::string> joint_key_; // Matched the current algorithm. Will be removed later
+    // std::unordered_map<int, std::string> ctrl_key_; // Matched the current algorithm. Will be removed later
+    // NativePolicy policy_;
+    // JointAngles offset_;
+    // fc_ctx_t ctrl_;
+    // Controller wrist_;
 
     // shared state
     std::unordered_map<int, Telemetry> state_;
@@ -86,6 +88,10 @@ private:
     int board_state_;
     std::string mode_{"Position"};
     std::unordered_map<std::string, std::string> module_control_mode;
+    std::vector<HandControl> ctrls_;
+    std::vector<ModuleLayout> lays_; 
+    std::vector<ModuleInputSnapshot> ins_;
+    std::vector<ModuleOutputSnapshot> outs_;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

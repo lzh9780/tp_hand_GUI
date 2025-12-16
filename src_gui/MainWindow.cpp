@@ -1,6 +1,5 @@
 #include "MainWindow.h"
 #include "SidePanel.h"
-#include "TopPanel.hpp"
 #include "grip/control_interface.hpp"
 #include <QTextEdit>
 #include <QSplitter>
@@ -83,8 +82,6 @@ void MainWindow::buildUI()
     rootLayout->setSpacing(5);
 
     connect_ = new Connector(this, cfg_.models);
-    // top_ = new TopPanel(this, cfg_.models);
-    // rootLayout->addWidget(top_);
 
     mainContent = new QWidget;
     // auto *lay = new QHBoxLayout();
@@ -170,9 +167,9 @@ void MainWindow::onSidePanelValuesChanged()
         log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
     }
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
-    if (dev_cfg_.device_type == 0)
+    if (dev_cfg_.device_type == 0 && ctrl_)
         ctrl_->set_control_mode("Position");
-    else {
+    else if (dev_cfg_.device_type != 0 && ctrl_){
         float rad = float(deg[2]);
         ctrl_->submit_target(side_->get_control_mode(), rad);
         ctrl_->set_control_mode(side_->get_control_mode());

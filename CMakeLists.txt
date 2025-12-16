@@ -74,6 +74,8 @@ add_library(grip_core STATIC
   src/control_interface.cpp
   src/finger_ctrl.c
   src/wrist_control.cpp
+  src/HandControl.cpp
+  src/ModuleRt.cpp
 )
 target_link_libraries(grip_core PUBLIC yaml-cpp zlgcanfd)
 set_target_properties(grip_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -96,7 +98,6 @@ if (BUILD_GUI)
     src_gui/main_gui.cpp
     src_gui/MainWindow.cpp
     src_gui/SidePanel.cpp
-    src_gui/TopPanel.cpp
     src_gui/ActionStore.cpp
     src_gui/PyCamWorker.h
     src_gui/PyCamWorker.cpp

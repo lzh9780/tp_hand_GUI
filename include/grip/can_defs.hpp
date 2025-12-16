@@ -58,25 +58,33 @@ struct JointAngles {
 
 struct JointState
 {
-    float position;
-    float velocity;
-    float effort;
+    float position = 0.0f;
+    float velocity = 0.0f;
+    float effort   = 0.0f;
 };
 
-struct DofInfo
+struct DofState
 {
     std::string name;
-    float target{0};
-    std::vector<std::string> js;
-    std::vector<int> ms;
+    float target{0.0f};
+    std::vector<std::string> joints; // expected: [mcp,pip,dip] or [mcp] etc
+    std::vector<int> motors;         // expected: [motor_id] (1 motor per dof)
 };
 
 struct ModuleState
 {
-    std::vector<DofInfo> dofs;
-    std::unordered_map<std::string, JointState> joints;
-    std::unordered_map<int, Telemetry> motors;
-    int control_mode;
+    std::vector<DofState> dofs;
+    std::unordered_map<std::string, JointState> joints; // name -> state
+    std::unordered_map<int, Telemetry> motors;          // motor_id -> telemetry
+    int control_mode = 0;
+};
+
+// Motor command separate from Telemetry (feedback)
+struct MotorCommand
+{
+    float position_cmd = 0.0f; // optional
+    float velocity_cmd = 0.0f; // rpm or your unit
+    float current_cmd  = 0.0f; // mA or your unit
 };
 
 } // namespace grip

@@ -23,10 +23,10 @@ struct NativeJointConfig {
     std::vector<double> feedforward_mA; // size 15 (0..140 step 10°)
 };
 
-struct MotorInfo {
-    int id;
-    std::vector<int> joint_map;
-};
+// struct MotorInfo {
+//     int id;
+//     std::vector<int> joint_map;
+// };
 
 struct JointInfo {
     std::string name;
@@ -34,8 +34,9 @@ struct JointInfo {
 };
 
 struct ModuleStruct {
+    std::vector<std::string> dofs;
     std::vector<JointInfo> joints;
-    std::vector<MotorInfo> motors;
+    std::vector<int> motors;
 };
 
 struct NativePolicySettings {

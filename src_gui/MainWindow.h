@@ -11,7 +11,6 @@
 
 class SidePanel;
 class Connector;
-class TopPanel;
 class QTextEdit;
 class QThread;
 class QString;
@@ -62,7 +61,6 @@ private:
     QWidget* mainContent;
     QWidget* central;
     SidePanel* side_{nullptr};
-    TopPanel* top_{nullptr};
     QTextEdit* log_{nullptr};
     // OgreWidget* ogre_;
     MotorPanel* motor_;

@@ -79,13 +79,13 @@ namespace grip
                         counter += 1;
                     }
                     for (const auto motor : m->second["motors"]) {
-                        MotorInfo mi;
-                        mi.id = motor["id"].as<int32_t>(mi.id);
-                        for (const auto p : motor["param"]) {
-                            mi.joint_map.push_back(p.as<int32_t>());
-                        }
+                        // MotorInfo mi;
+                        // mi.id = motor["id"].as<int32_t>(mi.id);
+                        // for (const auto p : motor["param"]) {
+                        //     mi.joint_map.push_back(p.as<int32_t>());
+                        // }
                         // std::cout << mi.id << '\n';
-                        ms.motors.push_back(mi);
+                        ms.motors.push_back(motor["id"].as<int32_t>());
                         
                     }
                     hand.structs[m->first.as<std::string>()] = std::move(ms);

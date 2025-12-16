@@ -14,49 +14,76 @@ namespace grip
 
     ControlInterface::ControlInterface(const HandSettings &hand_cfg,
                                        std::chrono::milliseconds period)
-        : policy_(hand_cfg.native_policy), control_period_(period)
+        : control_period_(period)
     {
 
-        hand_ = hand_cfg.structs;
+        // hand_ = hand_cfg.structs;
         for (const auto &[key, value] : hand_cfg.structs)
         {
+            ModuleState ms;
+            for (const auto &dof : value.dofs)
+            {
+                DofState ds;
+                ds.name = dof;
+                ms.dofs.push_back(ds);
+            }
             for (const auto &m : value.motors)
-                devices_.push_back(m.id);
+            {
+                devices_.push_back(m);
+                Telemetry t;
+                ms.motors.emplace(m, t);
+            }
+            for (const auto &j : value.joints) 
+            {
+                JointState js;
+                ms.joints.emplace(j, js);
+            }
+            hand_.emplace(key, ms);
+
+            HandControl c{ms};
+            ModuleLayout lay = c.layout();
+            ModuleInputSnapshot in = make_module_input(lay);
+            ModuleOutputSnapshot out = make_module_output(lay);
+
+            ctrls_.push_back(c);
+            lays_.push_back(lay);
+            ins_.push_back(in);
+            outs_.push_back(out);
         }
 
         /* To match the current algorithm. Remove later */
-        joint_key_[5] = "thumb_mcp";
-        joint_key_[7] = "index_finger_mcp";
-        joint_key_[4] = "middle_finger_mcp";
-        joint_key_[6] = "ring_finger_mcp";
-        joint_key_[3] = "pinky_mcp";
-        // joint_key_[1] = "PITCH";
-        // joint_key_[2] = "YAW";
-        ctrl_key_[5] = "THUMB";
-        ctrl_key_[7] = "INDEX_FINGER";
-        ctrl_key_[4] = "MIDDLE_FINGER";
-        ctrl_key_[6] = "RING_FINGER";
-        ctrl_key_[3] = "PINKY";
-        ctrl_key_[1] = "PITCH";
-        ctrl_key_[2] = "YAW";
+        // joint_key_[5] = "thumb_mcp";
+        // joint_key_[7] = "index_finger_mcp";
+        // joint_key_[4] = "middle_finger_mcp";
+        // joint_key_[6] = "ring_finger_mcp";
+        // joint_key_[3] = "pinky_mcp";
+        // // joint_key_[1] = "PITCH";
+        // // joint_key_[2] = "YAW";
+        // ctrl_key_[5] = "THUMB";
+        // ctrl_key_[7] = "INDEX_FINGER";
+        // ctrl_key_[4] = "MIDDLE_FINGER";
+        // ctrl_key_[6] = "RING_FINGER";
+        // ctrl_key_[3] = "PINKY";
+        // ctrl_key_[1] = "PITCH";
+        // ctrl_key_[2] = "YAW";
         /* To match the current algorithm. Remove later */
 
-        std::sort(devices_.begin(), devices_.end(),
-                  [](int a, int b)
-                  { return (uint32_t)a < (uint32_t)b; });
-        for (auto d : devices_)
-        {
-            state_[d] = Telemetry{};
-            targets_rad_[ctrl_key_[d]] = 0.0f;
-        }
+        // std::sort(devices_.begin(), devices_.end(),
+        //           [](int a, int b)
+        //           { return (uint32_t)a < (uint32_t)b; });
+        // for (auto d : devices_)
+        // {
+        //     state_[d] = Telemetry{};
+        //     targets_rad_[ctrl_key_[d]] = 0.0f;
+        // }
 
-        fc_init(&ctrl_);
-        fc_set_motor(&ctrl_, FC_INDEX_MCP, 0x07);
+        // fc_init(&ctrl_);
+        // fc_set_motor(&ctrl_, FC_INDEX_MCP, 0x07);
     }
 
     ControlInterface::ControlInterface(const ActuatorSettings &actuator_cfg,
                                        std::chrono::milliseconds period)
-        : policy_(actuator_cfg.native_policy), control_period_(period)
+        : control_period_(period)
     {
         devices_.push_back(actuator_cfg.device_id);
         state_[actuator_cfg.device_id] = Telemetry{};
@@ -325,57 +352,73 @@ namespace grip
                 drain_pending_targets_locked();
                 if (hand_.size() != 0) 
                 {
-                    for (auto d : devices_)
+                    int c = 0;
+                    for (auto &[key, value] : hand_) 
                     {
-                        // std::cout << "device: " << joint_key_.at(d);
-                        // if (d != 1 && d != 2)
-                        // {
-                        //     int32_t enc = state_[d].encoder_counts;
-                        //     double tgt = targets_rad_[ctrl_key_[d]];
-                        //     const std::string &key = joint_key_.at(d);
-                        //     // std::cout << " encoder: " << enc;
-                        //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
-                        //     // std::cout << " control method: Hall, target: " << tgt << "\n";
-                        //     cmds.push_back({d, mA});
-                        // } else
-                        if (ctrl_key_[d] == "INDEX_FINGER")
-                        {
-                            int motor;
-                            int32_t mA;
-                            // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
-                            fc_step(&ctrl_,
-                                    FC_INDEX_MCP,
-                                    targets_rad_[ctrl_key_[d]],
-                                    joint_angles_.index_mcp,
-                                    joint_angles_.index_pip,
-                                    joint_angles_.index_dip,
-                                    joint_vels_.index_mcp,
-                                    joint_vels_.index_pip,
-                                    joint_vels_.index_dip,
-                                    &motor,
-                                    &mA);
-                            cmds.push_back({d, mA});
-                        }
-                        else if (d == 1)
-                        {
-                            in.pitch = targets_rad_["PITCH"];
-                            in.yaw = targets_rad_["YAW"];
-                            in.roll = 0.0;
-                            in.left_counts = state_[1].encoder_counts*256;
-                            in.right_counts = state_[2].encoder_counts*256;
-                            // in.left_counts = 10000;
-                            // in.right_counts = 10000;
-
-                            if (auto wcmds = wrist_.step(in))
-                            {
-                                for (auto &c : *wcmds)
-                                {
-                                    cmds.push_back({c.motor_id, c.command});
-                                    // std::cout << c.motor_id << " " << c.command << "\n";
-                                }
-                            }
-                        }
+                        for (auto &[id, state] : value.motors)
+                            state = state_[id];
+                        for (auto dof : value.dofs)
+                            dof.target = targets_rad_[dof.name];
+                        std::unordered_map<int, MotorCommand> motor_cmd;
+                        pack_module_inputs(lays_[c], value, ins_[c]);
+                        ctrls_[c].step(ins_[c], outs_[c], value.control_mode);
+                        apply_module_outputs(lays_[c], outs_[c], motor_cmd);
+                        c += 1;
+                        for (const auto &[id, cmd] : motor_cmd)
+                            cmds.push_back({id, cmd.velocity_cmd});
                     }
+
+                    // for (auto d : devices_)
+                    // {
+                    //     // std::cout << "device: " << joint_key_.at(d);
+                    //     // if (d != 1 && d != 2)
+                    //     // {
+                    //     //     int32_t enc = state_[d].encoder_counts;
+                    //     //     double tgt = targets_rad_[ctrl_key_[d]];
+                    //     //     const std::string &key = joint_key_.at(d);
+                    //     //     // std::cout << " encoder: " << enc;
+                    //     //     int32_t mA = policy_.command_mA(key, tgt, enc*256);
+                    //     //     // std::cout << " control method: Hall, target: " << tgt << "\n";
+                    //     //     cmds.push_back({d, mA});
+                    //     // } else
+                    //     if (ctrl_key_[d] == "INDEX_FINGER")
+                    //     {
+                    //         int motor;
+                    //         int32_t mA;
+                    //         // std::cout << joint_angles_.index_mcp <<" "<< joint_angles_.index_pip<<" " << joint_angles_.index_dip<<"\n";
+                    //         fc_step(&ctrl_,
+                    //                 FC_INDEX_MCP,
+                    //                 targets_rad_[ctrl_key_[d]],
+                    //                 joint_angles_.index_mcp,
+                    //                 joint_angles_.index_pip,
+                    //                 joint_angles_.index_dip,
+                    //                 joint_vels_.index_mcp,
+                    //                 joint_vels_.index_pip,
+                    //                 joint_vels_.index_dip,
+                    //                 &motor,
+                    //                 &mA);
+                    //         cmds.push_back({d, mA});
+                    //     }
+                    //     else if (d == 1)
+                    //     {
+                    //         in.pitch = targets_rad_["PITCH"];
+                    //         in.yaw = targets_rad_["YAW"];
+                    //         in.roll = 0.0;
+                    //         in.left_counts = state_[1].encoder_counts*256;
+                    //         in.right_counts = state_[2].encoder_counts*256;
+                    //         // in.left_counts = 10000;
+                    //         // in.right_counts = 10000;
+
+                    //         if (auto wcmds = wrist_.step(in))
+                    //         {
+                    //             for (auto &c : *wcmds)
+                    //             {
+                    //                 cmds.push_back({c.motor_id, c.command});
+                    //                 // std::cout << c.motor_id << " " << c.command << "\n";
+                    //             }
+                    //         }
+                    //     }
+                    // }
                 } else {
                     int cmd_type = (uint8_t)MotorMode::HALL_GUARD;
                     int cmd_val = 0;
