@@ -93,9 +93,9 @@ void MainWindow::buildUI()
     log_->setReadOnly(true);
     // log_->setMaximumHeight(50);
 
-    // ogre_ = new OgreWidget(this);
-    motor_ = new MotorPanel(this);
-    camera_ = new CameraWidget(this);
+    ogre_ = new OgreWidget();
+    motor_ = new MotorPanel();
+    camera_ = new CameraWidget();
 
     upperTabs = new DraggableTabWidget();
     lowerTabs = new DraggableTabWidget();
@@ -142,11 +142,22 @@ void MainWindow::buildUI()
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
 
+    auto* mainMenu = menuBar()->addMenu("&Menu");
     auto* tabsMenu = menuBar()->addMenu("&Tabs");
-    auto* actDiagram = tabsMenu->addAction("Open &Diagrams");
-    auto* actOpenDetect = tabsMenu->addAction("Open &Hand Detect");
+    auto* actUrdfLoader = tabsMenu->addAction("&3D Model");
+    auto* actConnect = tabsMenu->addAction("&Connector");
+    auto* actAlgoPanel = tabsMenu->addAction("&Control Algorithm");
+    auto* actDiagram = tabsMenu->addAction("&Diagrams");
+    auto* actHandDetect = tabsMenu->addAction("&Hand Detect");
+    auto* actLog = tabsMenu->addAction("&Log");
+    auto* actInfo = tabsMenu->addAction("&Robot Info");
+    auto* actMotor = tabsMenu->addAction("&Motor Control");
 
-    connect(actOpenDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
+    connect(actHandDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
+    connect(actConnect, &QAction::triggered, this, &MainWindow::openConnectorTab);
+    connect(actLog, &QAction::triggered, this, &MainWindow::openLogTab);
+    connect(actUrdfLoader, &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
+    connect(actMotor, &QAction::triggered, this, &MainWindow::openMotorControlTab);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -315,4 +326,24 @@ void MainWindow::onLowerTabCloseRequested(int idx)
 void MainWindow::openCameraTab()
 {
     upperTabs->addTab(camera_, "Hand Detect");
+}
+
+void MainWindow::openConnectorTab()
+{
+    upperTabs->addTab(connect_, "Connector");
+}
+
+void MainWindow::openLogTab()
+{
+    upperTabs->addTab(log_, "Log");
+}
+
+void MainWindow::openUrdfLoaderTab()
+{
+    upperTabs->addTab(ogre_, "3D Model");
+}
+
+void MainWindow::openMotorControlTab()
+{
+    upperTabs->addTab(motor_, "Motor Control");
 }

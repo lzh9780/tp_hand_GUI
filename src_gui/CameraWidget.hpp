@@ -11,7 +11,7 @@ class CameraWidget : public QFrame
 {
     Q_OBJECT
 public:
-    explicit CameraWidget(QWidget *parent);
+    explicit CameraWidget(QWidget *parent = nullptr);
     void onChange(bool on);
     void setFrame(const QImage img);
 

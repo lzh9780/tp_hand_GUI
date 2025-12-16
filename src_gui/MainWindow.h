@@ -6,7 +6,7 @@
 #include "grip/settings.hpp"
 #include "ActionStore.hpp"
 #include "PyCamWorker.h"
-// #include "OgreWidget.h"
+#include "OgreWidget.h"
 #include "MotorPanel.hpp"
 
 class SidePanel;
@@ -49,6 +49,10 @@ private slots:
 private:
     void buildUI();
     void openCameraTab();
+    void openConnectorTab();
+    void openLogTab();
+    void openUrdfLoaderTab();
+    void openMotorControlTab();
 
 private:
     std::vector<int> devices_;
@@ -62,7 +66,7 @@ private:
     QWidget* central;
     SidePanel* side_{nullptr};
     QTextEdit* log_{nullptr};
-    // OgreWidget* ogre_;
+    OgreWidget* ogre_;
     MotorPanel* motor_;
     PyCamWorker* worker_ = nullptr;
     QThread* workerThread_ = nullptr;

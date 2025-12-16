@@ -11,7 +11,7 @@ class MotorPanel : public QFrame
 {
     Q_OBJECT
 public:
-    explicit MotorPanel(QWidget *parent);
+    explicit MotorPanel(QWidget *parent = nullptr);
 //     void onChange(bool on);
     void load(grip::HandSettings hand);
 

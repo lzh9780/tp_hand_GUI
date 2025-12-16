@@ -7,6 +7,7 @@
 #include <QComboBox>
 #include <QDebug>
 #include <QSpacerItem>
+#include <QScrollArea>
 
 MotorPanel::MotorPanel(QWidget *parent)
     : QFrame(parent)
@@ -16,10 +17,14 @@ MotorPanel::MotorPanel(QWidget *parent)
 void MotorPanel::load(grip::HandSettings hand)
 {
     auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
+    auto *scroll_ = new QScrollArea();
+    auto *content = new QWidget();
+    auto *contentLyt = new QVBoxLayout(content);
 
     for (auto s : hand.structs) {
         auto *nameLbl = new QLabel(s.first.c_str());
-        root->addWidget(nameLbl);
+        contentLyt->addWidget(nameLbl);
 
         for (auto m : s.second.motors) {
             auto *hb = new QHBoxLayout();
@@ -35,10 +40,13 @@ void MotorPanel::load(grip::HandSettings hand)
             hb->addWidget(motorBox);
             hb->setContentsMargins(8, 0, 0, 0);
 
-            root->addLayout(hb);
+            contentLyt->addLayout(hb);
         }
     }
 
     auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);
-    root->addItem(spacer);
+    contentLyt->addItem(spacer);
+    scroll_->setWidget(content);
+    root->addWidget(scroll_);
+    scroll_->setWidgetResizable(true);
 }
