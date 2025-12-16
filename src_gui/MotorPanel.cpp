@@ -24,7 +24,7 @@ void MotorPanel::load(grip::HandSettings hand)
         for (auto m : s.second.motors) {
             auto *hb = new QHBoxLayout();
 
-            auto *motorLbl = new QLabel(QString("motor_%1   ").arg(m.id));
+            auto *motorLbl = new QLabel(QString("motor_%1   ").arg(m));
             auto *motorBox = new QComboBox();
             motorBox->addItem("Normal");
             motorBox->addItem("Zero Torque");

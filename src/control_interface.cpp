@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <cmath>
 
 namespace grip
 {
@@ -36,7 +37,7 @@ namespace grip
             for (const auto &j : value.joints) 
             {
                 JointState js;
-                ms.joints.emplace(j, js);
+                ms.joints.emplace(j.name, js);
             }
             hand_.emplace(key, ms);
 

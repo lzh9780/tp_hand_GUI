@@ -1,4 +1,4 @@
-#include "HandControl.hpp"
+#include "grip/HandControl.hpp"
 
 #include <algorithm>
 #include <cmath>
