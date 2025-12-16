@@ -11,7 +11,7 @@
 #include <QMenuBar>
 #include <QTabWidget>
 #include <iostream>
-
+#include "DraggableTabWidget.hpp"
 #include "Connector.hpp"
 #include "CameraWidget.hpp"
 
@@ -97,8 +97,11 @@ void MainWindow::buildUI()
     motor_ = new MotorPanel(this);
     camera_ = new CameraWidget(this);
 
-    upperTabs = new QTabWidget();
-    lowerTabs = new QTabWidget();
+    upperTabs = new DraggableTabWidget();
+    lowerTabs = new DraggableTabWidget();
+
+    // upperTabs->setTabBar(new DraggableTabBar(upperTabs));
+    // lowerTabs->setTabBar(new DraggableTabBar(lowerTabs));
 
     upperTabs->setTabsClosable(true);
     lowerTabs->setTabsClosable(true);
