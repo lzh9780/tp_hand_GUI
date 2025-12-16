@@ -5,36 +5,55 @@ software_version: 0
 
 hand_struct:
   WRIST:
-    joints:
+    dofs:
       - pitch
       - yaw
     route: [{max: 50, min: -30}, {max: 21, min: -21}]
-    motors: [{id: 1, param: [0, 0]}, {id: 2, param: [0, 0]}]
+    motors: [1, 2]
   PINKY:
-    joints:
+    dofs:
       - pinky
     route: [{max: 150, min: 0}]
-    motors: [{id: 3, param: [1]}]
-  RING_FINGER:
     joints:
+      - pinky_mcp
+      - pinky_pip
+      - pinky_dip
+    motors: [3]
+  RING_FINGER:
+    dofs:
       - ring
     route: [{max: 150, min: 0}]
-    motors: [{id: 6, param: [1]}]
-  MIDDLE_FINGER:
     joints:
+      - ring_mcp
+      - ring_pip
+      - ring_dip
+    motors: [6]
+  MIDDLE_FINGER:
+    dofs:
       - middle
     route: [{max: 150, min: 0}]
-    motors: [{id: 4, param: [1]}]
-  INDEX_FINGER:
     joints:
+      - middle_mcp
+      - middle_pip
+      - middle_dip
+    motors: [4]
+  INDEX_FINGER:
+    dofs:
       - index
     route: [{max: 150, min: 0}]
-    motors: [{id: 7, param: [1]}]
-  THUMB:
     joints:
+      - index_mcp
+      - index_pip
+      - index_dip
+    motors: [7]
+  THUMB:
+    dofs:
       - thumb
     route: [{max: 150, min: 0}]
-    motors: [{id: 5, param: [1]}]
+    joints:
+      - thumb_mcp
+      - thumb_ip
+    motors: [5]
 
 control_policy: ["hall_protect", "cascaded_pid"]
 wrist_control_policy: ["default", "soft"]

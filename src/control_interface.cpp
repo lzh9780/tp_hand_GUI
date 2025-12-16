@@ -11,7 +11,7 @@ namespace grip
     //                                    const std::unordered_map<int, std::string> &joint_key_of,
     //                                    const NativePolicySettings &policy_cfg,
     //                                    std::chrono::milliseconds period)
-    //     : devices_(devices), joint_key_(joint_key_of), policy_(policy_cfg), control_period_(period)
+    //     : motors_(devices), joint_key_(joint_key_of), policy_(policy_cfg), control_period_(period)
 
     ControlInterface::ControlInterface(const HandSettings &hand_cfg,
                                        std::chrono::milliseconds period)
@@ -25,19 +25,19 @@ namespace grip
             for (const auto &dof : value.dofs)
             {
                 DofState ds;
-                ds.name = dof;
+                ds.name = dof.name;
                 ms.dofs.push_back(ds);
             }
             for (const auto &m : value.motors)
             {
-                devices_.push_back(m);
+                motors_.push_back(m);
                 Telemetry t;
                 ms.motors.emplace(m, t);
             }
             for (const auto &j : value.joints) 
             {
                 JointState js;
-                ms.joints.emplace(j.name, js);
+                ms.joints.emplace(j, js);
             }
             hand_.emplace(key, ms);
 
@@ -86,7 +86,7 @@ namespace grip
                                        std::chrono::milliseconds period)
         : control_period_(period)
     {
-        devices_.push_back(actuator_cfg.device_id);
+        motors_.push_back(actuator_cfg.device_id);
         state_[actuator_cfg.device_id] = Telemetry{};
 
         targets_rad_["Max Velocity"] = 0.0f;
@@ -144,26 +144,26 @@ namespace grip
         using namespace std::chrono_literals;
 
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
+                           std::vector<int32_t>(motors_.size(), (uint32_t)10));
             std::this_thread::sleep_for(10ms);
         }
         // 1) MAX_CURRENT
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(devices_.size(), 1500));
+                           std::vector<int32_t>(motors_.size(), 1500));
             std::this_thread::sleep_for(10ms);
         }
         // 2) CALIBRATE negative speed
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::MOTOR_COMMAND,
                            (uint8_t)MotorMode::CALIBRATE,
-                           std::vector<int32_t>(devices_.size(), -100));
+                           std::vector<int32_t>(motors_.size(), -100));
             std::this_thread::sleep_for(10ms);
         }
         // 3) wait for stall -> stop -> write zero
@@ -173,19 +173,19 @@ namespace grip
                 std::lock_guard<std::mutex> lk(mtx_);
                 if (all_stalled_locked())
                 {
-                    send_broadcast(devices_,
+                    send_broadcast(motors_,
                                    MsgKind::MOTOR_COMMAND,
                                    (uint8_t)MotorMode::SPEED,
-                                   std::vector<int32_t>(devices_.size(), 0));
+                                   std::vector<int32_t>(motors_.size(), 0));
                     std::this_thread::sleep_for(500ms);
-                    send_broadcast(devices_,
+                    send_broadcast(motors_,
                                    MsgKind::SET_MOTOR_PARAM,
                                    (uint8_t)ParamField::ENCODER_POS,
-                                   std::vector<int32_t>(devices_.size(), -8));
-                    send_broadcast(devices_,
+                                   std::vector<int32_t>(motors_.size(), -8));
+                    send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(devices_.size(), 2500));
+                           std::vector<int32_t>(motors_.size(), 2500));
             std::this_thread::sleep_for(10ms);
                     break;
                 }
@@ -202,7 +202,7 @@ namespace grip
 
     bool ControlInterface::all_stalled_locked() const
     {
-        for (auto d : devices_)
+        for (auto d : motors_)
         {
             auto it = state_.find(d);
             if (it == state_.end())
@@ -251,7 +251,7 @@ namespace grip
                 if (kind_bits == (uint32_t)MsgKind::MOTOR_TELEMETRY)
                 {
                     auto dev = (int)dev_bits;
-                    if (std::find(devices_.begin(), devices_.end(), dev) == devices_.end())
+                    if (std::find(motors_.begin(), motors_.end(), dev) == motors_.end())
                         continue;
                     if (f.data.size() < 14)
                         continue;
@@ -314,6 +314,9 @@ namespace grip
                     // std::cout << s << "\n";
                     std::lock_guard<std::mutex> lk(mtx_);
                     board_state_ = int(s);
+                    if (board_state_ == 1) 
+                        calibrated_ = true;
+                    else calibrated_ = false;
                 }
             }
         }
@@ -322,10 +325,10 @@ namespace grip
     void ControlInterface::control_loop()
     {
         {
-            send_broadcast(devices_,
+            send_broadcast(motors_,
                            MsgKind::SET_MOTOR_PARAM,
                            (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(devices_.size(), (uint32_t)10));
+                           std::vector<int32_t>(motors_.size(), (uint32_t)10));
             // std::this_thread::sleep_for(10ms);
             send_single(0x1e,
                         MsgKind::SET_MOTOR_PARAM,
@@ -336,11 +339,11 @@ namespace grip
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
-        // {
-        //     std::unique_lock<std::mutex> lk(mtx_);
-        //     cv_.wait(lk, [this]
-        //              { return calibrated_ || shutting_down_; });
-        // }
+        {
+            std::unique_lock<std::mutex> lk(mtx_);
+            cv_.wait(lk, [this]
+                     { return calibrated_ || shutting_down_; });
+        }
         if (shutting_down_)
             return;
 

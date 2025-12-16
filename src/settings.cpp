@@ -70,24 +70,21 @@ namespace grip
                 {
                     ModuleStruct ms;
                     int counter = 0;
-                    for (const auto name : m->second["joints"]) {
-                        JointInfo j;
-                        j.name = name.as<std::string>();
-                        j.route.first = m->second["route"][counter]["min"].as<float_t>(j.route.first);
-                        j.route.second = m->second["route"][counter]["max"].as<float_t>(j.route.second);
-                        ms.joints.push_back(j);
+                    for (const auto name : m->second["dofs"]) {
+                        DofInfo d;
+                        d.name = name.as<std::string>();
+                        d.route.first = m->second["route"][counter]["min"].as<float_t>(d.route.first);
+                        d.route.second = m->second["route"][counter]["max"].as<float_t>(d.route.second);
+                        ms.dofs.push_back(d);
                         counter += 1;
                     }
-                    for (const auto motor : m->second["motors"]) {
-                        // MotorInfo mi;
-                        // mi.id = motor["id"].as<int32_t>(mi.id);
-                        // for (const auto p : motor["param"]) {
-                        //     mi.joint_map.push_back(p.as<int32_t>());
-                        // }
-                        // std::cout << mi.id << '\n';
-                        ms.motors.push_back(motor["id"].as<int32_t>());
-                        
-                    }
+
+                    for (const auto motor : m->second["motors"]) 
+                        ms.motors.push_back(motor.as<int32_t>());
+
+                    for (const auto joint : m->second["joints"])
+                        ms.joints.push_back(joint.as<std::string>());
+                    
                     hand.structs[m->first.as<std::string>()] = std::move(ms);
                 }
         } 

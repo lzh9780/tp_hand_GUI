@@ -301,8 +301,8 @@ void SidePanel::loadHandControllor(grip::HandSettings hand_cfg) {
         ctrlHl->addWidget(mode_box);
         sliderVBox_->addLayout(ctrlHl);
 
-        for (auto j : s.second.joints) {
-            loadSliderModule(QString(j.name.c_str()), j.route.first, j.route.second);
+        for (auto d : s.second.dofs) {
+            loadSliderModule(QString(d.name.c_str()), d.route.first, d.route.second);
         }
 
         connect(mode_box, &QComboBox::currentTextChanged,
