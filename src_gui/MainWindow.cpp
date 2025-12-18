@@ -14,6 +14,7 @@
 #include "DraggableTabWidget.hpp"
 #include "Connector.hpp"
 #include "CameraWidget.hpp"
+#include "PlotPanel.hpp"
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -142,7 +143,7 @@ void MainWindow::buildUI()
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
 
-    auto* mainMenu = menuBar()->addMenu("&Menu");
+    // auto* mainMenu = menuBar()->addMenu("&Menu");
     auto* tabsMenu = menuBar()->addMenu("&Tabs");
     auto* actUrdfLoader = tabsMenu->addAction("&3D Model");
     auto* actConnect = tabsMenu->addAction("&Connector");
@@ -158,6 +159,7 @@ void MainWindow::buildUI()
     connect(actLog, &QAction::triggered, this, &MainWindow::openLogTab);
     connect(actUrdfLoader, &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
     connect(actMotor, &QAction::triggered, this, &MainWindow::openMotorControlTab);
+    connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -346,4 +348,10 @@ void MainWindow::openUrdfLoaderTab()
 void MainWindow::openMotorControlTab()
 {
     upperTabs->addTab(motor_, "Motor Control");
+}
+
+void MainWindow::openDiagram()
+{
+    auto *plot = new PlotPanel();
+    upperTabs->addTab(plot, "Diagram");
 }
