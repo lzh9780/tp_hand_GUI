@@ -339,11 +339,11 @@ namespace grip
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
-        {
-            std::unique_lock<std::mutex> lk(mtx_);
-            cv_.wait(lk, [this]
-                     { return calibrated_ || shutting_down_; });
-        }
+        // {
+        //     std::unique_lock<std::mutex> lk(mtx_);
+        //     cv_.wait(lk, [this]
+        //              { return calibrated_ || shutting_down_; });
+        // }
         if (shutting_down_)
             return;
 
@@ -441,9 +441,10 @@ namespace grip
                     send_single(1, MsgKind::MOTOR_COMMAND, (uint8_t)cmd_type, (int16_t)cmd_val, (int16_t)0);
                 }
             }
-            for (auto &c : cmds){
+            for (auto &c : cmds)
+            {
                 send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
-                // std::cout << "commands: " << c.first << " data: " << c.second << "\n";
+                std::cout << "commands: " << c.first << " data: " << c.second << "\n";
             }
             std::this_thread::sleep_until(next);
         }

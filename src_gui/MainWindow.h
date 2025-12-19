@@ -53,7 +53,7 @@ private:
     void openLogTab();
     void openUrdfLoaderTab();
     void openMotorControlTab();
-    void openDiagram();
+    // void openDiagram();
 
 private:
     std::vector<int> devices_;

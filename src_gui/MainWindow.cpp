@@ -14,7 +14,7 @@
 #include "DraggableTabWidget.hpp"
 #include "Connector.hpp"
 #include "CameraWidget.hpp"
-#include "PlotPanel.hpp"
+// #include "PlotPanel.hpp"
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -159,7 +159,7 @@ void MainWindow::buildUI()
     connect(actLog, &QAction::triggered, this, &MainWindow::openLogTab);
     connect(actUrdfLoader, &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
     connect(actMotor, &QAction::triggered, this, &MainWindow::openMotorControlTab);
-    connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
+    // connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -223,11 +223,11 @@ void MainWindow::onConnectorDeviceConnect()
         // qDebug() << dev_cfg_.device_type;
         if (dev_cfg_.device_type == 0)
         {
-            // for (const auto &[key, value] : hand_cfg_.structs)
-            // {
-            //     for (auto &s : value.joints)
-            //         joint_names << QString::fromStdString(s);
-            // }
+            for (const auto &[key, value] : hand_cfg_.structs)
+            {
+                for (auto &s : value.dofs)
+                    joint_names << QString::fromStdString(s.name);
+            }
             // side_->loadSliders(joint_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
@@ -238,7 +238,7 @@ void MainWindow::onConnectorDeviceConnect()
 
         if (dev_cfg_.device_type == 0) {
             ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-            // ctrl_->start_bus(cfg_.can_device);
+            ctrl_->start_bus(cfg_.can_device);
             log_->append("Device Connected. ");
             log_->append("Start Calibration... ");
             // ctrl_->run_calibration();
@@ -253,9 +253,9 @@ void MainWindow::onConnectorDeviceConnect()
             side_->updateStore(store);
             side_->loadActions();
 
-            // auto timer_ = new QTimer(this);
-            // connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-            // timer_->start(10);
+            auto timer_ = new QTimer(this);
+            connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+            timer_->start(10);
         } else {
             ctrl_ = new grip::ControlInterface(act_cfg_, std::chrono::milliseconds(10));
             ctrl_->start_bus(cfg_.can_device);
@@ -350,8 +350,8 @@ void MainWindow::openMotorControlTab()
     upperTabs->addTab(motor_, "Motor Control");
 }
 
-void MainWindow::openDiagram()
-{
-    auto *plot = new PlotPanel();
-    upperTabs->addTab(plot, "Diagram");
-}
+// void MainWindow::openDiagram()
+// {
+//     auto *plot = new PlotPanel();
+//     upperTabs->addTab(plot, "Diagram");
+// }
