@@ -49,7 +49,7 @@ public:
     JointAngles get_joint_angles() const;
     int get_board_state() const;
     void set_control_mode(std::string mode);
-    void set_module_control_mode(std::string module, std::string mode);
+    // void set_module_control_mode(std::string module, std::string mode);
 
 private:
     void receiver_loop();
@@ -65,6 +65,13 @@ private:
     void drain_pending_targets_locked();
 
 private:
+    struct ControlModule {
+        ModuleState ms = ModuleState();
+        HandControl c = HandControl(ms);
+        ModuleLayout lay = ModuleLayout();
+        ModuleInputSnapshot in = ModuleInputSnapshot();
+        ModuleOutputSnapshot out = ModuleOutputSnapshot();
+    };
     // hw
     CanBus bus_{33,0};
     uint32_t bus_channel_{0};
@@ -87,11 +94,14 @@ private:
     uint32_t time_stamp_ = 0;
     int board_state_;
     std::string mode_{"Position"};
-    std::unordered_map<std::string, std::string> module_control_mode;
-    std::vector<HandControl> ctrls_;
-    std::vector<ModuleLayout> lays_; 
-    std::vector<ModuleInputSnapshot> ins_;
-    std::vector<ModuleOutputSnapshot> outs_;
+    // std::unordered_map<std::string, std::string> module_control_mode;
+    // std::vector<HandControl> ctrls_;
+    // std::vector<ModuleLayout> lays_; 
+    // std::vector<ModuleInputSnapshot> ins_;
+    // std::vector<ModuleOutputSnapshot> outs_;
+    std::unordered_map<std::string, ControlModule> ctrl_mod_;
+    std::unordered_map<std::string, std::string> joint_belongs;
+    std::unordered_map<int, std::string> motor_belongs;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

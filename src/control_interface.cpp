@@ -26,6 +26,8 @@ namespace grip
             {
                 DofState ds;
                 ds.name = dof.name;
+                for (const auto &m : value.motors)
+                    ds.motors.push_back(m);
                 ms.dofs.push_back(ds);
             }
             for (const auto &m : value.motors)
@@ -33,23 +35,38 @@ namespace grip
                 motors_.push_back(m);
                 Telemetry t;
                 ms.motors.emplace(m, t);
+                motor_belongs.emplace(m, key);
+                std::cout << m << " in " << key << "\n"; 
             }
             for (const auto &j : value.joints) 
             {
                 JointState js;
                 ms.joints.emplace(j, js);
+                joint_belongs.emplace(j, key);
             }
             hand_.emplace(key, ms);
 
+            if (key != "WRIST") ms.control_mode = 2;
             HandControl c{ms};
             ModuleLayout lay = c.layout();
             ModuleInputSnapshot in = make_module_input(lay);
             ModuleOutputSnapshot out = make_module_output(lay);
 
-            ctrls_.push_back(c);
-            lays_.push_back(lay);
-            ins_.push_back(in);
-            outs_.push_back(out);
+            // ctrls_.push_back(c);
+            // lays_.push_back(lay);
+            // ins_.push_back(in);
+            // outs_.push_back(out);
+
+            ControlModule cm;
+            cm.ms = ms;
+            cm.c = c;
+            cm.lay = lay;
+            cm.in = in;
+            cm.out = out;
+
+            ctrl_mod_.emplace(key, cm);
+
+            std::cout << "mod name: " << key << " control mode: " << ms.control_mode << '\n';
         }
 
         /* To match the current algorithm. Remove later */
@@ -258,13 +275,14 @@ namespace grip
                     Telemetry t;
                     t.speed = rd_i16(&f.data[0]);
                     t.iq_mA = rd_i16(&f.data[2]);
-                    t.encoder_counts = rd_i32(&f.data[4]);
+                    t.encoder_counts = rd_i32(&f.data[4]) * 256;
                     t.bus_mV = rd_u16(&f.data[8]);
                     t.motor_degC = (int8_t)f.data[10];
                     t.fault = rd_u16(&f.data[11]);
                     t.state = f.data[13];
                     std::lock_guard<std::mutex> lk(mtx_);
                     state_[dev] = t;
+                    // hand_[motor_belongs[dev]].motors[dev] = t;
 #if GRIP_DEBUG_RX
                     if ((int)dev == 1 || (int)dev == 2) 
                     std::cout << "dev=" << (int)dev << " iq=" << t.iq_mA << " enc=" << t.encoder_counts << "\n";
@@ -356,18 +374,18 @@ namespace grip
                 drain_pending_targets_locked();
                 if (hand_.size() != 0) 
                 {
-                    int c = 0;
                     for (auto &[key, value] : hand_) 
                     {
                         for (auto &[id, state] : value.motors)
                             state = state_[id];
-                        for (auto dof : value.dofs)
+                        for (auto dof : value.dofs){
                             dof.target = targets_rad_[dof.name];
+                            std::cout << dof.name << " " << dof.target << "\n";}
                         std::unordered_map<int, MotorCommand> motor_cmd;
-                        pack_module_inputs(lays_[c], value, ins_[c]);
-                        ctrls_[c].step(ins_[c], outs_[c], value.control_mode);
-                        apply_module_outputs(lays_[c], outs_[c], motor_cmd);
-                        c += 1;
+                        auto ctrl_mod = ctrl_mod_[key];
+                        pack_module_inputs(ctrl_mod.lay, value, ctrl_mod.in);
+                        ctrl_mod.c.step(ctrl_mod.in, ctrl_mod.out, value.control_mode);
+                        apply_module_outputs(ctrl_mod.lay, ctrl_mod.out, motor_cmd);
                         for (const auto &[id, cmd] : motor_cmd)
                             cmds.push_back({id, cmd.velocity_cmd});
                     }
@@ -443,7 +461,7 @@ namespace grip
             }
             for (auto &c : cmds)
             {
-                send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
+                // send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
                 std::cout << "commands: " << c.first << " data: " << c.second << "\n";
             }
             std::this_thread::sleep_until(next);

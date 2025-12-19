@@ -4,6 +4,7 @@
 #include <cmath>
 #include <thread>
 #include <chrono>
+#include <iostream>
 
 namespace grip
 {
@@ -34,9 +35,9 @@ namespace grip
         hall_pid_.resize(Nd);
 
         // Detect wrist DOFs in THIS module
-        auto itP = layout_.dof_index.find("wrist_pitch");
-        auto itY = layout_.dof_index.find("wrist_yaw");
-        auto itR = layout_.dof_index.find("wrist_roll");
+        auto itP = layout_.dof_index.find("pitch");
+        auto itY = layout_.dof_index.find("yaw");
+        auto itR = layout_.dof_index.find("roll");
 
         has_pitch_ = (itP != layout_.dof_index.end());
         has_yaw_ = (itY != layout_.dof_index.end());
@@ -72,6 +73,9 @@ namespace grip
         {
             has_wrist_motors_ = true;
         }
+
+        // std::cout << layout_.dofs.size() << "\n";
+        std::cout << pitch_di_ << " " << yaw_di_ << " " << has_wrist_motors_ << "\n";
 
         wrist_lpf_.pitch_hist.reserve(80);
         wrist_lpf_.roll_hist.reserve(100);
@@ -350,6 +354,7 @@ namespace grip
                                         double &out_left_vel,
                                         double &out_right_vel)
     {
+        // std::cout << "In wrist control";
         const int pitch_stack_size = 80;
         const int roll_stack_size = 100;
         const int yaw_stack_size = 42;
@@ -396,6 +401,8 @@ namespace grip
         const int Right_counts =
             static_cast<int>((Right_mm / linear_screw_pitch_2_mm_per_rev_) * static_cast<double>(encoder_counts_per_rev_2_));
 
+        std::cout << Left_counts << " " << Right_counts << "\n";
+
         const double errL = static_cast<double>(Left_counts - left_enc_counts);
         const double errR = static_cast<double>(Right_counts - right_enc_counts);
 
@@ -412,7 +419,7 @@ namespace grip
         double vL = wrist_pitch_Kp_ * errL + wrist_pitch_Ki_ * wrist_left_pid_.pos_error_int + wrist_pitch_Kd_ * dL;
         double vR = wrist_pitch_Kp_ * errR + wrist_pitch_Ki_ * wrist_right_pid_.pos_error_int + wrist_pitch_Kd_ * dR;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // preserve python sleep(0.1)
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); // preserve python sleep(0.1)
 
         out_left_vel = vL;
         out_right_vel = vR;
@@ -447,6 +454,7 @@ namespace grip
             const int32_t left_enc = (left_mi_ < in.motor_counts.size()) ? in.motor_counts[left_mi_] : 0;
             const int32_t right_enc = (right_mi_ < in.motor_counts.size()) ? in.motor_counts[right_mi_] : 0;
 
+            std::cout << in.motor_counts[left_mi_] << " " << in.motor_counts[right_mi_] << "\n"; 
             double vL = 0.0, vR = 0.0;
             wristControlStep_(pitch_t, roll_t, yaw_t, left_enc, right_enc, vL, vR);
 

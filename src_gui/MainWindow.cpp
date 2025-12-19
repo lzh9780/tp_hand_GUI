@@ -179,7 +179,7 @@ void MainWindow::onSidePanelValuesChanged()
     {
         float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
         ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
-        std::cout << "cmd_type: " << joint_names[i].toUtf8().constData() << ", val: " << rad << "\n";
+        // std::cout << "cmd_type: " << joint_names[i].toUtf8().constData() << ", val: " << rad << "\n";
         log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
     }
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
