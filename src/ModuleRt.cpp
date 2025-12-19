@@ -1,5 +1,6 @@
 #include "grip/ModuleRt.hpp"
 #include <algorithm>
+#include <iostream>
 
 namespace grip
 {

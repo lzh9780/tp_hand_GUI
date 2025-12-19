@@ -36,7 +36,7 @@ namespace grip
                 Telemetry t;
                 ms.motors.emplace(m, t);
                 motor_belongs.emplace(m, key);
-                std::cout << m << " in " << key << "\n"; 
+                // std::cout << m << " in " << key << "\n"; 
             }
             for (const auto &j : value.joints) 
             {
@@ -66,7 +66,7 @@ namespace grip
 
             ctrl_mod_.emplace(key, cm);
 
-            std::cout << "mod name: " << key << " control mode: " << ms.control_mode << '\n';
+            // std::cout << "mod name: " << key << " control mode: " << ms.control_mode << '\n';
         }
 
         /* To match the current algorithm. Remove later */
@@ -378,9 +378,8 @@ namespace grip
                     {
                         for (auto &[id, state] : value.motors)
                             state = state_[id];
-                        for (auto dof : value.dofs){
+                        for (auto &dof : value.dofs)
                             dof.target = targets_rad_[dof.name];
-                            std::cout << dof.name << " " << dof.target << "\n";}
                         std::unordered_map<int, MotorCommand> motor_cmd;
                         auto ctrl_mod = ctrl_mod_[key];
                         pack_module_inputs(ctrl_mod.lay, value, ctrl_mod.in);
@@ -461,8 +460,8 @@ namespace grip
             }
             for (auto &c : cmds)
             {
-                // send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
-                std::cout << "commands: " << c.first << " data: " << c.second << "\n";
+                send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
+                // std::cout << "commands: " << c.first << " data: " << c.second << "\n";
             }
             std::this_thread::sleep_until(next);
         }

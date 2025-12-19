@@ -75,7 +75,7 @@ namespace grip
         }
 
         // std::cout << layout_.dofs.size() << "\n";
-        std::cout << pitch_di_ << " " << yaw_di_ << " " << has_wrist_motors_ << "\n";
+        // std::cout << pitch_di_ << " " << yaw_di_ << " " << has_wrist_motors_ << "\n";
 
         wrist_lpf_.pitch_hist.reserve(80);
         wrist_lpf_.roll_hist.reserve(100);
@@ -401,7 +401,7 @@ namespace grip
         const int Right_counts =
             static_cast<int>((Right_mm / linear_screw_pitch_2_mm_per_rev_) * static_cast<double>(encoder_counts_per_rev_2_));
 
-        std::cout << Left_counts << " " << Right_counts << "\n";
+        // std::cout << Left_counts << " " << Right_counts << "\n";
 
         const double errL = static_cast<double>(Left_counts - left_enc_counts);
         const double errR = static_cast<double>(Right_counts - right_enc_counts);
@@ -454,7 +454,7 @@ namespace grip
             const int32_t left_enc = (left_mi_ < in.motor_counts.size()) ? in.motor_counts[left_mi_] : 0;
             const int32_t right_enc = (right_mi_ < in.motor_counts.size()) ? in.motor_counts[right_mi_] : 0;
 
-            std::cout << in.motor_counts[left_mi_] << " " << in.motor_counts[right_mi_] << "\n"; 
+            // std::cout << in.motor_counts[left_mi_] << " " << in.motor_counts[right_mi_] << "\n"; 
             double vL = 0.0, vR = 0.0;
             wristControlStep_(pitch_t, roll_t, yaw_t, left_enc, right_enc, vL, vR);
 
