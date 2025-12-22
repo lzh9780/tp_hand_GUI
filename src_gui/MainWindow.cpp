@@ -20,9 +20,6 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
     : QMainWindow(parent), cfg_(cfg)
 {
-    // QStringList names;
-    // for (auto &s : cfg.joints)
-    //     names << QString::fromStdString(s);
     buildUI();
     resize(800, 600);
 
@@ -32,9 +29,7 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
     worker_->moveToThread(workerThread_);
 
     // Start worker when thread starts
-    // connect(workerThread_, &QThread::started, worker_, &PyCamWorker::start);
     connect(this, &QObject::destroyed, workerThread_, &QThread::quit);
-    // connect(workerThread_, &QThread::finished, worker_, &QObject::deleteLater);
 
     // Display frames
     connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage &img)
@@ -52,11 +47,6 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
     connect(worker_, &PyCamWorker::runningChanged, this, [this](bool r)
             { camera_->onChange(r); });
 
-    // connect(this, &MainWindow::requestStop, worker_, &PyCamWorker::stop, Qt::QueuedConnection);
-
-    // QTimer* timer_ = new QTimer(this);
-    // connect(timer_, &QTimer::timeout, worker_, &PyCamWorker::onTick);
-    // timer_->start(1000/60);
     workerThread_->start();
 }
 
@@ -84,8 +74,6 @@ void MainWindow::buildUI()
 
     connect_ = new Connector(this, cfg_.models);
 
-    mainContent = new QWidget;
-    // auto *lay = new QHBoxLayout();
     auto *splitter = new QSplitter(Qt::Horizontal, this);
 
     side_ = new SidePanel(this);
@@ -101,15 +89,11 @@ void MainWindow::buildUI()
     upperTabs = new DraggableTabWidget();
     lowerTabs = new DraggableTabWidget();
 
-    // upperTabs->setTabBar(new DraggableTabBar(upperTabs));
-    // lowerTabs->setTabBar(new DraggableTabBar(lowerTabs));
-
     upperTabs->setTabsClosable(true);
     lowerTabs->setTabsClosable(true);
     upperTabs->addTab(connect_, "Connector");
     lowerTabs->addTab(log_, "Log");
 
-    // auto *mainPanel = new QWidget();
     auto *mainLyt = new QSplitter(Qt::Vertical, this);
     // mainLyt->addWidget(ogre_);
     mainLyt->addWidget(upperTabs);
@@ -123,11 +107,7 @@ void MainWindow::buildUI()
     splitter->setStretchFactor(1, 1);
 
     rootLayout->addWidget(splitter);
-    // lay->setContentsMargins(5, 0, 5, 5);
 
-    // mainContent->setLayout(lay);
-    // mainContent->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    // rootLayout->addWidget(mainContent);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     central->setLayout(rootLayout);
 
@@ -183,12 +163,12 @@ void MainWindow::onSidePanelValuesChanged()
         log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
     }
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
-    if (dev_cfg_.device_type == 0 && ctrl_)
-        ctrl_->set_control_mode("Position");
+    if (dev_cfg_.device_type == 0 && ctrl_){}
+        // ctrl_->set_control_mode("Position");
     else if (dev_cfg_.device_type != 0 && ctrl_){
         float rad = float(deg[2]);
         ctrl_->submit_target(side_->get_control_mode(), rad);
-        ctrl_->set_control_mode(side_->get_control_mode());
+        // ctrl_->set_control_mode(side_->get_control_mode());
         
     }
 }
@@ -216,13 +196,7 @@ void MainWindow::onConnectorDeviceConnect()
         dev_cfg_ = grip::load_device_settings(config_path_);
         if (dev_cfg_.device_type == 0){
             hand_cfg_ = grip::load_hand_settings(config_path_);
-            motor_->load(hand_cfg_);}
-        else 
-            act_cfg_ = grip::load_actuator_settings(config_path_);
-
-        // qDebug() << dev_cfg_.device_type;
-        if (dev_cfg_.device_type == 0)
-        {
+            motor_->load(hand_cfg_);
             for (const auto &[key, value] : hand_cfg_.structs)
             {
                 for (auto &s : value.dofs)
@@ -231,12 +205,7 @@ void MainWindow::onConnectorDeviceConnect()
             // side_->loadSliders(joint_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
-        } else {
-            side_->loadActuatorControllor(act_cfg_);
-            // qDebug() << "Actuator Controllor loaded";
-        }
 
-        if (dev_cfg_.device_type == 0) {
             ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
             ctrl_->start_bus(cfg_.can_device);
             log_->append("Device Connected. ");
@@ -256,7 +225,13 @@ void MainWindow::onConnectorDeviceConnect()
             auto timer_ = new QTimer(this);
             connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
             timer_->start(10);
-        } else {
+        }
+        else 
+        {
+            act_cfg_ = grip::load_actuator_settings(config_path_);
+            side_->loadActuatorControllor(act_cfg_);
+            // qDebug() << "Actuator Controllor loaded";
+
             ctrl_ = new grip::ControlInterface(act_cfg_, std::chrono::milliseconds(10));
             ctrl_->start_bus(cfg_.can_device);
             log_->append("Device Connected. ");
