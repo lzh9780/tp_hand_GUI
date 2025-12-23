@@ -120,6 +120,7 @@ void MainWindow::buildUI()
     connect(connect_, &Connector::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
     connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
     connect(connect_, &Connector::modelChange, this, &MainWindow::onConnectorModelChange);
+    connect(connect_, &Connector::stateCheck, this, &MainWindow::onConnectorStateCheck);
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
 
@@ -189,13 +190,43 @@ void MainWindow::onSidePanelNotify(const QString &msg)
     log_->append(msg);
 }
 
-void MainWindow::onConnectorDeviceConnect()
+void MainWindow::onConnectorDeviceConnect(const QString &msg)
+{
+    if (msg == "Connect") 
+    {
+        onDeviceConnect();
+    } else {
+        onDeviceDisconnect();
+    }
+}
+
+void MainWindow::onDeviceConnect()
 {
     try
     {
         dev_cfg_ = grip::load_device_settings(config_path_);
         if (dev_cfg_.device_type == 0){
             hand_cfg_ = grip::load_hand_settings(config_path_);
+
+            ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
+            if (withCan)
+            {
+                ctrl_->start_bus(cfg_.can_device);
+                log_->append("Device Connected. ");
+                log_->append("Start Calibration... ");
+                // ctrl_->run_calibration();
+                // while (ctrl_->get_board_state() != 1)
+                //     log_->append(".");
+                log_->append("Calibration Complete. ");
+                ctrl_->start_control_loop();
+                // log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
+                log_->append("Current control mode: " + side_->modeText());
+
+                auto timer_ = new QTimer(this);
+                connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+                timer_->start(10);
+            }
+            
             motor_->load(hand_cfg_);
             for (const auto &[key, value] : hand_cfg_.structs)
             {
@@ -205,44 +236,51 @@ void MainWindow::onConnectorDeviceConnect()
             // side_->loadSliders(joint_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
-
-            ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-            ctrl_->start_bus(cfg_.can_device);
-            log_->append("Device Connected. ");
-            log_->append("Start Calibration... ");
-            // ctrl_->run_calibration();
-            // while (ctrl_->get_board_state() != 1)
-            //     log_->append(".");
-            log_->append("Calibration Complete. ");
-            ctrl_->start_control_loop();
-            log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
-            log_->append("Current control mode: " + side_->modeText());
-            auto *store = new ActionStore(action_path_.c_str());
-            store->load();
-            side_->updateStore(store);
-            side_->loadActions();
-
-            auto timer_ = new QTimer(this);
-            connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-            timer_->start(10);
         }
         else 
         {
             act_cfg_ = grip::load_actuator_settings(config_path_);
-            side_->loadActuatorControllor(act_cfg_);
-            // qDebug() << "Actuator Controllor loaded";
 
             ctrl_ = new grip::ControlInterface(act_cfg_, std::chrono::milliseconds(10));
-            ctrl_->start_bus(cfg_.can_device);
-            log_->append("Device Connected. ");
-            ctrl_->start_control_loop();
+            if (withCan)
+            {
+                ctrl_->start_bus(cfg_.can_device);
+                log_->append("Device Connected. ");
+                ctrl_->start_control_loop();
+            }
+            side_->loadActuatorControllor(act_cfg_);
         }
+        auto *store = new ActionStore(action_path_.c_str());
+        store->load();
+        side_->updateStore(store);
+        side_->loadActions();
+        
+        connect_->onChange(true);
     }
     catch (const std::exception &e)
     {
         const QString qerr = QString(e.what());
         log_->append(qerr);
+        connect_->onChange(false);
     }
+}
+
+void MainWindow::onDeviceDisconnect()
+{
+    side_->removeAll();
+    motor_->removeAll();
+    if (ctrl_){
+        ctrl_->stop_all();
+        free(ctrl_);}
+    connect_->onChange(false);
+}
+
+void MainWindow::onConnectorStateCheck(Qt::CheckState state)
+{
+    if (state == Qt::Unchecked)
+        withCan = true;
+    else if (state == Qt::Checked)
+        withCan = false;
 }
 
 void MainWindow::onCameraWidgetControlSwitch(const QString &msg)

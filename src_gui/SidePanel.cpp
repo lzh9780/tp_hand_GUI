@@ -238,8 +238,8 @@ void SidePanel::buildSliderPanel()
 
 void SidePanel::loadSliderModule(QString name, float min, float max)
 {
-    auto *row = new QWidget;
-    auto *hl = new QHBoxLayout(row);
+    // auto *row = new QWidget;
+    auto *hl = new QHBoxLayout();
     hl->setContentsMargins(6, 2, 6, 2);
     auto *nameLbl = new QLabel(name);
     nameLabels_.append(nameLbl);
@@ -251,11 +251,11 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     hl->addStretch(1);
     hl->addWidget(valEnter);
     hl->addWidget(currValueLbl);
-    sliderVBox_->addWidget(row);
+    sliderVBox_->addLayout(hl);
 
     // Slider row: [0 .. 140] degrees
-    auto *sRow = new QWidget;
-    auto *sl = new QHBoxLayout(sRow);
+    // auto *sRow = new QWidget;
+    auto *sl = new QHBoxLayout();
     sl->setContentsMargins(12, 0, 12, 8);
     auto *sMin = new QLabel(QString::number(min));
     auto *slider = new QSlider(Qt::Horizontal);
@@ -266,7 +266,7 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     sl->addWidget(slider);
     sl->addWidget(sMax);
     sliders_.append(slider);
-    sliderVBox_->addWidget(sRow);
+    sliderVBox_->addLayout(sl);
     valueLbls.append(std::pair(sMin, sMax));
 
     connect(slider, &QSlider::valueChanged, this, &SidePanel::onAnySliderChanged);
@@ -715,4 +715,57 @@ void SidePanel::onControlChanged()
 
 std::string SidePanel::get_control_mode() {
     return mode_box->currentText().toUtf8().constData();
+}
+
+void SidePanel::removeAll() {
+    sliders_.clear();
+    valueLabels_.clear();
+    currValueLabels_.clear();
+    nameLabels_.clear();
+    valueLbls.clear();
+    
+    QLayoutItem *item;
+    while ((item = sliderVBox_->takeAt(0)) != nullptr)
+    {
+        if (QLayout *rowLyt = item->layout())
+        {
+            
+            QLayoutItem *child;
+            while ((child = rowLyt->takeAt(0)))
+            {
+                if (child->widget())
+                    delete child->widget();
+                delete child;
+            }
+            delete rowLyt;
+        }
+        else if (item->widget())
+        {
+            delete item->widget();
+        }
+    }
+
+    auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
+    while ((item = layout->takeAt(0)) != nullptr)
+    {   
+        // qDebug() << "Deleting";
+        if (QLayout *rowLyt = item->layout())
+        {
+            QLayoutItem *child;
+            while ((child = rowLyt->takeAt(0)))
+            {
+                if (child->widget())
+                    delete child->widget();
+                delete child;
+            }
+            delete rowLyt;
+        }
+        else if (item->widget())
+        {
+            delete item->widget();
+        }
+    }
+    delete layout;
+
+    delete store_;
 }

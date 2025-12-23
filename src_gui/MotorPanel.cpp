@@ -12,12 +12,12 @@
 MotorPanel::MotorPanel(QWidget *parent)
     : QFrame(parent)
 {
+    root = new QVBoxLayout(this);
+    root->setContentsMargins(0, 0, 0, 0);
 }
 
 void MotorPanel::load(grip::HandSettings hand)
 {
-    auto *root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
     auto *scroll_ = new QScrollArea();
     auto *content = new QWidget();
     auto *contentLyt = new QVBoxLayout(content);
@@ -49,4 +49,28 @@ void MotorPanel::load(grip::HandSettings hand)
     scroll_->setWidget(content);
     root->addWidget(scroll_);
     scroll_->setWidgetResizable(true);
+}
+
+void MotorPanel::removeAll()
+{
+    QLayoutItem *item;
+    while ((item = root->takeAt(0)) != nullptr)
+    {
+        if (QLayout *rowLyt = item->layout())
+        {
+            
+            QLayoutItem *child;
+            while ((child = rowLyt->takeAt(0)))
+            {
+                if (child->widget())
+                    delete child->widget();
+                delete child;
+            }
+            delete rowLyt;
+        }
+        else if (item->widget())
+        {
+            delete item->widget();
+        }
+    }
 }

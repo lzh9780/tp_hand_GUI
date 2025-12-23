@@ -40,7 +40,8 @@ private slots:
     void onSidePanelValuesChanged();   // Follow mode → immediate send
     void onSidePanelCommitted();       // Setup mode → Execute
     void onSidePanelNotify(const QString& msg);
-    void onConnectorDeviceConnect();
+    void onConnectorDeviceConnect(const QString &msg);
+    void onConnectorStateCheck(Qt::CheckState state);
     void onCameraWidgetControlSwitch(const QString &msg);
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
@@ -54,8 +55,11 @@ private:
     void openUrdfLoaderTab();
     void openMotorControlTab();
     // void openDiagram();
+    void onDeviceConnect();
+    void onDeviceDisconnect();
 
 private:
+    // program modules
     std::vector<int> devices_;
     grip::ControlInterface* ctrl_{nullptr};
     const grip::AppSettings cfg_;
@@ -63,6 +67,10 @@ private:
     grip::HandSettings hand_cfg_;
     grip::ActuatorSettings act_cfg_;
 
+    // params
+    bool withCan = true;
+
+    // widgets
     QWidget* mainContent;
     QWidget* central;
     SidePanel* side_{nullptr};

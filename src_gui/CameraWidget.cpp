@@ -24,13 +24,7 @@ CameraWidget::CameraWidget(QWidget *parent)
 
 void CameraWidget::onSwitch() {
     switchBtn->setEnabled(false);
-    if (switchBtn->text() == "Start Camera") {
-        emit controlSwitch(switchBtn->text());
-        // switchBtn->setText("Stop Camera");
-    } else if (switchBtn->text() == "Stop Camera") {
-        emit controlSwitch(switchBtn->text());
-        // switchBtn->setText("Start Camera");
-    }
+    emit controlSwitch(switchBtn->text());
 }
 
 void CameraWidget::onChange(bool on) {
