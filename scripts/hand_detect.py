@@ -15,7 +15,7 @@ import pyrealsense2 as rs
 # -------------------------- Config --------------------------
 MODEL_PATH = "hand_landmarker.task"  # Put the .task model file in the same folder as this script
 COLOR_W, COLOR_H, FPS = 1280, 720, 30
-CLIPPING_DISTANCE_M = 0.6  # meters
+CLIPPING_DISTANCE_M = 1  # meters
 MASK_MEDIAN_KSIZE = 5      # median blur to denoise the mask (set 0/1 to disable)
 HALO_PIX = 12  # pixels; width of the allowed RGB "halo" around detected near objects (set 0 to disable)
 DRAW_CONNECTIONS = True
@@ -69,39 +69,48 @@ class HandDetector():
         self.stop_flag = False
         self.lock = Lock()
         self.thr:Thread = None
-        
+
         # Low Pass Filter
         self.low_pass_filter_size = 5
         
-        self.finger_joints = {"thumb": {"cmc_rot": 180.0, "cmc_pull": 180.0, "mcp": 180.0, "ip": 180.0}, 
-                           "index": {"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 180.0}, 
-                           "middle":{"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 180.0}, 
-                           "ring": {"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 180.0}, 
-                           "pinky": {"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 180.0}}
+        self.finger_joints = {
+                            "thumb": {"cmc_rot": 0.0, "cmc_pull": 0.0, "mcp": 0.0, "ip": 0.0}, 
+                            "index": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
+                            "middle":{"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
+                            "ring": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
+                            "pinky": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0, "roll": 0.0}
+                            }
         
-        self.previous_finger_joints = {"thumb": {"cmc_rot": MovingAverageFilter(self.low_pass_filter_size), "cmc_pull":  MovingAverageFilter(self.low_pass_filter_size), "mcp":  MovingAverageFilter(self.low_pass_filter_size), "ip":  MovingAverageFilter(self.low_pass_filter_size)}, 
+        self.previous_finger_joints = { 
+                                        "thumb": {"cmc_rot": MovingAverageFilter(self.low_pass_filter_size), "cmc_pull":  MovingAverageFilter(self.low_pass_filter_size), "mcp":  MovingAverageFilter(self.low_pass_filter_size), "ip":  MovingAverageFilter(self.low_pass_filter_size)}, 
                                         "index": {"mcp":  MovingAverageFilter(self.low_pass_filter_size), "pip":  MovingAverageFilter(self.low_pass_filter_size), "dip":  MovingAverageFilter(self.low_pass_filter_size), "sway":  MovingAverageFilter(self.low_pass_filter_size)}, 
                                         "middle":{"mcp":  MovingAverageFilter(self.low_pass_filter_size), "pip":  MovingAverageFilter(self.low_pass_filter_size), "dip":  MovingAverageFilter(self.low_pass_filter_size), "sway":  MovingAverageFilter(self.low_pass_filter_size)}, 
                                         "ring": {"mcp":  MovingAverageFilter(self.low_pass_filter_size), "pip":  MovingAverageFilter(self.low_pass_filter_size), "dip":  MovingAverageFilter(self.low_pass_filter_size), "sway":  MovingAverageFilter(self.low_pass_filter_size)}, 
-                                        "pinky": {"mcp":  MovingAverageFilter(self.low_pass_filter_size), "pip":  MovingAverageFilter(self.low_pass_filter_size), "dip":  MovingAverageFilter(self.low_pass_filter_size), "sway":  MovingAverageFilter(self.low_pass_filter_size)}}
+                                        "pinky": {"mcp":  MovingAverageFilter(self.low_pass_filter_size), "pip":  MovingAverageFilter(self.low_pass_filter_size), "dip":  MovingAverageFilter(self.low_pass_filter_size), "sway":  MovingAverageFilter(self.low_pass_filter_size), "roll":  MovingAverageFilter(self.low_pass_filter_size)}
+                                        }
         
         self.previous_finger_joints_2 = {"thumb": {"cmc_rot": LowPassFilter(30, 6), "cmc_pull":  LowPassFilter(30, 6), "mcp":  LowPassFilter(30, 6), "ip":  LowPassFilter(30, 6)}, 
                                         "index": {"mcp":  LowPassFilter(30, 6), "pip":  LowPassFilter(30, 6), "dip":  LowPassFilter(30, 6), "sway":  LowPassFilter(30, 6)}, 
                                         "middle":{"mcp":  LowPassFilter(30, 6), "pip":  LowPassFilter(30, 6), "dip":  LowPassFilter(30, 6), "sway":  LowPassFilter(30, 6)}, 
                                         "ring": {"mcp":  LowPassFilter(30, 6), "pip":  LowPassFilter(30, 6), "dip":  LowPassFilter(30, 6), "sway":  LowPassFilter(30, 6)}, 
-                                        "pinky": {"mcp":  LowPassFilter(30, 6), "pip":  LowPassFilter(30, 6), "dip":  LowPassFilter(30, 6), "sway":  LowPassFilter(30, 6)}}
+                                        "pinky": {"mcp":  LowPassFilter(30, 6), "pip":  LowPassFilter(30, 6), "dip":  LowPassFilter(30, 6), "sway":  LowPassFilter(30, 6), "roll":  LowPassFilter(30, 6)}
+                                        }
 
         self.wrist_joints = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
 
         self.previous_wrist_joints = {"pitch": MovingAverageFilter(20), "yaw": MovingAverageFilter(10), "roll": MovingAverageFilter(10)}
-        
-        self.previous_wrist_joints_2 = {"pitch": LowPassFilter(30, 1.5), "yaw": LowPassFilter(30, 3), "roll": LowPassFilter(30, 3)}
 
         self.curr_img = None
         # self.hands = {"left": None, "right": None} # init
         # self.hands["left"] = self.finger_joints # left hand value
         # self.hands["right"] = deepcopy(self.finger_joints) # right hand value (need copy)
-        
+
+        self._last_angles = {
+        "Left": (None, None),   # (thumb_cmc_rot, pinky_roll)
+        "Right": (None, None),
+        }
+
+             
     def setup_realsense(self):
         ctx = rs.context()
         device = ctx.query_devices()
@@ -157,6 +166,42 @@ class HandDetector():
         angle_deg = math.degrees(angle_rad)
         return angle_deg
     
+
+    def signed_angle_between_planes(self, n1, n2, axis):
+        """
+        Robust signed dihedral angle between two planes (by normals) around 'axis'.
+        Returns angle in degrees in (-180, 180].
+        NOTE: Do NOT flip normals using dot(n, axis) because here normals are ~perpendicular to axis.
+        """
+        n1 = n1 / np.linalg.norm(n1)
+        n2 = n2 / np.linalg.norm(n2)
+        axis = axis / np.linalg.norm(axis)
+
+        dot_val = np.clip(np.dot(n1, n2), -1.0, 1.0)
+        cross_val = np.dot(np.cross(n1, n2), axis)
+        return math.degrees(math.atan2(cross_val, dot_val))
+
+
+    def unwrap_180(self, curr, prev):
+        """
+        Choose representation among {curr, curr+180, curr-180} closest to prev.
+        This removes flipping between theta and theta±180.
+        """
+        if curr is None or prev is None:
+            return curr
+        candidates = [curr, curr + 180.0, curr - 180.0]
+        return min(candidates, key=lambda x: abs(x - prev))
+
+    def wrap_to_180(self, a):
+        """map any angle to (-180, 180]"""
+        if a is None:
+            return None
+        a = (a + 180.0) % 360.0 - 180.0
+        return a
+
+
+
+
     def hand_landmarker_callback(self, result: vision.HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
         """处理 HandLandmarker 的结果，包括绘制关键点和计算手指关节角度"""
         # 将输出图像转换为 NumPy 数组（RGB通道顺序）
@@ -212,31 +257,91 @@ class HandDetector():
                 pts = [np.array([lm.x, lm.y, lm.z]) for lm in world_landmarks]
 
                 # 计算拇指 CMC 关节的两个角度（两自由度）：
-                #   CMC_rot（大拇指根部绕旋）：由三角形 WRIST-THUMB_MCP-INDEX_MCP 和 WRIST-INDEX_MCP-PINKY_MCP 两平面的法向量计算有符号夹角（外翻为负）(pts[INDEX_MCP][0])
+                #   CMC_rot（大拇指根部绕旋）：由三角形 WRIST-THUMB_MCP-INDEX_MCP 和 WRIST-INDEX_MCP-RING_MCP 两平面的法向量计算有符号夹角（外翻为负）(pts[INDEX_MCP][0])
                 #   CMC_pull（大拇指根部合拢）：以 WRIST 为顶点，计算 THUMB_MCP、WRIST、INDEX_MCP 三点间的夹角
+                # 向量
                 v_w_index = pts[INDEX_MCP] - pts[WRIST]
+                v_w_ring  = pts[RING_MCP]  - pts[WRIST]
                 v_w_thumb = pts[THUMB_MCP] - pts[WRIST]
-                v_w_pinky = pts[PINKY_MCP] - pts[WRIST]
-                normal_thumb_plane = np.cross(v_w_index, v_w_thumb)
-                normal_palm_plane  = np.cross(v_w_index, v_w_pinky)
 
-                # 判定法向量或轴向量有效性
-                if (np.linalg.norm(normal_thumb_plane) < 1e-6 or 
-                    np.linalg.norm(normal_palm_plane) < 1e-6 or 
-                    np.linalg.norm(v_w_index) < 1e-6):
+                # axis for thumb CMC rotation
+                axis_thumb = v_w_index / np.linalg.norm(v_w_index)
+
+                # 手掌坐标系
+                palm_x = v_w_index + v_w_ring
+                palm_x /= np.linalg.norm(palm_x)
+
+                palm_normal = np.cross(v_w_index, v_w_ring)
+                palm_normal /= np.linalg.norm(palm_normal)
+
+                # ---- thumb plane (0, 2, 5) ----
+                thumb_plane_normal = np.cross(v_w_index, v_w_thumb)
+                norm_thumb_plane = np.linalg.norm(thumb_plane_normal)
+
+
+
+                if norm_thumb_plane < 1e-6:
+                    thumb_cmc_rot = None
+                    
+                else:
+                    thumb_plane_normal /= norm_thumb_plane
+
+                    # ---- neutral plane (zero position) ----
+                    # zero when thumb lies in palm plane direction
+                    # reference: palm direction projected orthogonal to axis
+                    v_ref = np.cross(palm_normal, axis_thumb)
+                    v_ref /= np.linalg.norm(v_ref)
+
+                    neutral_plane_normal = np.cross(axis_thumb, v_ref)
+                    neutral_plane_normal /= np.linalg.norm(neutral_plane_normal)
+
+                    # ---- signed rotation ----
+                    thumb_cmc_rot = self.signed_angle_between_planes(
+                        neutral_plane_normal,
+                        thumb_plane_normal,
+                        axis_thumb
+                    )
+
+
+                # 计算小拇指 ROLL 关节的角度（1自由度）：
+                #  pinky_roll（小拇指根部绕旋）：由三角形 WRIST-INDEX_MCP-RING_MCP 和 WRIST-PINKY_MCP-RING_MCP 两平面的法向量计算有符号夹角（外翻为负）(pts[INDEX_MCP][0])
+                v_w_pinky = pts[PINKY_MCP] - pts[WRIST]
+
+                # axis for pinky roll
+                axis_pinky = pts[RING_MCP] - pts[WRIST]
+                axis_pinky = axis_pinky / np.linalg.norm(axis_pinky)
+
+                pinky_plane_normal = np.cross(v_w_ring, v_w_pinky)
+                pinky_plane_normal /= np.linalg.norm(pinky_plane_normal)
+
+                v_ref = np.cross(palm_normal, axis_pinky)
+                v_ref /= np.linalg.norm(v_ref)
+
+                neutral_plane_normal = np.cross(axis_pinky, v_ref)
+                neutral_plane_normal /= np.linalg.norm(neutral_plane_normal)
+
+                if norm_thumb_plane < 1e-6:
                     thumb_cmc_rot = None
                 else:
-                    # 计算掌平面(normal_palm_plane)与拇指平面(normal_thumb_plane)法向量的有向夹角
-                    n1 = normal_thumb_plane / np.linalg.norm(normal_thumb_plane)
-                    n2 = normal_palm_plane  / np.linalg.norm(normal_palm_plane)
-                    axis_vec = v_w_index / np.linalg.norm(v_w_index)
-                    dot_val = np.dot(n1, n2)
-                    # 数值稳定性处理
-                    dot_val = max(-1.0, min(1.0, dot_val))
-                    # 利用叉积和参考轴计算符号（外翻为负）
-                    cross_val = np.dot(np.cross(n1, n2), axis_vec)
-                    thumb_cmc_rot_rad = math.atan2(cross_val, dot_val)
-                    thumb_cmc_rot = math.degrees(thumb_cmc_rot_rad)
+                    pinky_roll = self.signed_angle_between_planes(
+                        neutral_plane_normal,
+                        pinky_plane_normal,
+                        axis_pinky
+                    )
+
+                # --------- 关键修复：180度互补跳变消除（unwrap） ----------
+                hand_label = result.handedness[hand_idx][0].category_name  # "Left" or "Right"  (你代码里一般就叫 handedness)
+                prev_thumb, prev_pinky = self._last_angles.get(hand_label, (None, None))
+
+                #thumb_cmc_rot = wrap_to_180(unwrap_180(thumb_cmc_rot, prev_thumb))
+                #pinky_roll    = wrap_to_180(unwrap_180(pinky_roll, prev_pinky))
+                if thumb_cmc_rot < 0 or thumb_cmc_rot is None:
+                    thumb_cmc_rot = prev_thumb
+                if pinky_roll < 0 or pinky_roll is None:
+                    pinky_roll = prev_pinky
+
+                self._last_angles[hand_label] = (thumb_cmc_rot, pinky_roll)
+                # -------------------------------------------------------
 
                 # 计算拇指合拢角（使用 WRIST 为顶点的三点角度）
                 thumb_cmc_pull = self.calc_angle(pts[THUMB_MCP], pts[WRIST], pts[INDEX_MCP])
@@ -313,43 +418,40 @@ class HandDetector():
                 with self.lock:
                     # 拇指关节角
                     if thumb_cmc_rot is not None:
-                        # print(f"Thumb : CMC_rot={thumb_cmc_rot:.1f}°, CMC_pull={thumb_cmc_pull:.1f}°, MCP={thumb_mcp:.1f}°, IP={thumb_ip:.1f}°")
-                        
                         self.finger_joints["thumb"]["cmc_rot"] = self.previous_finger_joints["thumb"]["cmc_rot"].update(thumb_cmc_rot) # low pass filter
 
-                
                     self.finger_joints["thumb"]["cmc_pull"] = self.previous_finger_joints["thumb"]["cmc_pull"].update(thumb_cmc_pull) # low pass filter
 
-                    
                     self.finger_joints["thumb"]["mcp"] = self.previous_finger_joints["thumb"]["mcp"].update(thumb_mcp) # low pass filter
 
-                    
                     self.finger_joints["thumb"]["ip"] = self.previous_finger_joints["thumb"]["ip"].update(thumb_ip) # low pass filter
 
                     
-                    self.finger_joints["index"]["mcp"] = self.previous_finger_joints_2["index"]["mcp"].update(index_mcp) # low pass filter
+                    self.finger_joints["index"]["mcp"] = self.previous_finger_joints["index"]["mcp"].update(index_mcp) # low pass filter
 
-                    
-                    self.finger_joints["index"]["pip"] = self.previous_finger_joints_2["index"]["pip"].update(index_pip) # low pass filter
+                    self.finger_joints["index"]["pip"] = self.previous_finger_joints["index"]["pip"].update(index_pip) # low pass filter
 
-                    
-                    self.finger_joints["index"]["dip"] = self.previous_finger_joints_2["index"]["dip"].update(index_dip) # low pass filter
+                    self.finger_joints["index"]["dip"] = self.previous_finger_joints["index"]["dip"].update(index_dip) # low pass filter
+
+                    self.finger_joints["index"]["sway"] = self.previous_finger_joints["index"]["sway"].update(index_sway) # low pass filter
 
                     
                     self.finger_joints["middle"]["mcp"] = self.previous_finger_joints["middle"]["mcp"].update(middle_mcp) # low pass filter
-
                     
                     self.finger_joints["middle"]["pip"] = self.previous_finger_joints["middle"]["pip"].update(middle_pip) # low pass filter
 
                     self.finger_joints["middle"]["dip"] = self.previous_finger_joints["middle"]["dip"].update(middle_dip) # low pass filter
 
-                    self.finger_joints["ring"]["mcp"] = self.previous_finger_joints["ring"]["mcp"].update(ring_mcp) # low pass filter
-                    
+                    self.finger_joints["middle"]["sway"] = self.previous_finger_joints["middle"]["sway"].update(middle_sway) # low pass filter
 
+
+                    self.finger_joints["ring"]["mcp"] = self.previous_finger_joints["ring"]["mcp"].update(ring_mcp) # low pass filter
                     
                     self.finger_joints["ring"]["pip"] = self.previous_finger_joints["ring"]["pip"].update(ring_pip) # low pass filter
 
                     self.finger_joints["ring"]["dip"] = self.previous_finger_joints["ring"]["dip"].update(ring_dip) # low pass filter
+
+                    self.finger_joints["ring"]["sway"] = self.previous_finger_joints["ring"]["sway"].update(ring_sway) # low pass filter
                     
 
                     self.finger_joints["pinky"]["mcp"] = self.previous_finger_joints["pinky"]["mcp"].update(pinky_mcp) # low pass filter
@@ -357,37 +459,29 @@ class HandDetector():
                     self.finger_joints["pinky"]["pip"] = self.previous_finger_joints["pinky"]["pip"].update(pinky_pip) # low pass filter
 
                     self.finger_joints["pinky"]["dip"] = self.previous_finger_joints["pinky"]["dip"].update(pinky_dip) # low pass filter
-                    
-                    
-                    self.wrist_joints["pitch"] = self.previous_wrist_joints["pitch"].update(pitch)
 
-                    self.wrist_joints["yaw"] = self.previous_wrist_joints["yaw"].update(yaw)
+                    self.finger_joints["pinky"]["sway"] = self.previous_finger_joints["pinky"]["sway"].update(pinky_sway) # low pass filter
+
+                    if pinky_roll is not None:
+                        self.finger_joints["pinky"]["roll"] = self.previous_finger_joints["pinky"]["roll"].update(pinky_roll) # low pass filter
+                    
+                    
+                    self.wrist_joints["pitch"] = self.previous_wrist_joints["pitch"].update(pitch) # low pass filter
+
+                    self.wrist_joints["yaw"] = self.previous_wrist_joints["yaw"].update(yaw) # low pass filter
                     
                     # self.wrist_joints["roll"] = self.previous_wrist_joints["roll"].update(roll)
 
-                    # self.finger_joints["thumb"]["cmc_pull"] = thumb_cmc_pull
-                    # self.finger_joints["thumb"]["mcp"] = thumb_mcp
-                    # self.finger_joints["thumb"]["ip"]  = float(thumb_ip)
-                    # self.finger_joints["index"]["mcp"]  = index_mcp
-                    # self.finger_joints["index"]["pip"]  = index_pip
-                    # self.finger_joints["index"]["dip"]  = index_dip
-                    # self.finger_joints["middle"]["mcp"] = middle_mcp
-                    # self.finger_joints["middle"]["pip"] = middle_pip
-                    # self.finger_joints["middle"]["dip"] = middle_dip
-                    # self.finger_joints["ring"]["mcp"]   = ring_mcp
-                    # self.finger_joints["ring"]["pip"]   = ring_pip
-                    # self.finger_joints["ring"]["dip"]   = ring_dip
-                    # self.finger_joints["pinky"]["mcp"]  = pinky_mcp
-                    # self.finger_joints["pinky"]["pip"]  = pinky_pip
-                    # self.finger_joints["pinky"]["dip"]  = pinky_dip
+                    # 调整部分角度范围和符号以适配目标应用需求
+                    #self.finger_joints["thumb"]["cmc_rot"] += 160
+                    self.finger_joints["index"]["sway"] += -14.9
+                    self.finger_joints["middle"]["sway"] += -8.5
+                    self.finger_joints["ring"]["sway"] += -2.5
+                    self.finger_joints["pinky"]["sway"] += -16.5
+                    #self.finger_joints["pinky"]["roll"] += 25
                     
-                    self.finger_joints["index"]["sway"] = index_sway-14.9
-                    self.finger_joints["middle"]["sway"] = middle_sway-8.5
-                    self.finger_joints["ring"]["sway"] = ring_sway-2.5
-                    self.finger_joints["pinky"]["sway"] = pinky_sway-16.5
-                    
-                    print("pitch: ", self.wrist_joints["pitch"])
-                    print("yaw: ", self.wrist_joints["yaw"], "\n")
+                    # print("pitch: ", self.wrist_joints["pitch"])
+                    # print("yaw: ", self.wrist_joints["yaw"], "\n")
                     
                     # print(self.finger_joints)
 
