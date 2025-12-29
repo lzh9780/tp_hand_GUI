@@ -47,6 +47,7 @@ private slots:
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
     void onActionPanelActionUpdate(const QString &msg);
+    void onSidePanelAddAction(const QString &msg);
     // void onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode);
 
 private:

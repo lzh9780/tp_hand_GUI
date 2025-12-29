@@ -12,6 +12,7 @@
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QTimer>
+#include <QToolButton>
 
 #include "ActionStore.hpp"
 
@@ -42,7 +43,7 @@ void ActionPanel::buildUI()
     auto* nameEdit = new QLineEdit();
     nameEdit->hide();
     auto* speedLbl = new QLabel("  Play\nSpeed: ");
-    auto* speedSlider = new QSlider(Qt::Horizontal);
+    speedSlider = new QSlider(Qt::Horizontal);
     speedSlider->setRange((int)1, (int)5);
     speedSlider->setValue(3);
     speedSlider->setMinimumWidth(60);
@@ -72,6 +73,7 @@ void ActionPanel::buildUI()
     connect(cyclePlay, &QCheckBox::clicked, this, [=]{cycle = (cyclePlay->checkState() == Qt::Checked);});
     connect(playBtn, &QPushButton::clicked, this, &ActionPanel::play);
     connect(select, &QComboBox::currentTextChanged, this, &ActionPanel::load);
+    connect(speedSlider, &QSlider::valueChanged, this, &ActionPanel::changeSpeed);
     root->addLayout(controlRow);
 
     // Action List table
@@ -88,14 +90,74 @@ void ActionPanel::buildUI()
     connect(timer_, &QTimer::timeout, this, &ActionPanel::loopAction);
 }
 
-void ActionPanel::addAction(QString* name)
+void ActionPanel::addAction(QString name)
 {
-    return;
+    QLayoutItem *item;
+    item = tableLyt->takeAt(tableLines.size());
+    delete item->widget();
+    
+    auto* actionRow = new QWidget();
+    auto* actionLyt = new QHBoxLayout(actionRow);
+    auto* nameLbl = new QLabel(name);
+    auto* removeBtn = new QPushButton("-");
+    removeBtn->setFixedSize(25, 25);
+    auto* moveUpBtn = new QToolButton;
+    moveUpBtn->setArrowType(Qt::UpArrow);
+    moveUpBtn->setFixedSize(25, 25);
+    auto* moveDownBtn = new QToolButton;
+    moveDownBtn->setArrowType(Qt::DownArrow);
+    moveDownBtn->setFixedSize(25, 25);
+    auto* spacer = new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+    actionLyt->addWidget(nameLbl);
+    actionLyt->addItem(spacer);
+    actionLyt->addWidget(moveUpBtn);
+    actionLyt->addWidget(moveDownBtn);
+    actionLyt->addWidget(removeBtn);
+    actionLyt->setContentsMargins(0, 0, 0, 0);
+
+    tableLyt->addWidget(actionRow);
+    tableLines.append(nameLbl);
+
+    int idx = tableLines.size() - 1;
+    connect(moveUpBtn, &QToolButton::clicked, this, [=]() {
+        actionMoveUp(idx);
+    });
+    connect(moveDownBtn, &QToolButton::clicked, this, [=]() {
+        actionMoveDown(idx);
+    });
+    connect(removeBtn, &QPushButton::clicked, this, [=]() {
+        removeActionByIndex(idx);
+    });
+
+    tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
 }
 
-void ActionPanel::removeAction(QString* name)
+void ActionPanel::removeActionByIndex(int idx)
 {
-    return;
+    while (idx != tableLines.size() - 1) {
+        actionMoveDown(idx);
+        idx += 1;
+    }
+    
+    QLayoutItem *item;
+    item = tableLyt->takeAt(tableLines.size() - 1);
+    if (QLayout *rowLyt = item->layout())
+    {
+        QLayoutItem *child;
+        while ((child = rowLyt->takeAt(0)))
+        {
+            if (child->widget())
+                delete child->widget();
+            delete child;
+        }
+        delete rowLyt;
+    }
+    else if (item->widget())
+    {
+        delete item->widget();
+    }
+    tableLines.remove(tableLines.size() - 1);
 }
 
 void ActionPanel::loopAction()
@@ -117,7 +179,7 @@ void ActionPanel::loopAction()
     }
 
     tableLines[curr_idx]->setStyleSheet(
-                "QLabel { background: #ffffff;}");
+                "QLabel { background: #3a3df8; color: #ffffff}");
     emit actionUpdate(tableLines[curr_idx]->text());
     
     curr_idx += 1;
@@ -132,7 +194,7 @@ void ActionPanel::play()
     {
         playBtn->setText("Stop");
         loopAction();
-        timer_->start(1000);
+        timer_->start(currStopTime);
     } else if (playBtn->text() == "Stop") 
     {
         playBtn->setText("Play");
@@ -153,12 +215,18 @@ void ActionPanel::loadFlowList()
     }
 }
 
+void ActionPanel::changeSpeed()
+{
+    currStopTime = stopTime[speedSlider->value() - 1];
+}
+
 void ActionPanel::load()
 {
     clearActionList();
     if (select->currentText() == "New flow...") return;
 
     int idx = store_->findActionSetByName(select->currentText());
+    int i = 0;
     for (const auto &s : store_->actionSetList(idx))
     {
         if (store_->findActionByName(s) == -1)
@@ -167,11 +235,57 @@ void ActionPanel::load()
             continue;
         }
         
-        auto* w = new QLabel(s);
-        tableLyt->addWidget(w);
-        tableLines.append(w);
+        auto* actionRow = new QWidget();
+        auto* actionLyt = new QHBoxLayout(actionRow);
+        auto* nameLbl = new QLabel(s);
+        auto* removeBtn = new QPushButton("-");
+        removeBtn->setFixedSize(25, 25);
+        auto* moveUpBtn = new QToolButton;
+        moveUpBtn->setArrowType(Qt::UpArrow);
+        moveUpBtn->setFixedSize(25, 25);
+        auto* moveDownBtn = new QToolButton;
+        moveDownBtn->setArrowType(Qt::DownArrow);
+        moveDownBtn->setFixedSize(25, 25);
+        auto* spacer = new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed);
+
+        actionLyt->addWidget(nameLbl);
+        actionLyt->addItem(spacer);
+        actionLyt->addWidget(moveUpBtn);
+        actionLyt->addWidget(moveDownBtn);
+        actionLyt->addWidget(removeBtn);
+        actionLyt->setContentsMargins(0, 0, 0, 0);
+
+        tableLyt->addWidget(actionRow);
+        tableLines.append(nameLbl);
+
+        connect(moveUpBtn, &QToolButton::clicked, this, [=]() {
+            actionMoveUp(i);
+        });
+        connect(moveDownBtn, &QToolButton::clicked, this, [=]() {
+            actionMoveDown(i);
+        });
+        connect(removeBtn, &QPushButton::clicked, this, [=]() {
+            removeActionByIndex(i);
+        });
+        i += 1;
     }
     tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
+}
+
+void ActionPanel::actionMoveUp(int idx)
+{
+    if (idx == 0) return;
+    auto buffer = tableLines[idx - 1]->text();
+    tableLines[idx - 1]->setText(tableLines[idx]->text());
+    tableLines[idx]->setText(QString(buffer));
+}
+
+void ActionPanel::actionMoveDown(int idx)
+{
+    if (idx == tableLines.size() - 1) return;
+    auto buffer = tableLines[idx + 1]->text();
+    tableLines[idx + 1]->setText(tableLines[idx]->text());
+    tableLines[idx]->setText(QString(buffer));
 }
 
 void ActionPanel::updateStore(ActionStore *store)

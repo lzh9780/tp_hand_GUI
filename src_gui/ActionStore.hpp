@@ -40,6 +40,8 @@ public:
     QString actionSetName(int idx) const;
     QStringList actionSetList(int idx) const;
     int findActionSetByName(const QString &name) const;
+    // void addActionToSet(const QString &set, const QString &action);
+    // void removeActionFromSet(const QString &set, const QString &action);
 
     // Access raw json (if needed)
     const QJsonArray &actions() const { return actions_; }

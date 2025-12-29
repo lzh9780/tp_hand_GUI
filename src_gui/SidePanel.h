@@ -61,6 +61,7 @@ signals:
     void committed();                  // Execute in Setup mode
     void notify(const QString& msg);   // status/log message
     void mode_change(const QString& module, const QString& control_mode);   // status/log message
+    void addAction(const QString& action);
 
 private slots:
     void onAnySliderChanged();

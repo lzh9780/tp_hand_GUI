@@ -126,6 +126,7 @@ void MainWindow::buildUI()
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
     connect(actionFlow_, &ActionPanel::actionUpdate, this, &MainWindow::onActionPanelActionUpdate);
+    connect(side_, &SidePanel::addAction, this, &MainWindow::onSidePanelAddAction);
 
     // auto* mainMenu = menuBar()->addMenu("&Menu");
     auto* tabsMenu = menuBar()->addMenu("Tabs");
@@ -312,6 +313,11 @@ void MainWindow::onCameraWidgetControlSwitch(const QString &msg)
 void MainWindow::onActionPanelActionUpdate(const QString &msg)
 {
     side_->applyActionNameToSliders(msg);
+}
+
+void MainWindow::onSidePanelAddAction(const QString &msg)
+{
+    actionFlow_->addAction(msg);
 }
 
 // void MainWindow::onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode)

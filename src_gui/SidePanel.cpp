@@ -170,6 +170,8 @@ void SidePanel::loadActions()
         auto *row = new QWidget;
         auto *rl = new QHBoxLayout(row);
         rl->setContentsMargins(0, 0, 0, 0);
+        auto *addBtn = new QPushButton("+");
+        addBtn->setFixedSize(25, 25);
         auto *nameBtn = new QPushButton(store_->actionName(i));
         nameBtn->setStyleSheet(
             "QPushButton { border: 1px solid #ffffff; background: #ffffff; text-align: left; padding-left: 10px; }"
@@ -178,6 +180,7 @@ void SidePanel::loadActions()
         auto *nameEdit = new QLineEdit(store_->actionName(i));
         nameEdit->hide();
 
+        rl->addWidget(addBtn);
         rl->addWidget(nameBtn);
         rl->addWidget(nameEdit);
         listLayout->addWidget(row);
@@ -216,6 +219,9 @@ void SidePanel::loadActions()
         connect(nameEdit, &QLineEdit::editingFinished,
                 this, [=]()
                 { vialdate(nameEdit, nameBtn); });
+
+        connect(addBtn, &QPushButton::clicked, this, [=]()
+                { emit addAction(nameBtn->text()); });
     }
 }
 
@@ -402,12 +408,15 @@ void SidePanel::onSaveAction()
         auto *row = new QWidget;
         auto *hl = new QHBoxLayout(row);
         hl->setContentsMargins(0, 0, 0, 0);
+        auto *addBtn = new QPushButton();
+        addBtn->setFixedSize(25, 25);
         auto *nameBtn = new QPushButton;
         nameBtn->setStyleSheet(
             "QPushButton { border: 1px solid #ffffff; background: #ffffff; text-align: left; padding-left: 10px; }"
             "QPushButton:focus  { border: 2px solid #000000; background: #f0f0f0; text-align: left; padding-left: 10px; }");
         nameBtn->hide();
         auto *nameEdit = new QLineEdit;
+        hl->addWidget(addBtn);
         hl->addWidget(nameBtn);
         hl->addWidget(nameEdit);
         layout->addWidget(row);
@@ -447,6 +456,8 @@ void SidePanel::onSaveAction()
         connect(nameEdit, &QLineEdit::editingFinished,
                 this, [=]()
                 { vialdate(nameEdit, nameBtn); });
+        connect(addBtn, &QPushButton::clicked, this, [=]()
+                { emit addAction(nameBtn->text()); });
         btnSave_->setText("Cancel");
     }
     else

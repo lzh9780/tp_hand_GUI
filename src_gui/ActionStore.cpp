@@ -138,3 +138,13 @@ int ActionStore::findActionSetByName(const QString &name) const
     }
     return -1;
 }
+
+// void ActionStore::addActionToSet(const QString &set, const QString &action)
+// {
+//     return;
+// }
+
+// void ActionStore::removeActionFromSet(const QString &set, const QString &action)
+// {
+//     return;
+// }
