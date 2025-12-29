@@ -108,6 +108,7 @@ if (BUILD_GUI)
     src_gui/CameraWidget.cpp
     src_gui/DraggableTabBar.cpp
     src_gui/DraggableTabWidget.cpp
+    src_gui/ActionPanel.cpp
     # src_gui/DiagramWidget.cpp
     # src_gui/PlotPanel.cpp
   )

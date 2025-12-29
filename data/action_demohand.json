@@ -1,9 +1,13 @@
 {
     "action_sets": [
+        {"name": "test_set1", "list": ["test1", "test6"]},
+        {"name": "test_set2", "list": ["test1", "test6", "test666", "test999"]}
     ],
     "actions": [
         {
             "joints": [
+                0,
+                0,
                 0,
                 0,
                 0,
@@ -18,12 +22,16 @@
                 0,
                 0,
                 0,
+                0,
+                0,
                 0
             ],
             "name": "test999"
         },
         {
             "joints": [
+                10,
+                0,
                 0,
                 0,
                 0,
@@ -34,6 +42,8 @@
         },
         {
             "joints": [
+                60,
+                0,
                 0,
                 0,
                 0,

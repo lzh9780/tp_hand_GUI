@@ -54,6 +54,7 @@ public:
     void updateStore(ActionStore *store);
     std::string get_control_mode();
     void removeAll();
+    void applyActionNameToSliders(const QString &name);
 
 signals:
     void valuesChanged();
@@ -69,8 +70,8 @@ private slots:
     void onActionNameClicked();        // apply saved action to sliders
     void onFocusChanged(QWidget* old, QWidget* now);
     // void onNameEditingFinished();
-    void onToggleActions();
-    void onToggleActionSets();
+    // void onToggleActions();
+    // void onToggleActionSets();
     void onControlChanged();
     void onValueEditChanged();
     void onMaxVelocityChanged();

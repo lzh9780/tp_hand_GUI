@@ -128,3 +128,13 @@ QStringList ActionStore::actionSetList(int idx) const
         out << v.toString();
     return out;
 }
+
+int ActionStore::findActionSetByName(const QString &name) const
+{
+    for (int i = 0; i < actionSets_.size(); ++i)
+    {
+        if (actionSets_[i].toObject().value("name").toString() == name)
+            return i;
+    }
+    return -1;
+}

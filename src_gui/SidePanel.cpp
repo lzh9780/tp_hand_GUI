@@ -32,13 +32,6 @@ SidePanel::SidePanel(QWidget *parent)
     buildActionsPanel();
     buildSliderPanel();
 
-    // auto *vb = new QVBoxLayout();
-    // img_label_ = new QLabel();
-    // img_label_->hide();
-
-    // vb->addWidget(img_label_);
-    // vb->addWidget(actionScroll_);
-
     // Splitter: actions (top) + sliders (bottom)
     auto *splitter = new QSplitter(Qt::Vertical, this);
     // splitter->addWidget(img_label_);
@@ -64,19 +57,19 @@ void SidePanel::buildControlRow()
     btnSave_ = new QPushButton("Save");
     btnDelete_ = new QPushButton("Delete");
 
-    QPushButton *recordBtn = new QPushButton();
-    recordBtn->setText("Record");
-    recordBtn->setEnabled(false);
+    // QPushButton *recordBtn = new QPushButton();
+    // recordBtn->setText("Record");
+    // recordBtn->setEnabled(false);
 
-    QPushButton *saveRecordBtn = new QPushButton();
-    saveRecordBtn->setText("Save Set");
-    saveRecordBtn->setEnabled(false);
+    // QPushButton *saveRecordBtn = new QPushButton();
+    // saveRecordBtn->setText("Save Set");
+    // saveRecordBtn->setEnabled(false);
 
     QPushButton *editBtn = new QPushButton();
     editBtn->setText("Edit");
     editBtn->setEnabled(false);
 
-    btnEditName_ = new QPushButton("Edit Name");
+    btnEditName_ = new QPushButton("Rename");
 
     btnMode_ = new QPushButton("Mode: Follow");
     btnMode_->setToolTip("Change the joint control mode\n"
@@ -88,14 +81,15 @@ void SidePanel::buildControlRow()
 
     QVBoxLayout *btnCol1 = new QVBoxLayout();
     btnCol1->addWidget(btnSave_);
-    btnCol1->addWidget(btnDelete_);
+    // btnCol1->addWidget(btnDelete_);
     btnCol1->addWidget(editBtn);
     btnCol1->addWidget(btnMode_);
     // saveLine->setSpacing(0);
 
     QVBoxLayout *btnCol2 = new QVBoxLayout();
-    btnCol2->addWidget(saveRecordBtn);
-    btnCol2->addWidget(recordBtn);
+    // btnCol2->addWidget(saveRecordBtn);
+    // btnCol2->addWidget(recordBtn);
+    btnCol2->addWidget(btnDelete_);
     btnCol2->addWidget(btnEditName_);
     btnCol2->addWidget(btnExecute_);
 
@@ -113,21 +107,21 @@ void SidePanel::buildControlRow()
 void SidePanel::buildActionsPanel()
 {
     actionsPanel_ = new QWidget(this);
-    // actionsPanel_->setStyleSheet("background: #fff;");
     auto *v = new QVBoxLayout(actionsPanel_);
     v->setContentsMargins(6, 6, 6, 6);
     v->setSpacing(4);
 
-    // Header: "Actions" [collapse]
-    auto *header = new QWidget;
-    auto *hl = new QHBoxLayout(header);
-    hl->setContentsMargins(0, 0, 0, 0);
-    btnCollapseActions_ = new QToolButton;
-    btnCollapseActions_->setArrowType(Qt::UpArrow);
-    btnCollapseActions_->setFixedSize(20, 20);
-    connect(btnCollapseActions_, &QToolButton::clicked, this, &SidePanel::onToggleActions);
-    hl->addWidget(btnCollapseActions_);
-    hl->addWidget(new QLabel("Actions:"));
+    // // Header: "Actions" [collapse]
+    // auto *header = new QWidget;
+    // auto *hl = new QHBoxLayout(header);
+    // hl->setContentsMargins(0, 0, 0, 0);
+    // btnCollapseActions_ = new QToolButton;
+    // btnCollapseActions_->setArrowType(Qt::UpArrow);
+    // btnCollapseActions_->setFixedSize(20, 20);
+    // connect(btnCollapseActions_, &QToolButton::clicked, this, &SidePanel::onToggleActions);
+    // hl->addWidget(btnCollapseActions_);
+    // hl->addWidget(new QLabel("Actions:"));
+    auto *header = new QLabel("Actions:");
     v->addWidget(header);
 
     // Actions list container
@@ -135,21 +129,21 @@ void SidePanel::buildActionsPanel()
     actionListWidget_->setStyleSheet("background: #fff;");
 
     // Header: "Action Sets" [collapse] (kept for UI parity)
-    auto *header2 = new QWidget;
-    auto *hl2 = new QHBoxLayout(header2);
-    hl2->setContentsMargins(0, 0, 0, 0);
-    btnCollapseSets_ = new QToolButton;
-    btnCollapseSets_->setArrowType(Qt::UpArrow);
-    btnCollapseSets_->setFixedSize(20, 20);
-    connect(btnCollapseSets_, &QToolButton::clicked, this, &SidePanel::onToggleActionSets);
-    hl2->addWidget(btnCollapseSets_);
-    hl2->addWidget(new QLabel("Action Sets:"));
+    // auto *header2 = new QWidget;
+    // auto *hl2 = new QHBoxLayout(header2);
+    // hl2->setContentsMargins(0, 0, 0, 0);
+    // btnCollapseSets_ = new QToolButton;
+    // btnCollapseSets_->setArrowType(Qt::UpArrow);
+    // btnCollapseSets_->setFixedSize(20, 20);
+    // connect(btnCollapseSets_, &QToolButton::clicked, this, &SidePanel::onToggleActionSets);
+    // hl2->addWidget(btnCollapseSets_);
+    // hl2->addWidget(new QLabel("Action Sets:"));
     v->addWidget(actionListWidget_);
-    v->addWidget(header2);
-    actionSetPanel_ = new QWidget;
-    actionSetPanel_->setMinimumHeight(80);
-    actionSetPanel_->setStyleSheet("background: #fff;");
-    v->addWidget(actionSetPanel_);
+    // v->addWidget(header2);
+    // actionSetPanel_ = new QWidget;
+    // actionSetPanel_->setMinimumHeight(80);
+    // actionSetPanel_->setStyleSheet("background: #fff;");
+    // v->addWidget(actionSetPanel_);
     auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);
     v->addItem(spacer);
 
@@ -254,7 +248,6 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     sliderVBox_->addLayout(hl);
 
     // Slider row: [0 .. 140] degrees
-    // auto *sRow = new QWidget;
     auto *sl = new QHBoxLayout();
     sl->setContentsMargins(12, 0, 12, 8);
     auto *sMin = new QLabel(QString::number(min));
@@ -272,15 +265,6 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     connect(slider, &QSlider::valueChanged, this, &SidePanel::onAnySliderChanged);
     connect(valEnter, &QLineEdit::editingFinished, this, &SidePanel::onValueEditChanged);
 }
-
-// void SidePanel::loadSliders(const QStringList &jointNames)
-// {
-//     for (const auto &name : jointNames)
-//     {
-//         loadSliderModule(name, kDegMin, kDegMax);
-//     }
-//     sliderVBox_->addStretch(1);
-// }
 
 void SidePanel::loadHandControllor(grip::HandSettings hand_cfg) {
     for (auto s : hand_cfg.structs) {
@@ -494,19 +478,19 @@ void SidePanel::onFocusChanged(QWidget *oldW, QWidget *nowW)
     // no-op here; inline editing is handled on editingFinished
 }
 
-void SidePanel::onToggleActions()
-{
-    bool vis = actionListWidget_->isVisible();
-    actionListWidget_->setVisible(!vis);
-    btnCollapseActions_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
-}
+// void SidePanel::onToggleActions()
+// {
+//     bool vis = actionListWidget_->isVisible();
+//     actionListWidget_->setVisible(!vis);
+//     btnCollapseActions_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
+// }
 
-void SidePanel::onToggleActionSets()
-{
-    bool vis = actionSetPanel_->isVisible();
-    actionSetPanel_->setVisible(!vis);
-    btnCollapseSets_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
-}
+// void SidePanel::onToggleActionSets()
+// {
+//     bool vis = actionSetPanel_->isVisible();
+//     actionSetPanel_->setVisible(!vis);
+//     btnCollapseSets_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
+// }
 
 void SidePanel::onDeleteAction(QPushButton *btn)
 {
@@ -613,13 +597,6 @@ void SidePanel::vialdate(QLineEdit *edit, QPushButton *btn)
                        { edit->setProperty("vaildating", false); });
 }
 
-// void SidePanel::setFrame(const QImage img)
-// {
-//     // qDebug() << "Drawing frame";
-//     auto pm = QPixmap::fromImage(img).scaled(img_label_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation); //(img);
-//     img_label_->setPixmap(pm);
-// }
-
 void SidePanel::modeChange(const QString &mode)
 {
     /** TODO: Complete mode change */
@@ -629,9 +606,6 @@ void SidePanel::modeChange(const QString &mode)
             s->setEnabled(false);
         for (auto e : valueLabels_)
             e->setEnabled(false);
-        // actionScroll_->hide();
-        // controlRow_->hide();
-        // img_label_->show();
     }
     else
     {
@@ -639,9 +613,6 @@ void SidePanel::modeChange(const QString &mode)
             s->setEnabled(true);
         for (auto e : valueLabels_)
             e->setEnabled(true);
-        // actionScroll_->show();
-        // controlRow_->show();
-        // img_label_->hide();
     }
 }
 
@@ -768,4 +739,10 @@ void SidePanel::removeAll() {
     delete layout;
 
     delete store_;
+}
+
+void SidePanel::applyActionNameToSliders(const QString &name)
+{
+    int idx = store_->findActionByName(name);
+    if (idx >= 0) applyActionToSliders(idx);
 }

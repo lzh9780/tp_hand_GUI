@@ -14,6 +14,7 @@
 #include "DraggableTabWidget.hpp"
 #include "Connector.hpp"
 #include "CameraWidget.hpp"
+#include "ActionPanel.hpp"
 // #include "PlotPanel.hpp"
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
@@ -85,6 +86,7 @@ void MainWindow::buildUI()
     ogre_ = new OgreWidget();
     motor_ = new MotorPanel();
     camera_ = new CameraWidget();
+    actionFlow_ = new ActionPanel();
 
     upperTabs = new DraggableTabWidget();
     lowerTabs = new DraggableTabWidget();
@@ -123,23 +125,27 @@ void MainWindow::buildUI()
     connect(connect_, &Connector::stateCheck, this, &MainWindow::onConnectorStateCheck);
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
+    connect(actionFlow_, &ActionPanel::actionUpdate, this, &MainWindow::onActionPanelActionUpdate);
 
     // auto* mainMenu = menuBar()->addMenu("&Menu");
-    auto* tabsMenu = menuBar()->addMenu("&Tabs");
-    auto* actUrdfLoader = tabsMenu->addAction("&3D Model");
-    auto* actConnect = tabsMenu->addAction("&Connector");
-    auto* actAlgoPanel = tabsMenu->addAction("&Control Algorithm");
-    auto* actDiagram = tabsMenu->addAction("&Diagrams");
-    auto* actHandDetect = tabsMenu->addAction("&Hand Detect");
-    auto* actLog = tabsMenu->addAction("&Log");
-    auto* actInfo = tabsMenu->addAction("&Robot Info");
-    auto* actMotor = tabsMenu->addAction("&Motor Control");
+    auto* tabsMenu = menuBar()->addMenu("Tabs");
+    // auto* settingMenu = menuBar()->addMenu("&Settings");
+    auto* actUrdfLoader = tabsMenu->addAction("3D Model");
+    auto* actActionFlow = tabsMenu->addAction("Action Flow");
+    auto* actConnect = tabsMenu->addAction("Connector");
+    auto* actAlgoPanel = tabsMenu->addAction("Control Algorithm");
+    auto* actDiagram = tabsMenu->addAction("Diagrams");
+    auto* actHandDetect = tabsMenu->addAction("Hand Detect");
+    auto* actLog = tabsMenu->addAction("Log");
+    auto* actMotor = tabsMenu->addAction("Motor Control");
+    auto* actInfo = tabsMenu->addAction("Robot Info");
 
     connect(actHandDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
     connect(actConnect, &QAction::triggered, this, &MainWindow::openConnectorTab);
     connect(actLog, &QAction::triggered, this, &MainWindow::openLogTab);
     connect(actUrdfLoader, &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
     connect(actMotor, &QAction::triggered, this, &MainWindow::openMotorControlTab);
+    connect(actActionFlow, &QAction::triggered, this, &MainWindow::openActionPanelTab);
     // connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
 
     // log_->append("Current control mode: " + side_->modeText());
@@ -254,6 +260,9 @@ void MainWindow::onDeviceConnect()
         store->load();
         side_->updateStore(store);
         side_->loadActions();
+
+        actionFlow_->updateStore(store);
+        actionFlow_->loadFlowList();
         
         connect_->onChange(true);
     }
@@ -269,6 +278,7 @@ void MainWindow::onDeviceDisconnect()
 {
     side_->removeAll();
     motor_->removeAll();
+    actionFlow_->clearAll();
     if (ctrl_){
         ctrl_->stop_all();
         free(ctrl_);}
@@ -297,6 +307,11 @@ void MainWindow::onCameraWidgetControlSwitch(const QString &msg)
         // emit requestStop();
         QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
     }
+}
+
+void MainWindow::onActionPanelActionUpdate(const QString &msg)
+{
+    side_->applyActionNameToSliders(msg);
 }
 
 // void MainWindow::onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode)
@@ -361,6 +376,11 @@ void MainWindow::openUrdfLoaderTab()
 void MainWindow::openMotorControlTab()
 {
     upperTabs->addTab(motor_, "Motor Control");
+}
+
+void MainWindow::openActionPanelTab()
+{
+    lowerTabs->addTab(actionFlow_, "Action Flow");
 }
 
 // void MainWindow::openDiagram()

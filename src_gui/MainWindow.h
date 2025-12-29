@@ -16,6 +16,7 @@ class QThread;
 class QString;
 class QTabWidget;
 class CameraWidget;
+class ActionPanel;
 
 Q_DECLARE_METATYPE(QVector<float>)
 
@@ -45,6 +46,7 @@ private slots:
     void onCameraWidgetControlSwitch(const QString &msg);
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
+    void onActionPanelActionUpdate(const QString &msg);
     // void onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode);
 
 private:
@@ -57,6 +59,7 @@ private:
     // void openDiagram();
     void onDeviceConnect();
     void onDeviceDisconnect();
+    void openActionPanelTab();
 
 private:
     // program modules
@@ -77,6 +80,7 @@ private:
     QTextEdit* log_{nullptr};
     OgreWidget* ogre_;
     MotorPanel* motor_;
+    ActionPanel* actionFlow_;
     PyCamWorker* worker_ = nullptr;
     QThread* workerThread_ = nullptr;
     Connector* connect_;
