@@ -10,6 +10,7 @@ class QTimer;
 class QLabel;
 class QPushButton;
 class QSlider;
+class QLineEdit;
 
 class ActionStore;
 
@@ -36,14 +37,24 @@ private:
     void actionMoveUp(int idx);
     void actionMoveDown(int idx);
     void removeActionByIndex(int idx);
+    void saveActionSet();
+    void actionSetSaveAs();
+    void addActionToTable(QString name);
+    void buttonModeChange();
+    void deleteCurrentActionSet();
+    void validate(QLineEdit* edit);
 
 private:
     QVBoxLayout* root;
-    QComboBox* select;
+    QComboBox* selectBox;
     QVector<QLabel*> tableLines;
     QVBoxLayout* tableLyt;
     QPushButton* playBtn;
+    QPushButton* saveBtn;
+    QPushButton* saveAsBtn;
+    QPushButton* deleteBtn;
     QSlider* speedSlider;
+    QLineEdit* nameEdit;
 
     int stopTime[5] = {2500, 1500, 1000, 750, 500};
     int currStopTime = 1000;

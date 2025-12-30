@@ -40,6 +40,9 @@ public:
     QString actionSetName(int idx) const;
     QStringList actionSetList(int idx) const;
     int findActionSetByName(const QString &name) const;
+    void setActionSetValues(int idx, const QVector<QString> &actions);
+    void addActionSet(const QString &name, const QVector<QString> &actions);
+    void removeActionSet(int idx);
     // void addActionToSet(const QString &set, const QString &action);
     // void removeActionFromSet(const QString &set, const QString &action);
 

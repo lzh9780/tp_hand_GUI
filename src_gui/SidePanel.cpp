@@ -196,7 +196,7 @@ void SidePanel::loadActions()
                     {
                         if (now != btnSave_)
                         {
-                            vialdate(nameEdit, nameBtn);
+                            validate(nameEdit, nameBtn);
                         }
                     }
 
@@ -218,7 +218,7 @@ void SidePanel::loadActions()
 
         connect(nameEdit, &QLineEdit::editingFinished,
                 this, [=]()
-                { vialdate(nameEdit, nameBtn); });
+                { validate(nameEdit, nameBtn); });
 
         connect(addBtn, &QPushButton::clicked, this, [=]()
                 { emit addAction(nameBtn->text()); });
@@ -433,7 +433,7 @@ void SidePanel::onSaveAction()
                     {
                         if (now != btnSave_)
                         {
-                            vialdate(nameEdit, nameBtn);
+                            validate(nameEdit, nameBtn);
                         }
                     }
 
@@ -455,7 +455,7 @@ void SidePanel::onSaveAction()
 
         connect(nameEdit, &QLineEdit::editingFinished,
                 this, [=]()
-                { vialdate(nameEdit, nameBtn); });
+                { validate(nameEdit, nameBtn); });
         connect(addBtn, &QPushButton::clicked, this, [=]()
                 { emit addAction(nameBtn->text()); });
         btnSave_->setText("Cancel");
@@ -563,7 +563,7 @@ bool SidePanel::validateNewActionName(const QString &n, const QString &o) const
     return i == -1;
 }
 
-void SidePanel::vialdate(QLineEdit *edit, QPushButton *btn)
+void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
 {
     if (edit->property("vaildating").toBool())
         return;

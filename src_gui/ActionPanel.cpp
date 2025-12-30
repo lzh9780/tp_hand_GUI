@@ -13,6 +13,8 @@
 #include <QLineEdit>
 #include <QTimer>
 #include <QToolButton>
+#include <QApplication>
+#include <QMessageBox>
 
 #include "ActionStore.hpp"
 
@@ -29,18 +31,16 @@ void ActionPanel::buildUI()
     auto* controlRow = new QHBoxLayout();
     playBtn = new QPushButton("Play");
     auto* cyclePlay = new QCheckBox(QString("Cycle"));
-    auto* saveBtn = new QPushButton("Save");
+    saveBtn = new QPushButton("Save");
     saveBtn->setEnabled(false);
-    auto* saveAsBtn = new QPushButton("Save as");
+    saveAsBtn = new QPushButton("Save as");
     saveAsBtn->setEnabled(false);
-    auto* deleteBtn = new QPushButton("Delete");
+    deleteBtn = new QPushButton("Delete");
     deleteBtn->setEnabled(false);
-    select = new QComboBox();
-    select->addItem("New flow...");
-    // for (const auto s : savedflows)
-    //     select->addItem(s);
-    select->setCurrentIndex(0);
-    auto* nameEdit = new QLineEdit();
+    selectBox = new QComboBox();
+    selectBox->addItem("New flow...");
+    selectBox->setCurrentIndex(0);
+    nameEdit = new QLineEdit();
     nameEdit->hide();
     auto* speedLbl = new QLabel("  Play\nSpeed: ");
     speedSlider = new QSlider(Qt::Horizontal);
@@ -58,7 +58,7 @@ void ActionPanel::buildUI()
     selectBtnRow->addWidget(saveBtn);
     selectBtnRow->addWidget(saveAsBtn);
     selectBtnRow->addWidget(deleteBtn);
-    selectCol->addWidget(select);
+    selectCol->addWidget(selectBox);
     selectCol->addWidget(nameEdit);
     selectCol->addLayout(selectBtnRow);
     valueRow->addWidget(new QLabel("1"));
@@ -70,10 +70,6 @@ void ActionPanel::buildUI()
     controlRow->addWidget(speedLbl);
     controlRow->addLayout(valueRow);
 
-    connect(cyclePlay, &QCheckBox::clicked, this, [=]{cycle = (cyclePlay->checkState() == Qt::Checked);});
-    connect(playBtn, &QPushButton::clicked, this, &ActionPanel::play);
-    connect(select, &QComboBox::currentTextChanged, this, &ActionPanel::load);
-    connect(speedSlider, &QSlider::valueChanged, this, &ActionPanel::changeSpeed);
     root->addLayout(controlRow);
 
     // Action List table
@@ -86,6 +82,25 @@ void ActionPanel::buildUI()
     table->setWidgetResizable(true);
     root->addWidget(table);
 
+    connect(cyclePlay, &QCheckBox::clicked, this, [=]{cycle = (cyclePlay->checkState() == Qt::Checked);});
+    connect(playBtn, &QPushButton::clicked, this, &ActionPanel::play);
+    connect(selectBox, &QComboBox::currentTextChanged, this, &ActionPanel::load);
+    connect(speedSlider, &QSlider::valueChanged, this, &ActionPanel::changeSpeed);
+    connect(deleteBtn, &QPushButton::clicked, this, &ActionPanel::deleteCurrentActionSet);
+    connect(saveBtn, &QPushButton::clicked, this, &ActionPanel::saveActionSet);
+    connect(saveAsBtn, &QPushButton::clicked, this, &ActionPanel::actionSetSaveAs);
+
+    connect(qApp, &QApplication::focusChanged, this,
+            [=](QWidget *old, QWidget *now)
+            {
+                if (old == nameEdit && now != nameEdit)
+                    validate(nameEdit);
+            });
+
+    connect(nameEdit, &QLineEdit::editingFinished,
+            this, [=]()
+            { validate(nameEdit); });
+
     timer_ = new QTimer(this);
     connect(timer_, &QTimer::timeout, this, &ActionPanel::loopAction);
 }
@@ -93,9 +108,17 @@ void ActionPanel::buildUI()
 void ActionPanel::addAction(QString name)
 {
     QLayoutItem *item;
-    item = tableLyt->takeAt(tableLines.size());
-    delete item->widget();
+    if (item = tableLyt->takeAt(tableLines.size()))
+        delete item->widget();
     
+    addActionToTable(name);
+
+    tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
+    buttonModeChange();
+}
+
+void ActionPanel::addActionToTable(QString name)
+{
     auto* actionRow = new QWidget();
     auto* actionLyt = new QHBoxLayout(actionRow);
     auto* nameLbl = new QLabel(name);
@@ -129,8 +152,6 @@ void ActionPanel::addAction(QString name)
     connect(removeBtn, &QPushButton::clicked, this, [=]() {
         removeActionByIndex(idx);
     });
-
-    tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
 }
 
 void ActionPanel::removeActionByIndex(int idx)
@@ -142,22 +163,46 @@ void ActionPanel::removeActionByIndex(int idx)
     
     QLayoutItem *item;
     item = tableLyt->takeAt(tableLines.size() - 1);
-    if (QLayout *rowLyt = item->layout())
-    {
-        QLayoutItem *child;
-        while ((child = rowLyt->takeAt(0)))
-        {
-            if (child->widget())
-                delete child->widget();
-            delete child;
-        }
-        delete rowLyt;
-    }
-    else if (item->widget())
+    if (item->widget())
     {
         delete item->widget();
     }
     tableLines.remove(tableLines.size() - 1);
+    buttonModeChange();
+}
+
+void ActionPanel::buttonModeChange()
+{
+    if (tableLines.size() <= 0) 
+    {
+        saveBtn->setEnabled(false);
+        saveAsBtn->setEnabled(false);
+    } else if (selectBox->currentText() == "New flow...") {
+        saveBtn->setEnabled(true);
+        saveAsBtn->setEnabled(false);
+    } else {
+        int idx = store_->findActionSetByName(selectBox->currentText());
+        auto currSet = store_->actionSetList(idx);
+        
+        if (tableLines.size() != currSet.size())
+        {
+            saveBtn->setEnabled(true);
+            saveAsBtn->setEnabled(true);
+        } else {
+            bool same = true;
+            int i = 0;
+            while (i < tableLines.size()) {
+                if (tableLines[i]->text() != currSet[i]) 
+                {
+                    same = false;
+                    break;
+                }
+                i += 1;
+            }
+            saveBtn->setEnabled(!same);
+            saveAsBtn->setEnabled(true);
+        }
+    }
 }
 
 void ActionPanel::loopAction()
@@ -211,7 +256,7 @@ void ActionPanel::loadFlowList()
 {
     for (int i = 0; i < store_->actionSetCount(); ++i)
     {
-        select->addItem(store_->actionSetName(i));
+        selectBox->addItem(store_->actionSetName(i));
     }
 }
 
@@ -223,10 +268,14 @@ void ActionPanel::changeSpeed()
 void ActionPanel::load()
 {
     clearActionList();
-    if (select->currentText() == "New flow...") return;
+    if (selectBox->currentText() == "New flow...") 
+    {
+        deleteBtn->setEnabled(false);
+        saveAsBtn->setEnabled(false);
+        return;
+    }
 
-    int idx = store_->findActionSetByName(select->currentText());
-    int i = 0;
+    int idx = store_->findActionSetByName(selectBox->currentText());
     for (const auto &s : store_->actionSetList(idx))
     {
         if (store_->findActionByName(s) == -1)
@@ -235,41 +284,11 @@ void ActionPanel::load()
             continue;
         }
         
-        auto* actionRow = new QWidget();
-        auto* actionLyt = new QHBoxLayout(actionRow);
-        auto* nameLbl = new QLabel(s);
-        auto* removeBtn = new QPushButton("-");
-        removeBtn->setFixedSize(25, 25);
-        auto* moveUpBtn = new QToolButton;
-        moveUpBtn->setArrowType(Qt::UpArrow);
-        moveUpBtn->setFixedSize(25, 25);
-        auto* moveDownBtn = new QToolButton;
-        moveDownBtn->setArrowType(Qt::DownArrow);
-        moveDownBtn->setFixedSize(25, 25);
-        auto* spacer = new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed);
-
-        actionLyt->addWidget(nameLbl);
-        actionLyt->addItem(spacer);
-        actionLyt->addWidget(moveUpBtn);
-        actionLyt->addWidget(moveDownBtn);
-        actionLyt->addWidget(removeBtn);
-        actionLyt->setContentsMargins(0, 0, 0, 0);
-
-        tableLyt->addWidget(actionRow);
-        tableLines.append(nameLbl);
-
-        connect(moveUpBtn, &QToolButton::clicked, this, [=]() {
-            actionMoveUp(i);
-        });
-        connect(moveDownBtn, &QToolButton::clicked, this, [=]() {
-            actionMoveDown(i);
-        });
-        connect(removeBtn, &QPushButton::clicked, this, [=]() {
-            removeActionByIndex(i);
-        });
-        i += 1;
+        addActionToTable(s);
     }
     tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
+    deleteBtn->setEnabled(true);
+    saveAsBtn->setEnabled(true);
 }
 
 void ActionPanel::actionMoveUp(int idx)
@@ -278,6 +297,7 @@ void ActionPanel::actionMoveUp(int idx)
     auto buffer = tableLines[idx - 1]->text();
     tableLines[idx - 1]->setText(tableLines[idx]->text());
     tableLines[idx]->setText(QString(buffer));
+    buttonModeChange();
 }
 
 void ActionPanel::actionMoveDown(int idx)
@@ -286,11 +306,90 @@ void ActionPanel::actionMoveDown(int idx)
     auto buffer = tableLines[idx + 1]->text();
     tableLines[idx + 1]->setText(tableLines[idx]->text());
     tableLines[idx]->setText(QString(buffer));
+    buttonModeChange();
 }
 
 void ActionPanel::updateStore(ActionStore *store)
 {
     store_ = store;
+}
+
+void ActionPanel::saveActionSet()
+{
+    if (tableLines.size() == 0) return;
+    if (selectBox->currentText() != "New flow...") {
+        QVector<QString> actions;
+        for (const auto* a : tableLines)
+        {    
+            qDebug() << a->text();
+            actions.append(a->text());
+        }
+
+        int idx = store_->findActionSetByName(selectBox->currentText());
+        qDebug() << idx;
+        store_->setActionSetValues(idx, actions);
+        store_->save();
+        saveBtn->setEnabled(false);
+    } else {
+        nameEdit->show();
+        selectBox->hide();
+        nameEdit->setFocus();
+    }
+}
+
+void ActionPanel::actionSetSaveAs()
+{
+    if (tableLines.size() == 0) return;
+    nameEdit->show();
+    selectBox->hide();
+    nameEdit->setFocus();
+}
+
+void ActionPanel::deleteCurrentActionSet()
+{
+    // TODO: Add a confirm window
+    int idx = store_->findActionSetByName(selectBox->currentText());
+    store_->removeActionSet(idx);
+    store_->save();
+    selectBox->removeItem(idx + 1);
+    selectBox->setCurrentIndex(0);
+}
+
+void ActionPanel::validate(QLineEdit* edit)
+{
+    if (edit->property("vaildating").toBool())
+        return;
+    edit->setProperty("vaildating", true);
+
+    bool pass = false;
+    if (edit->text().trimmed().isEmpty())
+        pass = false;
+    else { 
+        int i = store_->findActionSetByName(edit->text());
+        if (i == -1) pass = true;
+    }
+
+    if (pass) {
+        QVector<QString> actions;
+        for (const auto* a : tableLines)
+            actions.append(a->text());
+        store_->addActionSet(edit->text(), actions);
+        store_->save();
+        selectBox->addItem(edit->text());
+        selectBox->show();
+        selectBox->setCurrentIndex(selectBox->count() - 1);
+        edit->hide();
+        edit->setText("");        
+    }
+    else
+    {
+        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
+        edit->setFocus();
+        edit->selectAll();
+    }
+
+    QTimer::singleShot(0, edit, [edit]
+                       { edit->setProperty("vaildating", false); });
 }
 
 void ActionPanel::clearActionList()
@@ -321,7 +420,10 @@ void ActionPanel::clearActionList()
 void ActionPanel::clearAll()
 {
     clearActionList();
-    select->setCurrentIndex(0);
-    while (select->count() > 1)
-        select->removeItem(1);
+    selectBox->setCurrentIndex(0);
+    while (selectBox->count() > 1)
+        selectBox->removeItem(1);
+    saveBtn->setEnabled(false);
+    saveAsBtn->setEnabled(false);
+    deleteBtn->setEnabled(false);
 }

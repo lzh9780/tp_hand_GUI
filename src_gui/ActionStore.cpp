@@ -123,7 +123,7 @@ QStringList ActionStore::actionSetList(int idx) const
     QStringList out;
     if (idx < 0 || idx >= actionSets_.size())
         return out;
-    auto arr = actionSets_[idx].toObject().value("list").toArray();
+    auto arr = actionSets_[idx].toObject().value("actions").toArray();
     for (const auto &v : arr)
         out << v.toString();
     return out;
@@ -137,6 +137,36 @@ int ActionStore::findActionSetByName(const QString &name) const
             return i;
     }
     return -1;
+}
+
+void ActionStore::setActionSetValues(int idx, const QVector<QString> &actions)
+{
+    if (idx < 0 || idx >= actionSets_.size())
+        return;
+    auto obj = actionSets_[idx].toObject();
+    QJsonArray arr;
+    for (QString v : actions)
+        arr.append(v);
+    obj.insert("actions", arr);
+    actionSets_[idx] = obj;
+}
+
+void ActionStore::addActionSet(const QString &name, const QVector<QString> &actions)
+{
+    QJsonObject obj;
+    obj.insert("name", name);
+    QJsonArray arr;
+    for (QString v : actions)
+        arr.append(v);
+    obj.insert("actions", arr);
+    actionSets_.append(obj);
+}
+
+void ActionStore::removeActionSet(int idx)
+{
+    if (idx < 0 || idx >= actionSets_.size())
+        return;
+    actionSets_.removeAt(idx);
 }
 
 // void ActionStore::addActionToSet(const QString &set, const QString &action)

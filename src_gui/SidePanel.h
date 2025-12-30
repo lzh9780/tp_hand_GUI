@@ -88,7 +88,7 @@ private:
     void applyActionToSliders(int actionIndex);
     void persistStore();
     bool validateNewActionName(const QString& n, const QString& o) const;
-    void vialdate(QLineEdit* edit, QPushButton* btn);
+    void validate(QLineEdit* edit, QPushButton* btn);
     void onDeleteAction(QPushButton* btn);
     void loadSliderModule(QString name, float min, float max);
 
