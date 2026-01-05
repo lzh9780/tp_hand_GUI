@@ -18,6 +18,8 @@ class QCheckBox;
 class QLabel;
 class QPushButton;
 
+using HandStateMap = std::unordered_map<std::string, grip::ModuleState>;
+
 class DiagramWidget : public QWidget
 {
     Q_OBJECT

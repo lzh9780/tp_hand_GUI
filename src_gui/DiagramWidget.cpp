@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QPainter>
 #include <QtMath>
+#include <QSplitter>
 
 DiagramWidget::DiagramWidget(QWidget *parent)
     : QWidget(parent)
@@ -38,8 +39,9 @@ void DiagramWidget::buildUi()
     rootLayout->addLayout(topRow);
 
     // --- middle: chart + scroll area for checkboxes ---
-    auto *middleRow = new QHBoxLayout;
-    rootLayout->addLayout(middleRow, 1);
+    auto *middleRow = new QSplitter(Qt::Horizontal);
+    auto *middleRowLyt = new QHBoxLayout(middleRow);
+    rootLayout->addWidget(middleRow, 1);
 
     // chart
     m_chart = new QChart;
@@ -57,12 +59,12 @@ void DiagramWidget::buildUi()
 
     m_chartView = new QChartView(m_chart, this);
     m_chartView->setRenderHint(QPainter::Antialiasing);
-    middleRow->addWidget(m_chartView, 3);
+    middleRowLyt->addWidget(m_chartView, 3);
 
     // scroll area
     auto *scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
-    middleRow->addWidget(scroll, 1);
+    middleRowLyt->addWidget(scroll, 1);
 
     m_checksContainer = new QWidget(scroll);
     m_checksLayout = new QVBoxLayout(m_checksContainer);
@@ -140,7 +142,7 @@ void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
     for (const auto &modPair : hand)
     {
         const std::string &modNameStd = modPair.first;
-        const ModuleState &mod = modPair.second;
+        const grip::ModuleState &mod = modPair.second;
         QString modName = QString::fromStdString(modNameStd);
 
         ModuleUi &mui = m_modules[modName];
@@ -229,7 +231,7 @@ void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
                 SignalInfo info;
                 info.id = id;
                 info.moduleName = modName;
-                info.jointName = {};
+                info.jointName = QString("");
                 info.isJoint = false;
                 info.motorId = motorId;
                 info.checkBox = cb;
@@ -448,7 +450,7 @@ bool DiagramWidget::getValueForSignal(const SignalInfo &sig,
     if (modIt == hand.end())
         return false;
 
-    const ModuleState &mod = modIt->second;
+    const grip::ModuleState &mod = modIt->second;
 
     if (sig.isJoint)
     {
@@ -456,7 +458,7 @@ bool DiagramWidget::getValueForSignal(const SignalInfo &sig,
         if (jIt == mod.joints.end())
             return false;
 
-        const JointState &js = jIt->second;
+        const grip::JointState &js = jIt->second;
         switch (m_type)
         {
         case DiagramType::JointPosition:
@@ -475,7 +477,7 @@ bool DiagramWidget::getValueForSignal(const SignalInfo &sig,
         if (mIt == mod.motors.end())
             return false;
 
-        const Telemetry &t = mIt->second;
+        const grip::Telemetry &t = mIt->second;
         switch (m_type)
         {
         case DiagramType::MotorPosition:
@@ -563,5 +565,5 @@ void DiagramWidget::updateFromHand(const HandStateMap &hand)
     }
 
     // X axis (fixed)
-    m_axisX->setRange(0, m_maxPoints > 0 ? m_maxPoints - 1 : 1);
+    m_axisX->setRange(0, m_maxPoints > 0 ? m_maxPoints * 0.01 : 1);
 }

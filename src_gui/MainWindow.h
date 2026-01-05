@@ -8,6 +8,7 @@
 #include "PyCamWorker.h"
 #include "OgreWidget.h"
 #include "MotorPanel.hpp"
+#include "PlotPanel.hpp"
 
 class SidePanel;
 class Connector;
@@ -57,7 +58,7 @@ private:
     void openLogTab();
     void openUrdfLoaderTab();
     void openMotorControlTab();
-    // void openDiagram();
+    void openDiagram();
     void onDeviceConnect();
     void onDeviceDisconnect();
     void openActionPanelTab();
@@ -86,6 +87,7 @@ private:
     QThread* workerThread_ = nullptr;
     Connector* connect_;
     CameraWidget* camera_;
+    PlotPanel* plot_;
     std::string config_path_;
     std::string action_path_;
     QStringList joint_names;

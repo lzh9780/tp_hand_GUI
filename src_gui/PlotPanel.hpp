@@ -9,7 +9,7 @@ class QPushButton;
 class QSplitter;
 class DiagramWidget;
 
-using HandStateMap = std::unordered_map<std::string, ModuleState>;
+using HandStateMap = std::unordered_map<std::string, grip::ModuleState>;
 
 class PlotPanel : public QWidget
 {
@@ -26,5 +26,5 @@ private:
     QPushButton *m_addButton{nullptr};
     QSplitter *m_splitter{nullptr};
     QVector<DiagramWidget *> m_diagrams;
-    int m_maxPoints{200};
+    int m_maxPoints{500};
 };

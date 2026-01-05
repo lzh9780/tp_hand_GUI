@@ -38,9 +38,11 @@ if (BUILD_GUI)
   set(QT_REQUIRED_COMPONENTS Widgets)
   find_package(Qt6 COMPONENTS ${QT_REQUIRED_COMPONENTS} QUIET)
   if (Qt6_FOUND)
+    find_package(Qt6 COMPONENTS Widgets Charts REQUIRED)
     set(QT_PACKAGE Qt6)
   else()
     find_package(Qt5 COMPONENTS ${QT_REQUIRED_COMPONENTS} REQUIRED)
+    find_package(Qt5Charts REQUIRED)
     set(QT_PACKAGE Qt5)
   endif()
 endif()
@@ -109,8 +111,8 @@ if (BUILD_GUI)
     src_gui/DraggableTabBar.cpp
     src_gui/DraggableTabWidget.cpp
     src_gui/ActionPanel.cpp
-    # src_gui/DiagramWidget.cpp
-    # src_gui/PlotPanel.cpp
+    src_gui/DiagramWidget.cpp
+    src_gui/PlotPanel.cpp
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})
@@ -123,6 +125,7 @@ if (BUILD_GUI)
     ${OpenCV_LIBS}
     ${OGRE_LIBRARIES}
     tinyxml2
+    ${QT_PACKAGE}::Charts
   )
   
   # target_link_libraries(grip_gui PRIVATE grip_core ${QT_PACKAGE}::Widgets)

@@ -1,6 +1,6 @@
 #include "PyCamWorker.h"
 #include <QDebug>
-#include <opencv2/imgproc.hpp> // for color conversion if needed (we’ll do manual)
+// #include <opencv2/imgproc.hpp> // for color conversion if needed (we’ll do manual)
 #include <stdexcept>
 #include <QList>
 

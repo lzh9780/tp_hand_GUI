@@ -48,6 +48,7 @@ public:
     JointAngles get_joint_angles() const;
     int get_board_state() const;
     void set_module_control_mode(std::string module, int mode);
+    std::unordered_map<std::string, ModuleState> get_hand_info();
 
 private:
     void receiver_loop();

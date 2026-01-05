@@ -15,7 +15,6 @@
 #include "Connector.hpp"
 #include "CameraWidget.hpp"
 #include "ActionPanel.hpp"
-// #include "PlotPanel.hpp"
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -147,7 +146,7 @@ void MainWindow::buildUI()
     connect(actUrdfLoader, &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
     connect(actMotor, &QAction::triggered, this, &MainWindow::openMotorControlTab);
     connect(actActionFlow, &QAction::triggered, this, &MainWindow::openActionPanelTab);
-    // connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
+    connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -386,11 +385,17 @@ void MainWindow::openMotorControlTab()
 
 void MainWindow::openActionPanelTab()
 {
-    lowerTabs->addTab(actionFlow_, "Action Flow");
+    upperTabs->addTab(actionFlow_, "Action Flow");
 }
 
-// void MainWindow::openDiagram()
-// {
-//     auto *plot = new PlotPanel();
-//     upperTabs->addTab(plot, "Diagram");
-// }
+void MainWindow::openDiagram()
+{
+    auto *plot = new PlotPanel();
+    upperTabs->addTab(plot, "Diagram");
+
+    auto timer_ = new QTimer(this);
+    connect(timer_, &QTimer::timeout, this, [=](){
+        if (ctrl_) plot->updateFromHand(ctrl_->get_hand_info());
+    });
+    timer_->start(10);
+}

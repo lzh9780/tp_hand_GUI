@@ -82,6 +82,11 @@ namespace grip
         }
     }
 
+    std::unordered_map<std::string, ModuleState> ControlInterface::get_hand_info()
+    {
+        return hand_;
+    }
+
     void ControlInterface::start_bus(const CanDeviceSettings &cfg)
     {
         bus_channel_ = cfg.channel_index;
