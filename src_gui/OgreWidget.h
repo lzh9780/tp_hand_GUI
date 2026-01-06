@@ -200,6 +200,7 @@ private:
     Ogre::SceneManager *mScene{nullptr};
     Ogre::Camera *mCamera{nullptr};
     Ogre::Viewport *mViewport{nullptr};
+    Ogre::SceneNode *mWorld{nullptr};
     QTimer mTimer;
     bool mOgreInited{false};
     Ogre::RTShader::ShaderGenerator *mSG{nullptr};

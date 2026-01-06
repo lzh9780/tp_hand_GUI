@@ -144,7 +144,10 @@ void OgreWidget::initOgre()
     mCamera->setFarClipDistance(2000.0f);
     mCamera->setAutoAspectRatio(true);
     mViewport = mWindow->addViewport(mCamera);
-    mViewport->setBackgroundColour(Ogre::ColourValue(0.08f, 0.09f, 0.10f));
+    mViewport->setBackgroundColour(Ogre::ColourValue(0.8f, 0.8f, 0.8f));
+
+    mWorld = mScene->getRootSceneNode()->createChildSceneNode("WorldFixip");
+    mWorld->pitch(Ogre::Degree(-90.0f));
 
     addRtssResourceLocations();
 
@@ -185,7 +188,7 @@ void OgreWidget::initOgre()
 
     // RViz-like grid (on XY plane, Z up)
     auto *grid = createGridMO("GroundGrid", 30, 0.05f);
-    mScene->getRootSceneNode()->createChildSceneNode()->attachObject(grid);
+    mWorld->createChildSceneNode()->attachObject(grid);
 }
 
 void OgreWidget::selectAndInitRenderSystem()
@@ -314,8 +317,8 @@ void OgreWidget::setCameraTarget(const QVector3D &t)
 void OgreWidget::resetView()
 {
     mTarget = QVector3D(0, 0, 0);
-    mDistance = 1.2f;
-    mYaw = 0.7f;
+    mDistance = 1.0f;
+    mYaw = -0.7f;
     mPitch = 0.35f;
     updateCamera();
 }
@@ -329,7 +332,7 @@ void OgreWidget::clearScene()
     mLinkNodes.clear();
 
     // Destroy all children under root (keep light manager itself alive)
-    auto *root = mScene->getRootSceneNode();
+    auto *root = mWorld;
     auto kids = root->getChildren();
     for (auto *n : kids)
         root->removeChild(n);
@@ -337,8 +340,8 @@ void OgreWidget::clearScene()
         mScene->destroySceneNode(static_cast<Ogre::SceneNode *>(n));
 
     // Re-create grid after clear
-    auto *grid = createGridMO("GroundGrid", 30, 0.05f);
-    mScene->getRootSceneNode()->createChildSceneNode()->attachObject(grid);
+    auto *grid = createGridMO("NewGroundGrid", 30, 0.05f);
+    mWorld->createChildSceneNode()->attachObject(grid);
 }
 
 void OgreWidget::buildSceneFromURDF(const std::string &urdf_path)
@@ -395,7 +398,7 @@ void OgreWidget::buildSceneFromURDF(const std::string &urdf_path)
 
 void OgreWidget::buildLinkNode(const UrdfLink &L)
 {
-    auto *node = mScene->getRootSceneNode()->createChildSceneNode(L.name);
+    auto *node = mWorld->createChildSceneNode(L.name);
     mLinkNodes[L.name] = node;
 }
 
@@ -737,8 +740,8 @@ void OgreWidget::mouseMoveEvent(QMouseEvent *e)
     if (mLDown && !(e->modifiers() & Qt::ShiftModifier))
     {
         // Orbit
-        mYaw -= d.x() * mOrbitSpeed;
-        mPitch -= d.y() * mOrbitSpeed;
+        mPitch += d.x() * mOrbitSpeed;
+        mYaw -= d.y() * mOrbitSpeed;
         updateCamera();
     }
     else if (mMDown || (mLDown && (e->modifiers() & Qt::ShiftModifier)))
@@ -869,12 +872,12 @@ void OgreWidget::buildInstance(const std::string &instance,
     RobotInstance R;
     R.name = instance;
     R.transparent = transparent;
-    R.root = mScene->getRootSceneNode()->createChildSceneNode(instance + "_root");
+    R.root = mWorld->createChildSceneNode(instance + "_root");
 
     // 1) Create link nodes (empty for now)
     for (const auto &kv : mModel.links)
     {
-        auto *node = R.root->createChildSceneNode(instance + "_" + kv.first);
+        auto *node = mWorld->createChildSceneNode(instance + "_" + kv.first);
         R.linkNodes[kv.first] = node;
     }
 
@@ -1121,6 +1124,8 @@ static void addRtssResourceLocations()
   const char* roots[] = {
     "/usr/share/OGRE/RTShaderLib",
     "/usr/share/OGRE/Media/RTShaderLib",
+    "/usr/share/OGRE/Media/RTShaderLib/GLSL",
+    "/usr/share/OGRE/Media/ShadowVolume",
     "/usr/local/share/OGRE/RTShaderLib",
   };
   const char* sub[] = { "", "/GLSL", "/GLSLES", "/GLSL120", "/GLSL150", "/materials" };
