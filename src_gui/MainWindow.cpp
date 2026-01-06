@@ -344,8 +344,8 @@ void MainWindow::onConnectorModelChange(const QString &model_name)
     // qDebug() << config_path_.c_str();
     action_path_ = std::string("data/action_") + model_name.toUtf8().constData() + std::string(".json");
     // qDebug() << action_path_.c_str();
-    // if (ogre_->loadURDF("robots/demohand/urdf/Demo_urdf_v1.urdf"))
-    //     log_->append("urdf loaded");
+    if (ogre_->loadURDF("robots/demohand/urdf/Demo_urdf_v1.urdf"))
+        log_->append("urdf loaded");
 }
 
 void MainWindow::onUpperTabCloseRequested(int idx)

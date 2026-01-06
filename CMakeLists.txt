@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 project(grip_ctrl LANGUAGES C CXX)
 
 option(BUILD_GUI "Build Qt GUI target" OFF)
@@ -16,7 +16,8 @@ endif()
 
 find_package(yaml-cpp REQUIRED)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-find_package(OGRE REQUIRED)
+find_package(OGRE REQUIRED CONFIG)
+find_package(assimp REQUIRED CONFIG)
 # find_package(OGRE REQUIRED OgreMain)
 
 # include(FetchContent)
@@ -124,6 +125,8 @@ if (BUILD_GUI)
     pybind11::embed
     ${OpenCV_LIBS}
     ${OGRE_LIBRARIES}
+    # OGRE::OgreMain
+    assimp::assimp
     tinyxml2
     ${QT_PACKAGE}::Charts
   )
