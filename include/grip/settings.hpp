@@ -16,13 +16,6 @@ struct CanDeviceSettings {
     TimingPair bit_timing{};
 };
 
-struct PidGains { double kp{0.005}, ki{0.00005}, kd{0.0001}; };
-
-struct NativeJointConfig {
-    int32_t linear_zero_counts{500};
-    std::vector<double> feedforward_mA; // size 15 (0..140 step 10°)
-};
-
 struct DofInfo {
     std::string name;
     std::pair<float, float> route;
@@ -32,17 +25,6 @@ struct ModuleStruct {
     std::vector<DofInfo> dofs;
     std::vector<std::string> joints;
     std::vector<int> motors;
-};
-
-struct NativePolicySettings {
-    PidGains pid{};
-    int32_t min_current_mA{-1000}, max_current_mA{1000};
-    double initial_theta_rad{0.74918};
-    double tendon_fix_mm{9.410}, tendon_port_mm{9.413};
-    int    coupling_ratio{1};
-    double pitch_mm_per_rev{1.0};
-    int    counts_per_rev{262144};
-    std::unordered_map<std::string, NativeJointConfig> joint_tables;
 };
 
 struct AppSettings {
@@ -60,7 +42,6 @@ struct HandSettings {
     std::unordered_map<std::string, ModuleStruct> structs;
     std::vector<std::string> control_policies;
     std::vector<std::string> wrist_control;
-    NativePolicySettings native_policy{};
 };
 
 struct ActuatorSettings {
@@ -70,7 +51,6 @@ struct ActuatorSettings {
     float psi_f{0.0};
     int n_pole_pairs{0};
     int device_id{0};
-    NativePolicySettings native_policy{};
 };
 
 struct SettingsError : public std::runtime_error { using std::runtime_error::runtime_error; };

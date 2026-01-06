@@ -73,10 +73,7 @@ endif()
 add_library(grip_core STATIC
   src/settings.cpp
   src/can_bus.cpp
-  src/control_policy_native.cpp
   src/control_interface.cpp
-  src/finger_ctrl.c
-  src/wrist_control.cpp
   src/HandControl.cpp
   src/ModuleRt.cpp
 )

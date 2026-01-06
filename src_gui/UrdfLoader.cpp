@@ -73,7 +73,7 @@ bool UrdfLoader::loadFile(const std::string &path, UrdfModel &out)
     {
         UrdfLink L;
         L.name = link->Attribute("name") ? link->Attribute("name") : "";
-        std::cout << L.name << "\n";
+        // std::cout << L.name << "\n";
 
         // Parse visual elements for the link
         for (auto *visual = link->FirstChildElement("visual"); visual; visual = visual->NextSiblingElement("visual"))

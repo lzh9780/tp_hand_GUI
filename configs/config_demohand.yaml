@@ -59,31 +59,3 @@ control_policy: ["hall_protect", "cascaded_pid"]
 wrist_control_policy: ["default", "soft"]
 
 urdf_file: "Demo_urdf_v1.urdf"
-
-native_policy:
-  pid: { kp: 0.003, ki: 0.0003, kd: 0.0003 } # Best with 100Hz: { kp: 0.003, ki: 0.00005, kd: 0.0002 } # Best with 10Hz: { kp: 0.005, ki: 0.00005, kd: 0.0001 }
-  current_limits_mA: { min: -3000, max: 3000 }
-  initial_theta_rad: 0.74918
-  geometry:
-    tendon_fix_mm:  9.410
-    tendon_port_mm: 9.413
-    coupling_ratio: 1
-  screw_drive:
-    pitch_mm_per_rev: 1.0
-    counts_per_rev:   262144
-  joint_tables:
-    thumb_mcp:
-      linear_zero_counts: 400000
-      feedforward_mA: [0,100,200,300,400,500,600,700,800,900,1000,1100,1200,1300,1400]
-    index_finger_mcp:
-      linear_zero_counts: 200000
-      feedforward_mA: [0,21.4286,42.8571,64.2857,85.7143,107.1429,128.5714,150.0,171.4286,192.8571,214.2857,235.7143,257.1429,278.5714,300.0]
-    middle_finger_mcp:
-      linear_zero_counts: 120000
-      feedforward_mA: [0,21.4286,42.8571,64.2857,85.7143,107.1429,128.5714,150.0,171.4286,192.8571,214.2857,235.7143,257.1429,278.5714,300.0]
-    ring_finger_mcp:
-      linear_zero_counts: 300000
-      feedforward_mA: [0,21.4286,42.8571,64.2857,85.7143,107.1429,128.5714,150.0,171.4286,192.8571,214.2857,235.7143,257.1429,278.5714,300.0]
-    pinky_mcp:
-      linear_zero_counts: 400000
-      feedforward_mA: [0,21.4286,42.8571,64.2857,85.7143,107.1429,128.5714,150.0,171.4286,192.8571,214.2857,235.7143,257.1429,278.5714,300.0]

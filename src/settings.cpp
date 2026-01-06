@@ -101,45 +101,6 @@ namespace grip
             }
         }
 
-        if (auto n = y["native_policy"])
-        {
-            if (auto p = n["pid"])
-            {
-                hand.native_policy.pid.kp = p["kp"].as<double>(hand.native_policy.pid.kp);
-                hand.native_policy.pid.ki = p["ki"].as<double>(hand.native_policy.pid.ki);
-                hand.native_policy.pid.kd = p["kd"].as<double>(hand.native_policy.pid.kd);
-            }
-            if (auto lim = n["current_limits_mA"])
-            {
-                hand.native_policy.min_current_mA = lim["min"].as<int32_t>(hand.native_policy.min_current_mA);
-                hand.native_policy.max_current_mA = lim["max"].as<int32_t>(hand.native_policy.max_current_mA);
-            }
-            hand.native_policy.initial_theta_rad = n["initial_theta_rad"].as<double>(hand.native_policy.initial_theta_rad);
-            if (auto g = n["geometry"])
-            {
-                hand.native_policy.tendon_fix_mm = g["tendon_fix_mm"].as<double>(hand.native_policy.tendon_fix_mm);
-                hand.native_policy.tendon_port_mm = g["tendon_port_mm"].as<double>(hand.native_policy.tendon_port_mm);
-                hand.native_policy.coupling_ratio = g["coupling_ratio"].as<int>(hand.native_policy.coupling_ratio);
-            }
-            if (auto sd = n["screw_drive"])
-            {
-                hand.native_policy.pitch_mm_per_rev = sd["pitch_mm_per_rev"].as<double>(hand.native_policy.pitch_mm_per_rev);
-                hand.native_policy.counts_per_rev = sd["counts_per_rev"].as<int>(hand.native_policy.counts_per_rev);
-            }
-            if (auto jt = n["joint_tables"])
-            {
-                for (auto it = jt.begin(); it != jt.end(); ++it)
-                {
-                    NativeJointConfig jc;
-                    jc.linear_zero_counts = it->second["linear_zero_counts"].as<int32_t>(jc.linear_zero_counts);
-                    if (auto ff = it->second["feedforward_mA"])
-                        for (auto v : ff)
-                            jc.feedforward_mA.push_back(v.as<double>());
-                    hand.native_policy.joint_tables[it->first.as<std::string>()] = std::move(jc);
-                }
-            }
-        }
-
         return hand;
     }
 
@@ -209,22 +170,6 @@ namespace grip
         std::vector<std::string> errs;
         auto add = [&](std::string m)
         { errs.push_back(path + " — " + m); };
-
-        if (s.native_policy.min_current_mA > s.native_policy.max_current_mA)
-            add("native_policy.current_limits_mA: min>max");
-        if (s.native_policy.counts_per_rev <= 0 || s.native_policy.pitch_mm_per_rev <= 0)
-            add("native_policy.screw_drive invalid");
-        if (s.native_policy.tendon_fix_mm <= 0 || s.native_policy.tendon_port_mm <= 0)
-            add("native_policy.geometry invalid");
-        // require a table for each joint key you’ll use (use "_mcp" defaults)
-        static const std::unordered_map<std::string, std::string> dev2key = {
-            {"THUMB", "thumb_mcp"}, {"INDEX_FINGER", "index_finger_mcp"}, {"MIDDLE_FINGER", "middle_finger_mcp"}, {"RING_FINGER", "ring_finger_mcp"}, {"PINKY_FINGER", "pinky_mcp"}};
-        // for (auto &n : s.models)
-        // {
-        //     auto it = dev2key.find(n);
-        //     if (it != dev2key.end() && !s.native_policy.joint_tables.count(it->second))
-        //         add("native_policy.joint_tables missing entry for " + it->second);
-        // }
 
         if (!errs.empty())
         {
