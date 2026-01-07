@@ -19,6 +19,7 @@ struct CanDeviceSettings {
 struct DofInfo {
     std::string name;
     std::pair<float, float> route;
+    std::vector<float> dof_joint_map;
 };
 
 struct ModuleStruct {
@@ -42,6 +43,7 @@ struct HandSettings {
     std::unordered_map<std::string, ModuleStruct> structs;
     std::vector<std::string> control_policies;
     std::vector<std::string> wrist_control;
+    std::string urdf_file;
 };
 
 struct ActuatorSettings {

@@ -95,6 +95,7 @@ public:
 
     // Load URDF file (absolute or relative). Returns true on success.
     bool loadURDF(const std::string &urdf_path);
+    void clearScene();
 
     // Set joint position (rad or m). Ignored if name not found.
     void setJointPosition(const std::string &joint, float value);
@@ -139,7 +140,7 @@ private:
     void enableRTSS(); // Runtime Shader System (GL3Plus friendly)
 
     // --- Scene building / teardown ---
-    void clearScene();
+    void destroySubtree(Ogre::SceneManager* sm, Ogre::SceneNode* n);
     void buildSceneFromURDF(const std::string &urdf_path); // uses mModel
     void buildLinkNode(const UrdfLink &L);
     void attachVisual(Ogre::SceneNode *linkNode, const UrdfVisual &V, int idx, const std::string &urdf_dir);

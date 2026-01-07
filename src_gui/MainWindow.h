@@ -62,15 +62,20 @@ private:
     void onDeviceConnect();
     void onDeviceDisconnect();
     void openActionPanelTab();
+    std::unordered_map<std::string, float> dofsToJoints(std::string dof_name, float value);
+    std::vector<float> jointsToDofs(std::string joint_name, float value);
 
 private:
     // program modules
     std::vector<int> devices_;
     grip::ControlInterface* ctrl_{nullptr};
     const grip::AppSettings cfg_;
-    grip::DeviceSettings dev_cfg_;
-    grip::HandSettings hand_cfg_;
-    grip::ActuatorSettings act_cfg_;
+    grip::DeviceSettings dev_cfg_{};
+    grip::HandSettings hand_cfg_{};
+    grip::ActuatorSettings act_cfg_{};
+
+    std::unordered_map<std::string, std::string> dofs_inverted_index;
+    std::unordered_map<std::string, std::string> joints_inverted_index;
 
     // params
     bool withCan = true;
@@ -90,6 +95,7 @@ private:
     PlotPanel* plot_;
     std::string config_path_;
     std::string action_path_;
+    std::string urdf_path_;
     QStringList joint_names;
 
     QTabWidget* upperTabs;

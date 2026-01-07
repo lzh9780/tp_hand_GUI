@@ -131,14 +131,14 @@ void MainWindow::buildUI()
     auto* tabsMenu = menuBar()->addMenu("Tabs");
     // auto* settingMenu = menuBar()->addMenu("&Settings");
     auto* actUrdfLoader = tabsMenu->addAction("3D Model");
-    auto* actActionFlow = tabsMenu->addAction("Action Flow");
+    auto* actActionFlow = tabsMenu->addAction("Action Sets");
     auto* actConnect = tabsMenu->addAction("Connector");
-    auto* actAlgoPanel = tabsMenu->addAction("Control Algorithm");
+    // auto* actAlgoPanel = tabsMenu->addAction("Control Algorithm");
     auto* actDiagram = tabsMenu->addAction("Diagrams");
     auto* actHandDetect = tabsMenu->addAction("Hand Detect");
     auto* actLog = tabsMenu->addAction("Log");
     auto* actMotor = tabsMenu->addAction("Motor Control");
-    auto* actInfo = tabsMenu->addAction("Robot Info");
+    // auto* actInfo = tabsMenu->addAction("Robot Info");
 
     connect(actHandDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
     connect(actConnect, &QAction::triggered, this, &MainWindow::openConnectorTab);
@@ -162,16 +162,20 @@ void MainWindow::onSidePanelValuesChanged()
     if (side_->modeText() != "Mode: Follow")
         return;
     auto deg = side_->jointDegrees();
-    for (int i = 0; i < deg.size() && i < (int)joint_names.size(); ++i)
-    {
-        float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-        ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
-        // std::cout << "cmd_type: " << joint_names[i].toUtf8().constData() << ", val: " << rad << "\n";
-        log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
-    }
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
-    if (dev_cfg_.device_type == 0 && ctrl_){}
+    if (dev_cfg_.device_type == 0 && ctrl_){
         // ctrl_->set_control_mode("Position");
+        for (int i = 0; i < deg.size() && i < (int)joint_names.size(); ++i)
+        {
+            float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
+            ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
+            // std::cout << "cmd_type: " << joint_names[i].toUtf8().constData() << ", val: " << rad << "\n";
+            log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
+            // ogre_->setJointPosition(joint_names[i].toUtf8().constData(), rad);
+            std::unordered_map<std::string, float> joint_pos = dofsToJoints(joint_names[i].toUtf8().constData(), rad);
+            for (auto &[key, value] : joint_pos) ogre_->setJointPosition(key, value);
+        }
+    }
     else if (dev_cfg_.device_type != 0 && ctrl_){
         float rad = float(deg[2]);
         ctrl_->submit_target(side_->get_control_mode(), rad);
@@ -236,12 +240,18 @@ void MainWindow::onDeviceConnect()
             motor_->load(hand_cfg_);
             for (const auto &[key, value] : hand_cfg_.structs)
             {
-                for (auto &s : value.dofs)
-                    joint_names << QString::fromStdString(s.name);
+                for (auto &d : value.dofs)
+                {
+                    joint_names << QString::fromStdString(d.name);
+                    dofs_inverted_index.emplace(d.name, key);
+                }
+                for (auto &j : value.joints)
+                    joints_inverted_index.emplace(j, key);
             }
             // side_->loadSliders(joint_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
+            ogre_->loadURDF(hand_cfg_.urdf_file);
         }
         else 
         {
@@ -283,6 +293,10 @@ void MainWindow::onDeviceDisconnect()
         ctrl_->stop_all();
         free(ctrl_);}
     connect_->onChange(false);
+    ogre_->clearScene();
+    dev_cfg_ = grip::DeviceSettings();
+    hand_cfg_ = grip::HandSettings();
+    act_cfg_ = grip::ActuatorSettings();
 }
 
 void MainWindow::onConnectorStateCheck(Qt::CheckState state)
@@ -297,16 +311,9 @@ void MainWindow::onCameraWidgetControlSwitch(const QString &msg)
 {
     side_->modeChange(msg);
     if (msg == "Start Camera")
-    {
-        // qDebug() << "Mode camera";
         QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
-        // qDebug() << "Thread started";
-    }
     else
-    {
-        // emit requestStop();
         QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
-    }
 }
 
 void MainWindow::onActionPanelActionUpdate(const QString &msg)
@@ -333,19 +340,13 @@ void MainWindow::readJointAngles()
     float ring_angle = j.ring_mcp + j.ring_pip + j.ring_dip;
     float pinky_angle = j.pinky_mcp + j.pinky_pip + j.pinky_dip;
 
-    // std::vector<float> values = [thumb_angle, index_angle, middle_angle, ring_angle, pinky_angle];
-
     side_->updateJoints(thumb_angle, index_angle, middle_angle, ring_angle, pinky_angle);
 }
 
 void MainWindow::onConnectorModelChange(const QString &model_name)
 {
     config_path_ = std::string("configs/config_") + model_name.toUtf8().constData() + std::string(".yaml");
-    // qDebug() << config_path_.c_str();
     action_path_ = std::string("data/action_") + model_name.toUtf8().constData() + std::string(".json");
-    // qDebug() << action_path_.c_str();
-    if (ogre_->loadURDF("robots/demohand/urdf/Demo_urdf_v1.urdf"))
-        log_->append("urdf loaded");
 }
 
 void MainWindow::onUpperTabCloseRequested(int idx)
@@ -385,7 +386,7 @@ void MainWindow::openMotorControlTab()
 
 void MainWindow::openActionPanelTab()
 {
-    upperTabs->addTab(actionFlow_, "Action Flow");
+    upperTabs->addTab(actionFlow_, "Action Sets");
 }
 
 void MainWindow::openDiagram()
@@ -398,4 +399,32 @@ void MainWindow::openDiagram()
         if (ctrl_) plot->updateFromHand(ctrl_->get_hand_info());
     });
     timer_->start(10);
+}
+
+std::unordered_map<std::string, float> MainWindow::dofsToJoints(std::string dof_name, float value)
+{
+    grip::ModuleStruct ms = hand_cfg_.structs[dofs_inverted_index[dof_name]];
+    std::vector<float> map;
+    for (auto &d : ms.dofs) {
+        if (d.name == dof_name){
+            map = d.dof_joint_map;
+            break;
+        }
+    }
+    if (map.size() == 0) return {};
+    float sum = 0;
+    for (float v : map) sum += v;
+    // for (float v : map) result.push_back(value * v / sum);
+    std::unordered_map<std::string, float> result;
+    int counter = 0;
+    while (counter < map.size()) {
+        result.emplace(ms.joints[counter], value * map[counter] / sum);
+        counter += 1;
+    }
+    return result;
+}
+
+std::vector<float> MainWindow::jointsToDofs(std::string joint_name, float value)
+{
+    return {};
 }

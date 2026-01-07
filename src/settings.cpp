@@ -75,6 +75,9 @@ namespace grip
                         d.name = name.as<std::string>();
                         d.route.first = m->second["route"][counter]["min"].as<float_t>(d.route.first);
                         d.route.second = m->second["route"][counter]["max"].as<float_t>(d.route.second);
+                        if (auto map = m->second["dof_joint_map"][counter])
+                            for (auto v : map)
+                                d.dof_joint_map.push_back(v.as<float>());
                         ms.dofs.push_back(d);
                         counter += 1;
                     }
@@ -100,6 +103,9 @@ namespace grip
                 hand.wrist_control.push_back(policy.as<std::string>());
             }
         }
+
+        if (auto p = y["urdf_file"])
+            hand.urdf_file = p.as<std::string>();
 
         return hand;
     }

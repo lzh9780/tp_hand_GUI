@@ -83,6 +83,13 @@ OgreWidget::OgreWidget(QWidget *parent) : QWidget(parent)
     setAttribute(Qt::WA_NoSystemBackground, true);
     setUpdatesEnabled(false);
     connect(&mTimer, &QTimer::timeout, this, &OgreWidget::onFrame);
+    if (!mOgreInited)
+    {
+        initOgre();
+        mOgreInited = true;
+        resetView();
+        mTimer.start(16);
+    }
 }
 OgreWidget::~OgreWidget()
 {
@@ -328,6 +335,12 @@ void OgreWidget::clearScene()
 {
     if (!mScene)
         return;
+    if (!mWorld) 
+    {
+        mWorld = mScene->getRootSceneNode()->createChildSceneNode("WorldFixip");
+        mWorld->pitch(Ogre::Degree(-90.0f));
+    }
+    mRobots.clear();
     mBuiltJoints.clear();
     mLinkNodes.clear();
 
@@ -335,13 +348,43 @@ void OgreWidget::clearScene()
     auto *root = mWorld;
     auto kids = root->getChildren();
     for (auto *n : kids)
-        root->removeChild(n);
-    for (auto *n : kids)
-        mScene->destroySceneNode(static_cast<Ogre::SceneNode *>(n));
+        destroySubtree(mScene, static_cast<Ogre::SceneNode*>(n));
 
     // Re-create grid after clear
     auto *grid = createGridMO("NewGroundGrid", 30, 0.05f);
     mWorld->createChildSceneNode()->attachObject(grid);
+}
+
+void OgreWidget::destroySubtree(Ogre::SceneManager* sm, Ogre::SceneNode* n) {
+  if (!sm || !n) return;
+
+  // Detach & destroy attached MovableObjects
+  const auto& objs = n->getAttachedObjects();
+  for (auto* mo : objs) {
+    // Destroy by concrete type to remove from SceneManager registries
+    if (auto* ent = dynamic_cast<Ogre::Entity*>(mo)) {
+      n->detachObject(ent);
+      sm->destroyEntity(ent);
+    } else if (auto* man = dynamic_cast<Ogre::ManualObject*>(mo)) {
+      n->detachObject(man);
+      sm->destroyManualObject(man);
+    } else {
+      n->detachObject(mo);
+      sm->destroyMovableObject(mo);
+    }
+  }
+
+  // Recursively destroy children
+  // Copy list first; it changes as we destroy
+  auto children = n->getChildren();
+  for (auto* c : children) {
+    destroySubtree(sm, static_cast<Ogre::SceneNode*>(c));
+  }
+
+  // Finally destroy this node
+  if (n->getParentSceneNode())
+    n->getParentSceneNode()->removeChild(n);
+  sm->destroySceneNode(n);
 }
 
 void OgreWidget::buildSceneFromURDF(const std::string &urdf_path)
@@ -368,9 +411,17 @@ void OgreWidget::buildSceneFromURDF(const std::string &urdf_path)
         if (child->getParentSceneNode())
             child->getParentSceneNode()->removeChild(child);
 
+        if (mScene->hasSceneNode(J.name + "_origin"))
+        {
+            mScene->destroySceneNode(J.name + "_origin");
+        }
         auto *originNode = parent->createChildSceneNode(J.name + "_origin");
         originNode->setPosition(J.origin_xyz[0], J.origin_xyz[1], J.origin_xyz[2]);
         originNode->setOrientation(fromRPY(J.origin_rpy[0], J.origin_rpy[1], J.origin_rpy[2]));
+        if (mScene->hasSceneNode(J.name + "_axis"))
+        {
+            mScene->destroySceneNode(J.name + "_axis");
+        }
         auto *axisNode = originNode->createChildSceneNode(J.name + "_axis");
         axisNode->addChild(child);
 
@@ -398,12 +449,20 @@ void OgreWidget::buildSceneFromURDF(const std::string &urdf_path)
 
 void OgreWidget::buildLinkNode(const UrdfLink &L)
 {
+    if (mScene->hasSceneNode(L.name))
+    {
+        mScene->destroySceneNode(L.name);
+    }
     auto *node = mWorld->createChildSceneNode(L.name);
     mLinkNodes[L.name] = node;
 }
 
 void OgreWidget::attachVisual(Ogre::SceneNode *linkNode, const UrdfVisual &V, int idx, const std::string &urdf_dir)
 {
+    if (mScene->hasSceneNode(linkNode->getName() + "_vis_" + std::to_string(idx)))
+    {
+        mScene->destroySceneNode(linkNode->getName() + "_vis_" + std::to_string(idx));
+    }
     auto *vnode = linkNode->createChildSceneNode(linkNode->getName() + "_vis_" + std::to_string(idx));
     vnode->setPosition(V.xyz[0], V.xyz[1], V.xyz[2]);
     vnode->setOrientation(fromRPY(V.rpy[0], V.rpy[1], V.rpy[2]));
