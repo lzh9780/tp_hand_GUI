@@ -63,5 +63,6 @@ HandSettings load_hand_settings(const std::string& yaml_path);
 ActuatorSettings load_actuator_settings(const std::string& yaml_path);
 void validate_settings(const AppSettings& s, const std::string& yaml_path);
 void validate_settings(const HandSettings& s, const std::string& path);
+void throw_errors(std::vector<std::string> errs);
 
 } // namespace grip
