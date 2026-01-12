@@ -3,17 +3,21 @@
 // #include <opencv2/imgproc.hpp> // for color conversion if needed (we’ll do manual)
 #include <stdexcept>
 #include <QList>
+#include <iostream>
 
 // using namespace Qt::Literals::StringLiterals;
 
-PyCamWorker::PyCamWorker(QObject* parent) : QObject(parent) {}
+PyCamWorker::PyCamWorker(QObject *parent) : QObject(parent) {}
 
 PyCamWorker::~PyCamWorker() { stop(); }
 
-void PyCamWorker::start() {
-    if (running_) return;
+void PyCamWorker::start()
+{
+    if (running_)
+        return;
 
-    try {
+    try
+    {
         // Start the Python interpreter (scoped for this worker thread)
         // interp_ = std::make_unique<py::scoped_interpreter>();
 
@@ -30,39 +34,54 @@ void PyCamWorker::start() {
 
             // Cache bound callables to reduce attribute lookups per tick
             py::object start_fn = loop.attr("start");
-            stop_fn_  = loop.attr("stop");
+            stop_fn_ = loop.attr("stop");
             get_latest_fn = loop.attr("get_frame");
             get_joint_fn = loop.attr("get_joints");
             get_wrist_joint_fn = loop.attr("get_wrist_joints");
 
             start_fn();
         }
-        
+
         // Poll ~60 FPS (adjust as needed)
         timer_ = new QTimer(this);
         connect(timer_, &QTimer::timeout, this, &PyCamWorker::onTick);
-        timer_->start(1000/120);
+        timer_->start(1000 / 120);
 
         running_ = true;
         emit status("Python camera loop started.");
         emit runningChanged(running_);
-    } catch (const py::error_already_set& e) {
+    }
+    catch (const py::error_already_set &e)
+    {
         emit error(QString::fromUtf8(e.what()));
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         emit error(QString::fromUtf8(e.what()));
     }
 }
 
-void PyCamWorker::stop() {
-    if (!running_) return;
+void PyCamWorker::stop()
+{
+    if (!running_)
+        return;
     running_ = false;
-    if (timer_) { timer_->stop(); timer_->deleteLater(); timer_ = nullptr; }
-    try {
-        if (stop_fn_) {
+    if (timer_)
+    {
+        timer_->stop();
+        timer_->deleteLater();
+        timer_ = nullptr;
+    }
+    try
+    {
+        if (stop_fn_)
+        {
             py::gil_scoped_acquire gil;
             stop_fn_();
         }
-    } catch (const py::error_already_set& e) {
+    }
+    catch (const py::error_already_set &e)
+    {
         // report but continue shutdown
         emit error(QString::fromUtf8(e.what()));
     }
@@ -77,56 +96,95 @@ void PyCamWorker::stop() {
     emit runningChanged(running_);
 }
 
-static inline void copy_bgr_rows(void* dst, int dstStride, const void* src, int srcStride, int rows, int rowBytes) {
-    auto* d = static_cast<char*>(dst);
-    auto* s = static_cast<const char*>(src);
-    for (int r = 0; r < rows; ++r) {
-        std::memcpy(d + r*dstStride, s + r*srcStride, rowBytes);
+static inline void copy_bgr_rows(void *dst, int dstStride, const void *src, int srcStride, int rows, int rowBytes)
+{
+    auto *d = static_cast<char *>(dst);
+    auto *s = static_cast<const char *>(src);
+    for (int r = 0; r < rows; ++r)
+    {
+        std::memcpy(d + r * dstStride, s + r * srcStride, rowBytes);
     }
 }
 
-void PyCamWorker::onTick() {
-    if (!running_) return;
+void PyCamWorker::onTick()
+{
+    if (!running_)
+        return;
     // qDebug() << "on tick";
-    try {
+    try
+    {
         py::gil_scoped_acquire gil;
         // get_latest() -> (numpy array HxWx3 uint8 BGR, tick)
         // py::tuple tup = get_latest_fn().cast<py::tuple>();
-        py::array arr = get_latest_fn().cast<py::tuple>();// tup[0].cast<py::array>();
+        py::array arr = get_latest_fn().cast<py::tuple>(); // tup[0].cast<py::array>();
         py::dict d = get_joint_fn().cast<py::dict>();
         py::dict wd = get_wrist_joint_fn().cast<py::dict>();
 
         // Data transform: finger_joint_Node -> finger_joint
-        float thumb_joint = 180 - (d["thumb"]["ip"].cast<float>()) + 180 - d["thumb"]["mcp"].cast<float>();
-        float index_joint = 180 - d["index"]["pip"].cast<float>() + 180 - d["index"]["mcp"].cast<float>();
-        float middle_joint = 180 - d["middle"]["pip"].cast<float>() + 180 - d["middle"]["mcp"].cast<float>();
-        float ring_joint = 180 - d["ring"]["pip"].cast<float>() + 180 - d["ring"]["mcp"].cast<float>();
-        float pinky_joint = 180 - d["pinky"]["pip"].cast<float>() + 180 - d["pinky"]["mcp"].cast<float>();
-        float pitch = wd["pitch"].cast<float>();
-        float yaw = wd["yaw"].cast<float>();
+        QVector<double> l;
+        l.append(d["thumb"]["cmc_pull"].cast<float>());
+        l.append(d["thumb"]["cmc_rot"].cast<float>());
+        l.append(float(180) - d["thumb"]["mcp"].cast<float>());
+        l.append(float(180) - d["thumb"]["ip"].cast<float>());
+        l.append(float(180) - d["index"]["mcp"].cast<float>());
+        l.append(float(180) - d["index"]["pip"].cast<float>());
+        l.append(float(180) - d["index"]["dip"].cast<float>());
+        l.append(d["index"]["sway"].cast<float>());
+        l.append(float(180) - d["middle"]["mcp"].cast<float>());
+        l.append(float(180) - d["middle"]["pip"].cast<float>());
+        l.append(float(180) - d["middle"]["dip"].cast<float>());
+        l.append(d["middle"]["sway"].cast<float>());
+        l.append(float(180) - d["ring"]["mcp"].cast<float>());
+        l.append(float(180) - d["ring"]["pip"].cast<float>());
+        l.append(float(180) - d["ring"]["dip"].cast<float>());
+        l.append(d["ring"]["sway"].cast<float>());
+        l.append(float(180) - d["pinky"]["mcp"].cast<float>());
+        l.append(float(180) - d["pinky"]["pip"].cast<float>());
+        l.append(float(180) - d["pinky"]["dip"].cast<float>());
+        l.append(d["pinky"]["sway"].cast<float>());
+        l.append(float(180) - d["pinky"]["roll"].cast<float>());
+        l.append(wd["roll"].cast<float>());
+        l.append(wd["pitch"].cast<float>());
+        l.append(wd["yaw"].cast<float>());
+
+        // std::cout << "index_mcp " << (float(180) - d["index"]["mcp"].cast<float>()) << "\n";
+        // std::cout << "index_pip " << (float(180) - d["index"]["pip"].cast<float>()) << "\n";
+        // std::cout << "index_dip " << (float(180) - d["index"]["dip"].cast<float>()) << "\n";
+        // std::cout << "\n";
+        // std::cout << "middle_mcp " << (float(180) - d["middle"]["mcp"].cast<float>()) << "\n";
+        // std::cout << "middle_pip " << (float(180) - d["middle"]["pip"].cast<float>()) << "\n";
+        // std::cout << "middle_dip " << (float(180) - d["middle"]["dip"].cast<float>()) << "\n";
+        // std::cout << "\n";
+        // std::cout << "ring_mcp " << (float(180) - d["ring"]["mcp"].cast<float>()) << "\n";
+        // std::cout << "ring_pip " << (float(180) - d["ring"]["pip"].cast<float>()) << "\n";
+        // std::cout << "ring_dip " << (float(180) - d["ring"]["dip"].cast<float>()) << "\n";
+        // std::cout << "\n";
+        // std::cout << "pinky_mcp " << (float(180) - d["pinky"]["mcp"].cast<float>()) << "\n";
+        // std::cout << "pinky_pip " << (float(180) - d["pinky"]["pip"].cast<float>()) << "\n";
+        // std::cout << "pinky_dip " << (float(180) - d["pinky"]["dip"].cast<float>()) << "\n";
+        // std::cout << "\n";
 
         // Data processing: bias
-        thumb_joint += -12;
-        index_joint += -25;
-        middle_joint += -40;
-        ring_joint += -28;
-        pinky_joint += -40;
+        // thumb_joint += -12;
+        // index_joint += -25;
+        // middle_joint += -40;
+        // ring_joint += -28;
+        // pinky_joint += -40;
 
         // Data processing: scale
-        thumb_joint = thumb_joint*1.8;
-        index_joint = index_joint*1.0;
-        middle_joint = middle_joint*1.0;
-        ring_joint = ring_joint*1.0;
-        pinky_joint = pinky_joint*1.4;
+        // thumb_joint = thumb_joint*1.8;
+        // index_joint = index_joint*1.0;
+        // middle_joint = middle_joint*1.0;
+        // ring_joint = ring_joint*1.0;
+        // pinky_joint = pinky_joint*1.4;
 
-        QVector<double> l;
-        l.append(thumb_joint);
-        l.append(index_joint);
-        l.append(middle_joint);
-        l.append(ring_joint);
-        l.append(pinky_joint);
-        l.append(pitch);
-        l.append(yaw);
+        // l.append(thumb_joint);
+        // l.append(index_joint);
+        // l.append(middle_joint);
+        // l.append(ring_joint);
+        // l.append(pinky_joint);
+        // l.append(pitch);
+        // l.append(yaw);
         emit newJoint(l);
 
         // PyMatView view = PyMatView::from_numpy(arr);
@@ -148,11 +206,12 @@ void PyCamWorker::onTick() {
         {
             const int rows = int(info.shape[0]);
             const int cols = int(info.shape[1]);
-            const int srcStride = int(info.strides[0]);     // bytes per row from numpy
-            const int rowBytes  = cols * 3;                 // BGR888
+            const int srcStride = int(info.strides[0]); // bytes per row from numpy
+            const int rowBytes = cols * 3;              // BGR888
 
             // 2) Resize our QImage once if size changed
-            if (frameBGR_.width() != cols || frameBGR_.height() != rows) {
+            if (frameBGR_.width() != cols || frameBGR_.height() != rows)
+            {
                 frameBGR_ = QImage(cols, rows, QImage::Format_BGR888);
             }
 
@@ -169,9 +228,13 @@ void PyCamWorker::onTick() {
         // qDebug() << "Image returned";
 
         // emit newFrame(img);
-    } catch (const py::error_already_set& e) {
+    }
+    catch (const py::error_already_set &e)
+    {
         emit error(QString::fromUtf8(e.what()));
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception &e)
+    {
         emit error(QString::fromUtf8(e.what()));
     }
 }

@@ -45,7 +45,7 @@ public:
     QString modeText() const;
     // void setFrame(const QImage img);
     void modeChange(const QString& mode);
-    void applyCameraData(const QVector<double>& data);
+    void applyCameraData(std::unordered_map<std::string, float>& data);
     void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
     void loadActions();
     // void loadSliders(const QStringList &jointNames);

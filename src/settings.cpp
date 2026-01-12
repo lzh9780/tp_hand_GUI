@@ -101,8 +101,10 @@ namespace grip
 
                     if (auto route = m->second["route"][counter])
                     {
-                        d.route.first = route["min"].as<float_t>(d.route.first);
-                        d.route.second = route["max"].as<float_t>(d.route.second);
+                        if (auto min = route["min"])
+                            d.route.first = min.as<float_t>(d.route.first);
+                        if (auto max = route["max"])
+                            d.route.second = max.as<float_t>(d.route.second);
                     }
 
                     if (d.route.first >= d.route.second)

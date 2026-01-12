@@ -63,9 +63,15 @@ private:
     void onDeviceDisconnect();
     void openActionPanelTab();
     std::unordered_map<std::string, float> dofsToJoints(std::string dof_name, float value);
-    std::vector<float> jointsToDofs(std::string joint_name, float value);
+    std::unordered_map<std::string, float> jointsToDofs(std::string joint_name, float value);
 
 private:
+    struct DataBuffer
+    {
+        float cmd = 0;
+        float feedback = 0;
+    };
+
     // program modules
     std::vector<int> devices_;
     grip::ControlInterface* ctrl_{nullptr};
@@ -76,6 +82,8 @@ private:
 
     std::unordered_map<std::string, std::string> dofs_inverted_index;
     std::unordered_map<std::string, std::string> joints_inverted_index;
+    std::unordered_map<std::string, DataBuffer> joints_buffer;
+    std::unordered_map<std::string, DataBuffer> dofs_buffer;
 
     // params
     bool withCan = true;
@@ -96,7 +104,7 @@ private:
     std::string config_path_;
     std::string action_path_;
     std::string urdf_path_;
-    QStringList joint_names;
+    QStringList dof_names;
 
     QTabWidget* upperTabs;
     QTabWidget* lowerTabs;

@@ -16,6 +16,34 @@
 #include "CameraWidget.hpp"
 #include "ActionPanel.hpp"
 
+static const std::vector<std::string> full_joints_list
+{
+    "thumb_cmc_pull",
+    "thumb_cmc_rot",
+    "thumb_mcp",
+    "thumb_ip",
+    "index_mcp",
+    "index_pip",
+    "index_dip",
+    "index_sway",
+    "middle_mcp",
+    "middle_pip",
+    "middle_dip",
+    "middle_sway",
+    "ring_mcp",
+    "ring_pip",
+    "ring_dip",
+    "ring_sway",
+    "pinky_mcp",
+    "pinky_pip",
+    "pinky_dip",
+    "pinky_sway",
+    "pinky_roll",
+    "roll",
+    "pitch",
+    "yaw"
+};
+
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
     : QMainWindow(parent), cfg_(cfg)
@@ -36,7 +64,26 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
             { camera_->setFrame(img); });
 
     connect(worker_, &PyCamWorker::newJoint, this, [this](const QVector<double> &joints)
-            { side_->applyCameraData(joints); });
+            { 
+                if (joints.size() != full_joints_list.size()) 
+                    return;
+                std::unordered_map<std::string, float> dof_pos;
+                for (int i = 0; i < full_joints_list.size(); ++i)
+                {
+                    const auto joint_name = full_joints_list[i];
+                    std::unordered_map<std::string, float> dof_pos_buff = jointsToDofs(joint_name, joints[i]);
+                    for (const auto &buff : dof_pos_buff)
+                    {
+                        const auto &name = buff.first;
+                        auto item = dof_pos.find(name);
+                        if (item != dof_pos.end())
+                            item->second += buff.second;
+                        else
+                            dof_pos.emplace(name, buff.second);
+                    }
+                }
+                side_->applyCameraData(dof_pos);
+            });
     connect(worker_, &PyCamWorker::status, this, [this](const QString &s)
             { statusBar()->showMessage(s, 2000); });
     connect(worker_, &PyCamWorker::error, this, [this](const QString &e)
@@ -128,16 +175,16 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::addAction, this, &MainWindow::onSidePanelAddAction);
 
     // auto* mainMenu = menuBar()->addMenu("&Menu");
-    auto* tabsMenu = menuBar()->addMenu("Tabs");
+    auto *tabsMenu = menuBar()->addMenu("Tabs");
     // auto* settingMenu = menuBar()->addMenu("&Settings");
-    auto* actUrdfLoader = tabsMenu->addAction("3D Model");
-    auto* actActionFlow = tabsMenu->addAction("Action Sets");
-    auto* actConnect = tabsMenu->addAction("Connector");
+    auto *actUrdfLoader = tabsMenu->addAction("3D Model");
+    auto *actActionFlow = tabsMenu->addAction("Action Sets");
+    auto *actConnect = tabsMenu->addAction("Connector");
     // auto* actAlgoPanel = tabsMenu->addAction("Control Algorithm");
-    auto* actDiagram = tabsMenu->addAction("Diagrams");
-    auto* actHandDetect = tabsMenu->addAction("Hand Detect");
-    auto* actLog = tabsMenu->addAction("Log");
-    auto* actMotor = tabsMenu->addAction("Motor Control");
+    auto *actDiagram = tabsMenu->addAction("Diagrams");
+    auto *actHandDetect = tabsMenu->addAction("Hand Detect");
+    auto *actLog = tabsMenu->addAction("Log");
+    auto *actMotor = tabsMenu->addAction("Motor Control");
     // auto* actInfo = tabsMenu->addAction("Robot Info");
 
     connect(actHandDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
@@ -163,34 +210,46 @@ void MainWindow::onSidePanelValuesChanged()
         return;
     auto deg = side_->jointDegrees();
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
-    if (dev_cfg_.device_type == 0 && ctrl_){
+    if (dev_cfg_.device_type == 0 && ctrl_)
+    {
         // ctrl_->set_control_mode("Position");
-        for (int i = 0; i < deg.size() && i < (int)joint_names.size(); ++i)
+        std::unordered_map<std::string, float> joint_target;
+        for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
         {
             float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-            ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
-            // std::cout << "cmd_type: " << joint_names[i].toUtf8().constData() << ", val: " << rad << "\n";
-            log_->append("Follow: " + QString(joint_names[i].toUtf8().constData()) + ", " + QString::number(rad));
-            // ogre_->setJointPosition(joint_names[i].toUtf8().constData(), rad);
-            std::unordered_map<std::string, float> joint_pos = dofsToJoints(joint_names[i].toUtf8().constData(), rad);
-            for (auto &[key, value] : joint_pos) ogre_->setJointPosition(key, value);
+            ctrl_->submit_target(dof_names[i].toUtf8().constData(), rad);
+            // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
+            log_->append("Follow: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
+            // ogre_->setJointPosition(dof_names[i].toUtf8().constData(), rad);
+            std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad);
+            for (const auto &j : joint_pos)
+            {
+                const auto &name = j.first;
+                auto item = joint_target.find(name);
+                if (item != joint_target.end())
+                    item->second += j.second;
+                else
+                    joint_target.emplace(name, j.second);
+            }
         }
+        for (auto &[key, value] : joint_target)
+            ogre_->setJointPosition(key, value);
     }
-    else if (dev_cfg_.device_type != 0 && ctrl_){
+    else if (dev_cfg_.device_type != 0 && ctrl_)
+    {
         float rad = float(deg[2]);
         ctrl_->submit_target(side_->get_control_mode(), rad);
         // ctrl_->set_control_mode(side_->get_control_mode());
-        
     }
 }
 
 void MainWindow::onSidePanelCommitted()
 {
     auto deg = side_->jointDegrees();
-    for (int i = 0; i < deg.size() && i < (int)joint_names.size(); ++i)
+    for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
     {
         float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-        ctrl_->submit_target(joint_names[i].toUtf8().constData(), rad);
+        ctrl_->submit_target(dof_names[i].toUtf8().constData(), rad);
     }
     log_->append("Execute: batch targets sent.");
 }
@@ -202,12 +261,10 @@ void MainWindow::onSidePanelNotify(const QString &msg)
 
 void MainWindow::onConnectorDeviceConnect(const QString &msg)
 {
-    if (msg == "Connect") 
-    {
+    if (msg == "Connect")
         onDeviceConnect();
-    } else {
+    else
         onDeviceDisconnect();
-    }
 }
 
 void MainWindow::onDeviceConnect()
@@ -215,7 +272,8 @@ void MainWindow::onDeviceConnect()
     try
     {
         dev_cfg_ = grip::load_device_settings(config_path_);
-        if (dev_cfg_.device_type == 0){
+        if (dev_cfg_.device_type == 0)
+        {
             hand_cfg_ = grip::load_hand_settings(config_path_);
 
             ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
@@ -236,24 +294,24 @@ void MainWindow::onDeviceConnect()
                 connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
                 timer_->start(10);
             }
-            
+
             motor_->load(hand_cfg_);
             for (const auto &[key, value] : hand_cfg_.structs)
             {
                 for (auto &d : value.dofs)
                 {
-                    joint_names << QString::fromStdString(d.name);
+                    dof_names << QString::fromStdString(d.name);
                     dofs_inverted_index.emplace(d.name, key);
                 }
                 for (auto &j : value.joints)
                     joints_inverted_index.emplace(j, key);
             }
-            // side_->loadSliders(joint_names);
+            // side_->loadSliders(dof_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
             ogre_->loadURDF(hand_cfg_.urdf_file);
         }
-        else 
+        else
         {
             act_cfg_ = grip::load_actuator_settings(config_path_);
 
@@ -273,7 +331,7 @@ void MainWindow::onDeviceConnect()
 
         actionFlow_->updateStore(store);
         actionFlow_->loadFlowList();
-        
+
         connect_->onChange(true);
     }
     catch (const std::exception &e)
@@ -289,9 +347,11 @@ void MainWindow::onDeviceDisconnect()
     side_->removeAll();
     motor_->removeAll();
     actionFlow_->clearAll();
-    if (ctrl_){
+    if (ctrl_)
+    {
         ctrl_->stop_all();
-        free(ctrl_);}
+        free(ctrl_);
+    }
     connect_->onChange(false);
     ogre_->clearScene();
     dev_cfg_ = grip::DeviceSettings();
@@ -395,36 +455,69 @@ void MainWindow::openDiagram()
     upperTabs->addTab(plot, "Diagram");
 
     auto timer_ = new QTimer(this);
-    connect(timer_, &QTimer::timeout, this, [=](){
-        if (ctrl_) plot->updateFromHand(ctrl_->get_hand_info());
-    });
+    connect(timer_, &QTimer::timeout, this, [=]()
+            { if (ctrl_) plot->updateFromHand(ctrl_->get_hand_info()); });
     timer_->start(10);
 }
 
-std::unordered_map<std::string, float> MainWindow::dofsToJoints(std::string dof_name, float value)
+std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value)
 {
-    grip::ModuleStruct ms = hand_cfg_.structs[dofs_inverted_index[dof_name]];
+    auto module_name = dofs_inverted_index.find(dof_name);
+    if (module_name == dofs_inverted_index.end())
+        return {};
+    auto module_struct = hand_cfg_.structs.find(module_name->second);
+    if (module_struct == hand_cfg_.structs.end())
+        return {};
+    auto ms = module_struct->second;
     std::vector<float> map;
-    for (auto &d : ms.dofs) {
-        if (d.name == dof_name){
+    for (auto &d : ms.dofs)
+    {
+        if (d.name == dof_name)
+        {
             map = d.dof_joint_map;
             break;
         }
     }
-    if (map.size() == 0) return {};
+    if (map.size() == 0)
+        return {};
     float sum = 0;
-    for (float v : map) sum += v;
-    // for (float v : map) result.push_back(value * v / sum);
+    for (float v : map)
+        sum += v;
+
     std::unordered_map<std::string, float> result;
     int counter = 0;
-    while (counter < map.size()) {
+    while (counter < map.size())
+    {
         result.emplace(ms.joints[counter], value * map[counter] / sum);
         counter += 1;
     }
     return result;
 }
 
-std::vector<float> MainWindow::jointsToDofs(std::string joint_name, float value)
+std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string joint_name, float value)
 {
-    return {};
+    auto module_name = joints_inverted_index.find(joint_name);
+    if (module_name == joints_inverted_index.end())
+        return {};
+    auto module_struct = hand_cfg_.structs.find(module_name->second);
+    if (module_struct == hand_cfg_.structs.end())
+        return {};
+    auto ms = module_struct->second;
+    int idx = 0;
+    for (auto j : ms.joints)
+    {
+        if (j == joint_name)
+            break;
+        idx += 1;
+    }
+    if (idx >= ms.joints.size())
+        return {};
+    std::unordered_map<std::string, float> result;
+    for (auto dof : ms.dofs)
+    {
+        if (idx >= dof.dof_joint_map.size())
+            continue;
+        result.emplace(dof.name, dof.dof_joint_map[idx] * value);
+    }
+    return result;
 }

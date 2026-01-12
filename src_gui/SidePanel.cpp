@@ -627,16 +627,28 @@ void SidePanel::modeChange(const QString &mode)
     }
 }
 
-void SidePanel::applyCameraData(const QVector<double> &data)
+void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data)
 {
     // auto vals = store_->actionJoints(actionIndex);
-    for (int i = 0; i < sliders_.size() && i < data.size(); ++i)
+    // for (int i = 0; i < sliders_.size() && i < data.size(); ++i)
+    // {
+    //     float f = data[i];
+    //     float v = std::clamp(float(f), float(kDegMin), float(kDegMax));
+    //     sliders_[i]->setValue(v * 100);
+    // }
+    for (const auto &[name, value] : data)
     {
-        float f = data[i];
-        float v = std::clamp(float(f), float(kDegMin), float(kDegMax));
-        sliders_[i]->setValue(v * 100);
+        for (int i = 0; i < nameLabels_.size(); ++i)
+        {
+            if (nameLabels_[i]->text().toUtf8().constData() == name) 
+            {
+                float min = valueLbls[i].first->text().toFloat();
+                float max = valueLbls[i].second->text().toFloat();
+                float v = std::clamp(float(value), float(min), float(max));
+                sliders_[i]->setValue(v * 100);
+            }
+        }
     }
-    emit valuesChanged();
 }
 
 void SidePanel::updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky)

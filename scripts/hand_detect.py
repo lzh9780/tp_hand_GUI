@@ -74,11 +74,11 @@ class HandDetector():
         self.low_pass_filter_size = 5
         
         self.finger_joints = {
-                            "thumb": {"cmc_rot": 0.0, "cmc_pull": 0.0, "mcp": 0.0, "ip": 0.0}, 
-                            "index": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
-                            "middle":{"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
-                            "ring": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0}, 
-                            "pinky": {"mcp": 0.0, "pip": 0.0, "dip": 0.0, "sway": 0.0, "roll": 0.0}
+                            "thumb": {"cmc_rot": 0.0, "cmc_pull": 0.0, "mcp": 180.0, "ip": 180.0}, 
+                            "index": {"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 0.0}, 
+                            "middle":{"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 0.0}, 
+                            "ring": {"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 0.0}, 
+                            "pinky": {"mcp": 180.0, "pip": 180.0, "dip": 180.0, "sway": 0.0, "roll": 0.0}
                             }
         
         self.previous_finger_joints = { 
