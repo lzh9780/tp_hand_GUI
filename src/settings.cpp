@@ -126,7 +126,7 @@ namespace grip
 
                 hand.structs[m->first.as<std::string>()] = std::move(ms);
                 if (!valid_device(m->first.as<std::string>()))
-                    add("Invaild module: "+ m->first.as<std::string>() + "\n");
+                    add("Invalid module: "+ m->first.as<std::string>() + "\n");
             }
         }
 

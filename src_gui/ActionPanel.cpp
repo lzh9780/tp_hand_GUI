@@ -280,7 +280,8 @@ void ActionPanel::load()
     {
         if (store_->findActionByName(s) == -1)
         {
-            /* TODO: give a warning box*/
+            int ret = QMessageBox::warning(this, "Action Not Found", QString("The action %1 haven't been found. "
+                "Please Check the storage file. ").arg(s));
             continue;
         }
         
@@ -321,12 +322,12 @@ void ActionPanel::saveActionSet()
         QVector<QString> actions;
         for (const auto* a : tableLines)
         {    
-            qDebug() << a->text();
+            // qDebug() << a->text();
             actions.append(a->text());
         }
 
         int idx = store_->findActionSetByName(selectBox->currentText());
-        qDebug() << idx;
+        // qDebug() << idx;
         store_->setActionSetValues(idx, actions);
         store_->save();
         saveBtn->setEnabled(false);
@@ -347,19 +348,30 @@ void ActionPanel::actionSetSaveAs()
 
 void ActionPanel::deleteCurrentActionSet()
 {
-    // TODO: Add a confirm window
-    int idx = store_->findActionSetByName(selectBox->currentText());
-    store_->removeActionSet(idx);
-    store_->save();
-    selectBox->removeItem(idx + 1);
-    selectBox->setCurrentIndex(0);
+    QMessageBox msgBox;
+    msgBox.setTextFormat(Qt::MarkdownText);
+    msgBox.setWindowTitle("Delete Action Set");
+    msgBox.setText(QString("#### Are you sure to delete action set %1?").arg(selectBox->currentText()));
+    msgBox.setIcon(QMessageBox::Warning);
+    auto *confirmBtn = msgBox.addButton(QMessageBox::Ok);
+    auto *cancelBtn = msgBox.addButton(QMessageBox::Cancel);
+    msgBox.exec();
+
+    if (msgBox.clickedButton() == confirmBtn)
+    {
+        int idx = store_->findActionSetByName(selectBox->currentText());
+        store_->removeActionSet(idx);
+        store_->save();
+        selectBox->removeItem(idx + 1);
+        selectBox->setCurrentIndex(0);
+    }
 }
 
 void ActionPanel::validate(QLineEdit* edit)
 {
-    if (edit->property("vaildating").toBool())
+    if (edit->property("validating").toBool())
         return;
-    edit->setProperty("vaildating", true);
+    edit->setProperty("validating", true);
 
     bool pass = false;
     if (edit->text().trimmed().isEmpty())
@@ -389,7 +401,7 @@ void ActionPanel::validate(QLineEdit* edit)
     }
 
     QTimer::singleShot(0, edit, [edit]
-                       { edit->setProperty("vaildating", false); });
+                       { edit->setProperty("validating", false); });
 }
 
 void ActionPanel::clearActionList()
@@ -427,3 +439,5 @@ void ActionPanel::clearAll()
     saveAsBtn->setEnabled(false);
     deleteBtn->setEnabled(false);
 }
+
+void ActionPanel::reload() { load(); }

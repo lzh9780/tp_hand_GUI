@@ -18,9 +18,6 @@
 #include <QComboBox>
 #include <cmath>
 
-static constexpr int kDegMin = -50; // degrees
-static constexpr int kDegMax = 150;
-
 SidePanel::SidePanel(QWidget *parent)
     : QFrame(parent)
 {
@@ -101,7 +98,6 @@ void SidePanel::buildControlRow()
     connect(btnMode_, &QPushButton::clicked, this, &SidePanel::onToggleMode);
     connect(btnExecute_, &QPushButton::clicked, this, &SidePanel::onExecute);
     connect(btnSave_, &QPushButton::clicked, this, &SidePanel::onSaveAction);
-    // connect(btnDelete_, &QPushButton::clicked, this, &SidePanel::onDeleteAction);
 }
 
 void SidePanel::buildActionsPanel()
@@ -111,16 +107,7 @@ void SidePanel::buildActionsPanel()
     v->setContentsMargins(6, 6, 6, 6);
     v->setSpacing(4);
 
-    // // Header: "Actions" [collapse]
-    // auto *header = new QWidget;
-    // auto *hl = new QHBoxLayout(header);
-    // hl->setContentsMargins(0, 0, 0, 0);
-    // btnCollapseActions_ = new QToolButton;
-    // btnCollapseActions_->setArrowType(Qt::UpArrow);
-    // btnCollapseActions_->setFixedSize(20, 20);
-    // connect(btnCollapseActions_, &QToolButton::clicked, this, &SidePanel::onToggleActions);
-    // hl->addWidget(btnCollapseActions_);
-    // hl->addWidget(new QLabel("Actions:"));
+    // Header: "Actions" [collapse]
     auto *header = new QLabel("Actions:");
     v->addWidget(header);
 
@@ -128,22 +115,7 @@ void SidePanel::buildActionsPanel()
     actionListWidget_ = new QWidget;
     actionListWidget_->setStyleSheet("background: #fff;");
 
-    // Header: "Action Sets" [collapse] (kept for UI parity)
-    // auto *header2 = new QWidget;
-    // auto *hl2 = new QHBoxLayout(header2);
-    // hl2->setContentsMargins(0, 0, 0, 0);
-    // btnCollapseSets_ = new QToolButton;
-    // btnCollapseSets_->setArrowType(Qt::UpArrow);
-    // btnCollapseSets_->setFixedSize(20, 20);
-    // connect(btnCollapseSets_, &QToolButton::clicked, this, &SidePanel::onToggleActionSets);
-    // hl2->addWidget(btnCollapseSets_);
-    // hl2->addWidget(new QLabel("Action Sets:"));
     v->addWidget(actionListWidget_);
-    // v->addWidget(header2);
-    // actionSetPanel_ = new QWidget;
-    // actionSetPanel_->setMinimumHeight(80);
-    // actionSetPanel_->setStyleSheet("background: #fff;");
-    // v->addWidget(actionSetPanel_);
     auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);
     v->addItem(spacer);
 
@@ -159,6 +131,8 @@ void SidePanel::updateStore(ActionStore *store)
 
 void SidePanel::loadActions()
 {
+    if (!store_)
+        return;
     auto *listLayout = new QVBoxLayout(actionListWidget_);
     listLayout->setContentsMargins(24, 0, 0, 0);
     listLayout->setSpacing(2);
@@ -272,18 +246,25 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     connect(valEnter, &QLineEdit::editingFinished, this, &SidePanel::onValueEditChanged);
 }
 
-void SidePanel::loadHandControllor(grip::HandSettings hand_cfg) {
-    for (auto s : hand_cfg.structs) {
+void SidePanel::loadHandControllor(grip::HandSettings hand_cfg)
+{
+    for (auto s : hand_cfg.structs)
+    {
         auto *ctrlHl = new QHBoxLayout();
-        auto *mode_lable = new QLabel(s.first.c_str()); 
+        auto *mode_lable = new QLabel(s.first.c_str());
         mode_box = new QComboBox();
 
-        if (s.first != "WRIST") {
-            for (auto p : hand_cfg.control_policies) {
+        if (s.first != "WRIST")
+        {
+            for (auto p : hand_cfg.control_policies)
+            {
                 mode_box->addItem(p.c_str());
             }
-        } else {
-            for (auto p : hand_cfg.wrist_control) {
+        }
+        else
+        {
+            for (auto p : hand_cfg.wrist_control)
+            {
                 mode_box->addItem(p.c_str());
             }
         }
@@ -291,7 +272,8 @@ void SidePanel::loadHandControllor(grip::HandSettings hand_cfg) {
         ctrlHl->addWidget(mode_box);
         sliderVBox_->addLayout(ctrlHl);
 
-        for (auto d : s.second.dofs) {
+        for (auto d : s.second.dofs)
+        {
             loadSliderModule(QString(d.name.c_str()), d.route.first, d.route.second);
         }
 
@@ -301,13 +283,14 @@ void SidePanel::loadHandControllor(grip::HandSettings hand_cfg) {
     }
 }
 
-void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg) {
+void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg)
+{
     act_cfg_ = act_cfg;
     loadSliderModule(QString("Max Velocity"), 0, act_cfg_.max_vel);
     loadSliderModule(QString("Max Current"), 0, act_cfg_.max_current);
 
     auto *ctrlHl = new QHBoxLayout();
-    auto *mode_lable = new QLabel("Control Mode: "); 
+    auto *mode_lable = new QLabel("Control Mode: ");
     mode_box = new QComboBox();
     mode_box->addItem("Position");
     mode_box->addItem("Velocity");
@@ -352,9 +335,10 @@ void SidePanel::onAnySliderChanged()
         emit valuesChanged();
 }
 
-void SidePanel::onValueEditChanged() 
+void SidePanel::onValueEditChanged()
 {
-    for (int i = 0; i < valueLabels_.size(); ++i) {
+    for (int i = 0; i < valueLabels_.size(); ++i)
+    {
         sliders_[i]->setValue((int)(atof(valueLabels_[i]->text().toUtf8().constData()) * 100.0));
     }
 }
@@ -363,11 +347,14 @@ void SidePanel::onMaxVelocityChanged()
 {
     auto curr_mode = mode_box->currentText();
     float max_vel = (float)sliders_[0]->value() / 100.0;
-    if (curr_mode == "Velocity") {
+    if (curr_mode == "Velocity")
+    {
         sliders_[2]->setRange((int)(-1 * max_vel * 100.0), (int)(max_vel * 100.0));
         valueLbls[2].first->setText(QString::number((-1 * max_vel)));
         valueLbls[2].second->setText(QString::number((max_vel)));
-    } else if (curr_mode == "MIT") {
+    }
+    else if (curr_mode == "MIT")
+    {
         sliders_[3]->setRange((int)(-1 * max_vel * 100.0), (int)(max_vel * 100.0));
         valueLbls[3].first->setText(QString::number((-1 * max_vel)));
         valueLbls[3].second->setText(QString::number((max_vel)));
@@ -379,7 +366,8 @@ void SidePanel::onMaxCurrentChanged()
     auto curr_mode = mode_box->currentText();
     float max_current = (float)sliders_[1]->value() / 100.0;
     float max_torque = 3 / 2 * max_current * act_cfg_.psi_f * (float)act_cfg_.n_pole_pairs;
-    if (curr_mode == "Torque") {
+    if (curr_mode == "Torque")
+    {
         sliders_[2]->setRange((int)(-1 * max_torque * 100.0), (int)(max_torque * 100.0));
         valueLbls[2].first->setText(QString::number((-1 * max_torque)));
         valueLbls[2].second->setText(QString::number((max_torque)));
@@ -401,6 +389,8 @@ void SidePanel::onExecute()
 
 void SidePanel::onSaveAction()
 {
+    if (!store_)
+        return;
     // Toggle add-row at end
     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
     if (addingRowIndex_ == -1)
@@ -408,7 +398,7 @@ void SidePanel::onSaveAction()
         auto *row = new QWidget;
         auto *hl = new QHBoxLayout(row);
         hl->setContentsMargins(0, 0, 0, 0);
-        auto *addBtn = new QPushButton();
+        auto *addBtn = new QPushButton("+");
         addBtn->setFixedSize(25, 25);
         auto *nameBtn = new QPushButton;
         nameBtn->setStyleSheet(
@@ -473,6 +463,8 @@ void SidePanel::onSaveAction()
 
 void SidePanel::onActionNameClicked()
 {
+    if (!store_)
+        return;
     // Find which QPushButton sent this, then apply action to sliders
     auto *btn = qobject_cast<QPushButton *>(sender());
     if (!btn)
@@ -489,69 +481,102 @@ void SidePanel::onFocusChanged(QWidget *oldW, QWidget *nowW)
     // no-op here; inline editing is handled on editingFinished
 }
 
-// void SidePanel::onToggleActions()
-// {
-//     bool vis = actionListWidget_->isVisible();
-//     actionListWidget_->setVisible(!vis);
-//     btnCollapseActions_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
-// }
-
-// void SidePanel::onToggleActionSets()
-// {
-//     bool vis = actionSetPanel_->isVisible();
-//     actionSetPanel_->setVisible(!vis);
-//     btnCollapseSets_->setArrowType(vis ? Qt::DownArrow : Qt::UpArrow);
-// }
-
 void SidePanel::onDeleteAction(QPushButton *btn)
 {
-    auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-    int idx = store_->findActionByName(btn->text());
-    QLayoutItem *item = layout->takeAt(idx);
+    if (!store_)
+        return;
+    QMessageBox msgBox;
+    msgBox.setTextFormat(Qt::MarkdownText);
+    msgBox.setWindowTitle("Delete Action");
+    msgBox.setText(QString("#### Are you sure to delete action %1?").arg(btn->text()));
+    msgBox.setInformativeText("This action will also be removed if it has been contained by any action set.");
+    msgBox.setIcon(QMessageBox::Warning);
+    auto *confirmBtn = msgBox.addButton(QMessageBox::Ok);
+    auto *cancelBtn = msgBox.addButton(QMessageBox::Cancel);
 
-    if (item)
+    auto actionSets = store_->findActionInSet(btn->text());
+    if (actionSets.size() > 0)
     {
-        // qDebug() << "Deleting";
-        if (QLayout *rowLyt = item->layout())
-        {
-            QLayoutItem *child;
-            while ((child = rowLyt->takeAt(0)))
-            {
-                if (child->widget())
-                    delete child->widget();
-                delete child;
-            }
-            delete rowLyt;
-        }
-        else if (item->widget())
-        {
-            delete item->widget();
-        }
+        auto msg = QString("Following action set contains action %1:\n").arg(btn->text());
+        for (auto &action : actionSets)
+            msg.append(QString("  - %1\n").arg(action));
+        msgBox.setDetailedText(msg);
     }
+    else
+        msgBox.setDetailedText(QString("No action set contains action %1").arg(btn->text()));
 
-    if (idx < store_->actionCount())
+    msgBox.exec();
+
+    if (msgBox.clickedButton() == confirmBtn)
     {
-        // qDebug() << "Deleting" << idx;
-        store_->removeAction(idx);
+        auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
+        int idx = store_->findActionByName(btn->text());
+        QLayoutItem *item = layout->takeAt(idx);
+        auto name = btn->text();
+
+        if (item)
+        {
+            // qDebug() << "Deleting";
+            if (QLayout *rowLyt = item->layout())
+            {
+                QLayoutItem *child;
+                while ((child = rowLyt->takeAt(0)))
+                {
+                    if (child->widget())
+                        delete child->widget();
+                    delete child;
+                }
+                delete rowLyt;
+            }
+            else if (item->widget())
+            {
+                delete item->widget();
+            }
+        }
+
+        if (idx < store_->actionCount())
+        {
+            // qDebug() << "Deleting" << idx;
+            store_->removeAction(idx);
+            persistStore();
+        }
+        if (actionSets.size() > 0)
+            store_->removeActionFromSet(name);
+            emit actionStoreUpdate();
+    }
+    else
+    {
+        return;
     }
 }
 
 // -------- helpers --------
 void SidePanel::applyActionToSliders(int actionIndex)
 {
+    if (!store_)
+        return;
     auto vals = store_->actionJoints(actionIndex);
     for (int i = 0; i < sliders_.size() && i < vals.size(); ++i)
     {
-        int v = std::clamp(int(vals[i]), kDegMin, kDegMax);
+        float min = valueLbls[i].first->text().toFloat();
+        float max = valueLbls[i].second->text().toFloat();
+        float v = std::clamp(float(vals[i]), min, max);
         sliders_[i]->setValue(v);
     }
     emit valuesChanged();
 }
 
-void SidePanel::persistStore() { store_->save(); }
+void SidePanel::persistStore()
+{
+    if (!store_)
+        return;
+    store_->save();
+}
 
 bool SidePanel::validateNewActionName(const QString &n, const QString &o) const
 {
+    if (!store_)
+        return false;
     if (n.trimmed().isEmpty())
         return false;
 
@@ -565,9 +590,11 @@ bool SidePanel::validateNewActionName(const QString &n, const QString &o) const
 
 void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
 {
-    if (edit->property("vaildating").toBool())
+    if (!store_)
         return;
-    edit->setProperty("vaildating", true);
+    if (edit->property("validating").toBool())
+        return;
+    edit->setProperty("validating", true);
 
     // if (validateNewActionName(edit->text(), idx)) {
     if (validateNewActionName(edit->text(), btn->text()))
@@ -605,7 +632,7 @@ void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
     }
 
     QTimer::singleShot(0, edit, [edit]
-                       { edit->setProperty("vaildating", false); });
+                       { edit->setProperty("validating", false); });
 }
 
 void SidePanel::modeChange(const QString &mode)
@@ -640,7 +667,7 @@ void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data)
     {
         for (int i = 0; i < nameLabels_.size(); ++i)
         {
-            if (nameLabels_[i]->text().toUtf8().constData() == name) 
+            if (nameLabels_[i]->text().toUtf8().constData() == name)
             {
                 float min = valueLbls[i].first->text().toFloat();
                 float max = valueLbls[i].second->text().toFloat();
@@ -662,7 +689,8 @@ void SidePanel::updateJoints(const float thumb, const float index, const float m
 void SidePanel::onControlChanged()
 {
     auto curr_mode = mode_box->currentText();
-    if (curr_mode != "MIT") {
+    if (curr_mode != "MIT")
+    {
         nameLabels_[2]->setText(curr_mode);
         sliders_[3]->setEnabled(false);
         valueLabels_[3]->setEnabled(false);
@@ -672,23 +700,30 @@ void SidePanel::onControlChanged()
         sliders_[2]->setValue(0);
         sliders_[3]->setValue(0);
 
-        if (curr_mode == "Position") {
+        if (curr_mode == "Position")
+        {
             sliders_[2]->setRange((int)(act_cfg_.route.first * 100.0), (int)(act_cfg_.route.second * 100.0));
             valueLbls[2].first->setText(QString::number((act_cfg_.route.first)));
             valueLbls[2].second->setText(QString::number((act_cfg_.route.second)));
-        } else if (curr_mode == "Velocity") {
+        }
+        else if (curr_mode == "Velocity")
+        {
             float max_vel = (float)sliders_[0]->value() / 100.0;
             sliders_[2]->setRange((int)(-1 * max_vel * 100.0), (int)(max_vel * 100.0));
             valueLbls[2].first->setText(QString::number((-1 * max_vel)));
             valueLbls[2].second->setText(QString::number((max_vel)));
-        } else if (curr_mode == "Torque") {
+        }
+        else if (curr_mode == "Torque")
+        {
             float max_current = (float)sliders_[1]->value() / 100.0;
             float max_torque = 3 / 2 * max_current * act_cfg_.psi_f * (float)act_cfg_.n_pole_pairs;
             sliders_[2]->setRange((int)(-1 * max_torque * 100.0), (int)(max_torque * 100.0));
             valueLbls[2].first->setText(QString::number((-1 * max_torque)));
             valueLbls[2].second->setText(QString::number((max_torque)));
         }
-    } else {
+    }
+    else
+    {
         nameLabels_[2]->setText("Position");
         sliders_[3]->setEnabled(true);
         valueLabels_[3]->setEnabled(true);
@@ -707,23 +742,25 @@ void SidePanel::onControlChanged()
     }
 }
 
-std::string SidePanel::get_control_mode() {
+std::string SidePanel::get_control_mode()
+{
     return mode_box->currentText().toUtf8().constData();
 }
 
-void SidePanel::removeAll() {
+void SidePanel::removeAll()
+{
     sliders_.clear();
     valueLabels_.clear();
     currValueLabels_.clear();
     nameLabels_.clear();
     valueLbls.clear();
-    
+
     QLayoutItem *item;
     while ((item = sliderVBox_->takeAt(0)) != nullptr)
     {
         if (QLayout *rowLyt = item->layout())
         {
-            
+
             QLayoutItem *child;
             while ((child = rowLyt->takeAt(0)))
             {
@@ -741,7 +778,7 @@ void SidePanel::removeAll() {
 
     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
     while ((item = layout->takeAt(0)) != nullptr)
-    {   
+    {
         // qDebug() << "Deleting";
         if (QLayout *rowLyt = item->layout())
         {
@@ -761,11 +798,16 @@ void SidePanel::removeAll() {
     }
     delete layout;
 
+    if (!store_)
+        return;
     delete store_;
 }
 
 void SidePanel::applyActionNameToSliders(const QString &name)
 {
+    if (!store_)
+        return;
     int idx = store_->findActionByName(name);
-    if (idx >= 0) applyActionToSliders(idx);
+    if (idx >= 0)
+        applyActionToSliders(idx);
 }

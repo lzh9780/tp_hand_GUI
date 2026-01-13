@@ -169,12 +169,48 @@ void ActionStore::removeActionSet(int idx)
     actionSets_.removeAt(idx);
 }
 
-// void ActionStore::addActionToSet(const QString &set, const QString &action)
-// {
-//     return;
-// }
+QVector<QString> ActionStore::findActionInSet(const QString &action_name)
+{
+    QVector<QString> result;
+    for (int idx = 0; idx < actionSets_.size(); ++idx)
+    {
+        for (auto &action : actionSetList(idx))
+        {
+            if (action == action_name)
+            {
+                result.append(actionSetName(idx));
+                break;
+            }
+        }
+    }
+    return result;
+}
 
-// void ActionStore::removeActionFromSet(const QString &set, const QString &action)
-// {
-//     return;
-// }
+void ActionStore::removeActionFromSet(const QString &action_name)
+{
+    for (int idx = 0; idx < actionSets_.size(); ++idx)
+    {
+        auto action_list = actionSetList(idx);
+        auto buffer = actionSets_[idx].toObject().value("actions").toArray();
+        for (int i = 0; i < action_list.size(); ++i)
+        {
+            if (action_list[i] == action_name)
+            {
+                buffer.removeAt(i);
+            }
+        }
+        if (buffer.size() == 0)
+        {
+            actionSets_.removeAt(idx);
+            --idx;
+        }
+        else if (buffer.size() != action_list.size())
+        {
+            auto obj = actionSets_[idx].toObject();
+            obj.remove("actions");
+            obj.insert("actions", buffer);
+            actionSets_[idx] = obj;
+        }
+    }
+    save();
+}

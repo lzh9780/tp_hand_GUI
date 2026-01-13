@@ -62,6 +62,7 @@ signals:
     void notify(const QString& msg);   // status/log message
     void mode_change(const QString& module, const QString& control_mode);   // status/log message
     void addAction(const QString& action);
+    void actionStoreUpdate();
 
 private slots:
     void onAnySliderChanged();
@@ -70,9 +71,6 @@ private slots:
     void onSaveAction();               // begin/cancel inline add
     void onActionNameClicked();        // apply saved action to sliders
     void onFocusChanged(QWidget* old, QWidget* now);
-    // void onNameEditingFinished();
-    // void onToggleActions();
-    // void onToggleActionSets();
     void onControlChanged();
     void onValueEditChanged();
     void onMaxVelocityChanged();

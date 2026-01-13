@@ -173,6 +173,7 @@ void MainWindow::buildUI()
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
     connect(actionFlow_, &ActionPanel::actionUpdate, this, &MainWindow::onActionPanelActionUpdate);
     connect(side_, &SidePanel::addAction, this, &MainWindow::onSidePanelAddAction);
+    connect(side_, &SidePanel::actionStoreUpdate, this, [=]() { actionFlow_->reload(); });
 
     // auto* mainMenu = menuBar()->addMenu("&Menu");
     auto *tabsMenu = menuBar()->addMenu("Tabs");
@@ -456,7 +457,7 @@ void MainWindow::openDiagram()
 
     auto timer_ = new QTimer(this);
     connect(timer_, &QTimer::timeout, this, [=]()
-            { if (ctrl_) plot->updateFromHand(ctrl_->get_hand_info()); });
+            { if (ctrl_) plot->updateFromHand(ctrl_->get_hand_runtime_data()); });
     timer_->start(10);
 }
 

@@ -24,6 +24,7 @@ public:
     void updateStore(ActionStore *store);
     void loadFlowList();
     void clearAll();
+    void reload();
 
 signals:
     void actionUpdate(const QString& msg);

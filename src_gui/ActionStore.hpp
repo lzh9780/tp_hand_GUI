@@ -43,8 +43,8 @@ public:
     void setActionSetValues(int idx, const QVector<QString> &actions);
     void addActionSet(const QString &name, const QVector<QString> &actions);
     void removeActionSet(int idx);
-    // void addActionToSet(const QString &set, const QString &action);
-    // void removeActionFromSet(const QString &set, const QString &action);
+    QVector<QString> findActionInSet(const QString &action_name);
+    void removeActionFromSet(const QString &action_name);
 
     // Access raw json (if needed)
     const QJsonArray &actions() const { return actions_; }

@@ -82,7 +82,7 @@ namespace grip
         }
     }
 
-    std::unordered_map<std::string, ModuleState> ControlInterface::get_hand_info()
+    std::unordered_map<std::string, ModuleState> ControlInterface::get_hand_runtime_data()
     {
         return hand_;
     }
@@ -316,11 +316,11 @@ namespace grip
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
-        // {
-        //     std::unique_lock<std::mutex> lk(mtx_);
-        //     cv_.wait(lk, [this]
-        //              { return calibrated_ || shutting_down_; });
-        // }
+        {
+            std::unique_lock<std::mutex> lk(mtx_);
+            cv_.wait(lk, [this]
+                     { return calibrated_ || shutting_down_; });
+        }
         if (shutting_down_)
             return;
 
