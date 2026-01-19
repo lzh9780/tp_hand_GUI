@@ -3,9 +3,9 @@
 
 class QWidget;
 class QPushButton;
-class QComboBox;
 class QImage;
 class QLabel;
+class QResizeEvent;
 
 class CameraWidget : public QFrame
 {
@@ -13,15 +13,23 @@ class CameraWidget : public QFrame
 public:
     explicit CameraWidget(QWidget *parent = nullptr);
     void onChange(bool on);
-    void setFrame(const QImage img);
+    void setFrame(const QImage &img);
+
+protected:
+    void resizeEvent(QResizeEvent *e) override;
 
 signals:
-    void controlSwitch(const QString& msg);
+    void controlSwitch(const QString &msg);
 
 private slots:
     void onSwitch();
-    
+
 private:
-    QPushButton* switchBtn;
-    QLabel* img_label_{nullptr};
+    void updatePixmap();
+
+private:
+    QPushButton *switchBtn;
+    QLabel *img_label_{nullptr};
+
+    QImage last_frame_;
 };

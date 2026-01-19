@@ -536,7 +536,6 @@ void SidePanel::onDeleteAction(QPushButton *btn)
 
         if (idx < store_->actionCount())
         {
-            // qDebug() << "Deleting" << idx;
             store_->removeAction(idx);
             persistStore();
         }
@@ -596,7 +595,6 @@ void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
         return;
     edit->setProperty("validating", true);
 
-    // if (validateNewActionName(edit->text(), idx)) {
     if (validateNewActionName(edit->text(), btn->text()))
     {
         QString aName = edit->text();
@@ -637,7 +635,6 @@ void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
 
 void SidePanel::modeChange(const QString &mode)
 {
-    /** TODO: Complete mode change */
     if (mode == "Start Camera")
     {
         for (auto s : sliders_)
@@ -656,13 +653,6 @@ void SidePanel::modeChange(const QString &mode)
 
 void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data)
 {
-    // auto vals = store_->actionJoints(actionIndex);
-    // for (int i = 0; i < sliders_.size() && i < data.size(); ++i)
-    // {
-    //     float f = data[i];
-    //     float v = std::clamp(float(f), float(kDegMin), float(kDegMax));
-    //     sliders_[i]->setValue(v * 100);
-    // }
     for (const auto &[name, value] : data)
     {
         for (int i = 0; i < nameLabels_.size(); ++i)
@@ -779,7 +769,6 @@ void SidePanel::removeAll()
     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
     while ((item = layout->takeAt(0)) != nullptr)
     {
-        // qDebug() << "Deleting";
         if (QLayout *rowLyt = item->layout())
         {
             QLayoutItem *child;

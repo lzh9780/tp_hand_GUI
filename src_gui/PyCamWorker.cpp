@@ -1,11 +1,7 @@
 #include "PyCamWorker.h"
 #include <QDebug>
-// #include <opencv2/imgproc.hpp> // for color conversion if needed (we’ll do manual)
 #include <stdexcept>
 #include <QList>
-#include <iostream>
-
-// using namespace Qt::Literals::StringLiterals;
 
 PyCamWorker::PyCamWorker(QObject *parent) : QObject(parent) {}
 
@@ -18,9 +14,6 @@ void PyCamWorker::start()
 
     try
     {
-        // Start the Python interpreter (scoped for this worker thread)
-        // interp_ = std::make_unique<py::scoped_interpreter>();
-
         // Ensure ./scripts on sys.path
         {
             py::gil_scoped_acquire gil;
@@ -91,7 +84,6 @@ void PyCamWorker::stop()
         get_latest_fn = py::object();
         get_joint_fn = py::object();
     }
-    // interp_.reset();
     emit status("Python camera loop stopped.");
     emit runningChanged(running_);
 }
@@ -115,7 +107,6 @@ void PyCamWorker::onTick()
     {
         py::gil_scoped_acquire gil;
         // get_latest() -> (numpy array HxWx3 uint8 BGR, tick)
-        // py::tuple tup = get_latest_fn().cast<py::tuple>();
         py::array arr = get_latest_fn().cast<py::tuple>(); // tup[0].cast<py::array>();
         py::dict d = get_joint_fn().cast<py::dict>();
         py::dict wd = get_wrist_joint_fn().cast<py::dict>();
@@ -147,58 +138,11 @@ void PyCamWorker::onTick()
         l.append(wd["pitch"].cast<float>());
         l.append(wd["yaw"].cast<float>());
 
-        // std::cout << "index_mcp " << (float(180) - d["index"]["mcp"].cast<float>()) << "\n";
-        // std::cout << "index_pip " << (float(180) - d["index"]["pip"].cast<float>()) << "\n";
-        // std::cout << "index_dip " << (float(180) - d["index"]["dip"].cast<float>()) << "\n";
-        // std::cout << "\n";
-        // std::cout << "middle_mcp " << (float(180) - d["middle"]["mcp"].cast<float>()) << "\n";
-        // std::cout << "middle_pip " << (float(180) - d["middle"]["pip"].cast<float>()) << "\n";
-        // std::cout << "middle_dip " << (float(180) - d["middle"]["dip"].cast<float>()) << "\n";
-        // std::cout << "\n";
-        // std::cout << "ring_mcp " << (float(180) - d["ring"]["mcp"].cast<float>()) << "\n";
-        // std::cout << "ring_pip " << (float(180) - d["ring"]["pip"].cast<float>()) << "\n";
-        // std::cout << "ring_dip " << (float(180) - d["ring"]["dip"].cast<float>()) << "\n";
-        // std::cout << "\n";
-        // std::cout << "pinky_mcp " << (float(180) - d["pinky"]["mcp"].cast<float>()) << "\n";
-        // std::cout << "pinky_pip " << (float(180) - d["pinky"]["pip"].cast<float>()) << "\n";
-        // std::cout << "pinky_dip " << (float(180) - d["pinky"]["dip"].cast<float>()) << "\n";
-        // std::cout << "\n";
-
-        // Data processing: bias
-        // thumb_joint += -12;
-        // index_joint += -25;
-        // middle_joint += -40;
-        // ring_joint += -28;
-        // pinky_joint += -40;
-
-        // Data processing: scale
-        // thumb_joint = thumb_joint*1.8;
-        // index_joint = index_joint*1.0;
-        // middle_joint = middle_joint*1.0;
-        // ring_joint = ring_joint*1.0;
-        // pinky_joint = pinky_joint*1.4;
-
-        // l.append(thumb_joint);
-        // l.append(index_joint);
-        // l.append(middle_joint);
-        // l.append(ring_joint);
-        // l.append(pinky_joint);
-        // l.append(pitch);
-        // l.append(yaw);
         emit newJoint(l);
 
-        // PyMatView view = PyMatView::from_numpy(arr);
-        // cv::Mat cv_img = view.mat;
-
         py::buffer_info info = arr.request();
-        // if (info.ndim != 3) return;
-        // if (info.format != py::format_descriptor<uint8_t>::format()) return;
-        // int rows = int(info.shape[0]);
-        // int cols = int(info.shape[1]);
-        // int ch   = int(info.shape[2]);
-        // if (ch != 3) return;
 
-        // // info.strides[0] is row stride (bytes), [2] should be 1 (contiguous channels)
+        // info.strides[0] is row stride (bytes), [2] should be 1 (contiguous channels)
         // if (info.strides[2] != 1) return;
         if (info.ndim == 3 &&
             info.format == py::format_descriptor<uint8_t>::format() &&
@@ -222,12 +166,6 @@ void PyCamWorker::onTick()
             // 4) Emit to GUI (no pixmap conversion; viewer draws QImage)
             emit newFrame(frameBGR_);
         }
-
-        // Convert to QImage (deep copy so GUI owns pixels safely)
-        // QImage img = bgrMatToQImage(static_cast<uint8_t*>(info.ptr), rows, cols, int(info.strides[0]));
-        // qDebug() << "Image returned";
-
-        // emit newFrame(img);
     }
     catch (const py::error_already_set &e)
     {
