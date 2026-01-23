@@ -1,4 +1,5 @@
 #pragma once
+#include <mutex>
 #include <QMainWindow>
 #include <vector>
 #include <QThread>
@@ -100,4 +101,6 @@ private:
 
     QTabWidget* upperTabs;
     QTabWidget* lowerTabs;
+
+    std::mutex mtx_;
 };

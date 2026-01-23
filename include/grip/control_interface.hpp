@@ -48,7 +48,7 @@ public:
     JointAngles get_joint_angles() const;
     int get_board_state() const;
     void set_module_control_mode(std::string module, int mode);
-    std::unordered_map<std::string, ModuleState> get_hand_runtime_data();
+    HandStateMap get_hand_runtime_data();
 
 private:
     void receiver_loop();
@@ -78,7 +78,7 @@ private:
 
     // model
     std::vector<int> motors_;
-    std::unordered_map<std::string, ModuleState> hand_{};
+    HandStateMap hand_{};
 
     // shared state
     std::unordered_map<int, Telemetry> state_;

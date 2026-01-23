@@ -82,6 +82,8 @@ struct ModuleState
     int control_mode = 0;
 };
 
+using HandStateMap = std::unordered_map<std::string, ModuleState>;
+
 // Motor command separate from Telemetry (feedback)
 struct MotorCommand
 {

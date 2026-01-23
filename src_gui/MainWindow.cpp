@@ -351,7 +351,8 @@ void MainWindow::onDeviceDisconnect()
     if (ctrl_)
     {
         ctrl_->stop_all();
-        free(ctrl_);
+        delete ctrl_;
+        ctrl_ = nullptr;
     }
     connect_->onChange(false);
     ogre_->clearScene();
@@ -452,13 +453,23 @@ void MainWindow::openActionPanelTab()
 
 void MainWindow::openDiagram()
 {
-    auto *plot = new PlotPanel();
+    auto *plot = new PlotPanel(this);
     upperTabs->addTab(plot, "Diagram");
 
-    auto timer_ = new QTimer(this);
-    connect(timer_, &QTimer::timeout, this, [=]()
-            { if (ctrl_) plot->updateFromHand(ctrl_->get_hand_runtime_data()); });
-    timer_->start(10);
+    auto timer_ = new QTimer(plot); // lifetime tied to this panel
+
+    connect(timer_, &QTimer::timeout, plot, [this, plot]() {
+        grip::HandStateMap snapshot;
+        {
+            std::lock_guard<std::mutex> lk(mtx_);
+            if (ctrl_)
+                snapshot = ctrl_->get_hand_runtime_data();
+        }
+        plot->feedData(snapshot);
+    });
+
+    plot->setUpdateTimer(timer_);
+    timer_->start(20);
 }
 
 std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value)

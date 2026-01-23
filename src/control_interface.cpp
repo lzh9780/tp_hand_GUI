@@ -82,9 +82,11 @@ namespace grip
         }
     }
 
-    std::unordered_map<std::string, ModuleState> ControlInterface::get_hand_runtime_data()
+    HandStateMap ControlInterface::get_hand_runtime_data()
     {
-        return hand_;
+        std::lock_guard<std::mutex> lk(mtx_);
+        HandStateMap hand = hand_;
+        return hand;
     }
 
     void ControlInterface::start_bus(const CanDeviceSettings &cfg)
