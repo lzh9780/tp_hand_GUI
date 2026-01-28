@@ -520,10 +520,10 @@ bool DiagramWidget::getValueForSignalAtSample(const SignalInfo &sig,
         switch (m_type_)
         {
         case DiagramType::MotorPosition:
-            outValue = static_cast<float>(t.encoder_counts);
+            outValue = static_cast<float>(t.motor_position);
             return true;
         case DiagramType::MotorVelocity:
-            outValue = static_cast<float>(t.speed);
+            outValue = static_cast<float>(t.motor_speed);
             return true;
         case DiagramType::MotorCurrent:
             outValue = static_cast<float>(t.iq_mA);
@@ -559,7 +559,7 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
     else if (updateRequest_)
     {
         startIdx = chartHistoryScroll_->value();
-        endIdx = startIdx + m_maxPoints_;
+        endIdx = startIdx + m_maxPoints_ - 1;
         xMin_ = startIdx * m_samplePeriodSec_;
         xMax_ = endIdx * m_samplePeriodSec_;
         updateRequest_ = false;

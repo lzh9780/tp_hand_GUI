@@ -14,8 +14,6 @@
 // #include "control_policy_native.hpp"
 // #include "grip/finger_ctrl.h"
 // #include "wrist_control.hpp"
-#include "HandControl.hpp"
-#include "ModuleRt.hpp"
 
 namespace grip {
 
@@ -56,21 +54,22 @@ private:
     
     bool all_stalled_locked() const;
 
-    void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int32_t>& values);
-    void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2);
-    void send_single(int dev, MsgKind kind, uint8_t field, int32_t value);
-    void send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2);
+    void send_to_broad(std::vector<CmdStruct> cmd);
+    // void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2);
+    // void send_single(int dev, MsgKind kind, uint8_t field, int32_t value);
+    // void send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2);
 
     void drain_pending_targets_locked();
+    Telemetry messageDecode(const uint8_t *p);
 
 private:
-    struct ControlModule {
-        ModuleState ms = ModuleState();
-        HandControl c = HandControl(ms);
-        ModuleLayout lay = ModuleLayout();
-        ModuleInputSnapshot in = ModuleInputSnapshot();
-        ModuleOutputSnapshot out = ModuleOutputSnapshot();
-    };
+    // struct ControlModule {
+    //     ModuleState ms = ModuleState();
+    //     HandControl c = HandControl(ms);
+    //     ModuleLayout lay = ModuleLayout();
+    //     ModuleInputSnapshot in = ModuleInputSnapshot();
+    //     ModuleOutputSnapshot out = ModuleOutputSnapshot();
+    // };
 
     // hw
     CanBus bus_{33,0};
@@ -88,7 +87,7 @@ private:
     uint32_t time_stamp_ = 0;
     int board_state_;
     std::string mode_{"Position"};
-    std::unordered_map<std::string, ControlModule> ctrl_mod_;
+    // std::unordered_map<std::string, ControlModule> ctrl_mod_;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

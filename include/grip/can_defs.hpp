@@ -33,13 +33,15 @@ enum class ParamField : uint8_t { MAX_CURRENT=0x01, MAX_SPEED=0x02, CAN_MODE=0x0
 enum class FaultCode : uint16_t { MOTOR_STALL=0x80 };
 
 struct Telemetry {
-    int16_t  speed = 0;
-    int16_t  iq_mA = 0;
-    int32_t  encoder_counts = 0;
-    uint16_t bus_mV = 0;
-    int8_t   motor_degC = 0;
-    uint16_t fault = 0;
-    uint8_t  state = 0;
+    uint8_t control_mode = 0;
+    int16_t motor_position = 0;
+    int16_t joint_position = 0;
+    int16_t iq_mA = 0;
+    int16_t joint_speed = 0;
+    int16_t tip_tactile = 0;
+    int16_t motor_speed = 0;
+    uint8_t temperature = 0;
+    uint8_t fault = 0;
 };
 
 struct JointAngles {
@@ -90,6 +92,15 @@ struct MotorCommand
     float position_cmd = 0.0f; // optional
     float velocity_cmd = 0.0f; // rpm or your unit
     float current_cmd  = 0.0f; // mA or your unit
+};
+
+struct CmdStruct
+{
+    uint8_t joint_id = 0;
+    uint8_t control_mode = 0;
+    uint16_t cmd_joint_angle = 0;
+    uint16_t joint_vel_ref = 0;
+    uint16_t motor_current_ref = 0;
 };
 
 } // namespace grip

@@ -32,15 +32,17 @@ namespace grip
     inline int32_t rd_i32(const uint8_t *p) { return (int32_t)(p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24)); }
 
     inline std::vector<uint8_t> pack_broadcast_payload(
-        const std::vector<int> &devices, uint8_t field, const std::vector<int32_t> &values)
+        std::vector<CmdStruct> cmd)
     {
         std::vector<uint8_t> buf;
-        buf.reserve(devices.size() * 6);
-        for (size_t i = 0; i < devices.size(); ++i)
+        buf.reserve(cmd.size() * 8);
+        for (size_t i = 0; i < cmd.size(); ++i)
         {
-            buf.push_back(uint8_t((uint32_t)devices[i] & 0xFF));
-            buf.push_back(field);
-            put_i32(buf, values[i]);
+            buf.push_back(uint8_t(cmd[i].joint_id & 0xFF));
+            buf.push_back(uint8_t(cmd[i].control_mode & 0xFF));
+            put_i16(buf, cmd[i].cmd_joint_angle);
+            put_i16(buf, cmd[i].joint_vel_ref);
+            put_i16(buf, cmd[i].motor_current_ref);
         }
         return buf;
     }

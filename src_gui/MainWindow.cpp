@@ -129,7 +129,7 @@ void MainWindow::buildUI()
     log_->setReadOnly(true);
     // log_->setMaximumHeight(50);
 
-    ogre_ = new OgreWidget();
+    // ogre_ = new OgreWidget();
     motor_ = new MotorPanel();
     camera_ = new CameraWidget();
     actionFlow_ = new ActionPanel();
@@ -233,8 +233,8 @@ void MainWindow::onSidePanelValuesChanged()
                     joint_target.emplace(name, j.second);
             }
         }
-        for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition(key, value);
+        // for (auto &[key, value] : joint_target)
+            // ogre_->setJointPosition(key, value);
     }
     else if (dev_cfg_.device_type != 0 && ctrl_)
     {
@@ -310,7 +310,7 @@ void MainWindow::onDeviceConnect()
             // side_->loadSliders(dof_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
-            ogre_->loadURDF(hand_cfg_.urdf_file);
+            // ogre_->loadURDF(hand_cfg_.urdf_file);
         }
         else
         {
@@ -355,7 +355,7 @@ void MainWindow::onDeviceDisconnect()
         ctrl_ = nullptr;
     }
     connect_->onChange(false);
-    ogre_->clearScene();
+    // ogre_->clearScene();
     dev_cfg_ = grip::DeviceSettings();
     hand_cfg_ = grip::HandSettings();
     act_cfg_ = grip::ActuatorSettings();
