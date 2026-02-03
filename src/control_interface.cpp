@@ -38,20 +38,20 @@ namespace grip
             }
             hand_.emplace(key, ms);
 
-            if (key != "WRIST") ms.control_mode = 2;
-            HandControl c{ms};
-            ModuleLayout lay = c.layout();
-            ModuleInputSnapshot in = make_module_input(lay);
-            ModuleOutputSnapshot out = make_module_output(lay);
+            // if (key != "WRIST") ms.control_mode = 2;
+            // HandControl c{ms};
+            // ModuleLayout lay = c.layout();
+            // ModuleInputSnapshot in = make_module_input(lay);
+            // ModuleOutputSnapshot out = make_module_output(lay);
 
-            ControlModule cm;
-            cm.ms = ms;
-            cm.c = c;
-            cm.lay = lay;
-            cm.in = in;
-            cm.out = out;
+            // ControlModule cm;
+            // cm.ms = ms;
+            // cm.c = c;
+            // cm.lay = lay;
+            // cm.in = in;
+            // cm.out = out;
 
-            ctrl_mod_.emplace(key, cm);
+            // ctrl_mod_.emplace(key, cm);
         }
     }
 
@@ -119,66 +119,66 @@ namespace grip
         }
     }
 
-    void ControlInterface::run_calibration()
-    {
-        using namespace std::chrono_literals;
+    // void ControlInterface::run_calibration()
+    // {
+    //     using namespace std::chrono_literals;
 
-        {
-            send_broadcast(motors_,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(motors_.size(), (uint32_t)10));
-            std::this_thread::sleep_for(10ms);
-        }
-        // 1) MAX_CURRENT
-        {
-            send_broadcast(motors_,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(motors_.size(), 1500));
-            std::this_thread::sleep_for(10ms);
-        }
-        // 2) CALIBRATE negative speed
-        {
-            send_broadcast(motors_,
-                           MsgKind::MOTOR_COMMAND,
-                           (uint8_t)MotorMode::CALIBRATE,
-                           std::vector<int32_t>(motors_.size(), -100));
-            std::this_thread::sleep_for(10ms);
-        }
-        // 3) wait for stall -> stop -> write zero
-        while (!shutting_down_)
-        {
-            {
-                std::lock_guard<std::mutex> lk(mtx_);
-                if (all_stalled_locked())
-                {
-                    send_broadcast(motors_,
-                                   MsgKind::MOTOR_COMMAND,
-                                   (uint8_t)MotorMode::SPEED,
-                                   std::vector<int32_t>(motors_.size(), 0));
-                    std::this_thread::sleep_for(500ms);
-                    send_broadcast(motors_,
-                                   MsgKind::SET_MOTOR_PARAM,
-                                   (uint8_t)ParamField::ENCODER_POS,
-                                   std::vector<int32_t>(motors_.size(), -8));
-                    send_broadcast(motors_,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::MAX_CURRENT,
-                           std::vector<int32_t>(motors_.size(), 2500));
-            std::this_thread::sleep_for(10ms);
-                    break;
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
-        {
-            std::lock_guard<std::mutex> lk(mtx_);
-            calibrated_ = true;
-        }
-        cv_.notify_all();
-        std::cout << "Calibration complete.\n\n\n\n";
-    }
+    //     {
+    //         send_broadcast(motors_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::CAN_MODE,
+    //                        std::vector<int32_t>(motors_.size(), (uint32_t)10));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 1) MAX_CURRENT
+    //     {
+    //         send_broadcast(motors_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::MAX_CURRENT,
+    //                        std::vector<int32_t>(motors_.size(), 1500));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 2) CALIBRATE negative speed
+    //     {
+    //         send_broadcast(motors_,
+    //                        MsgKind::MOTOR_COMMAND,
+    //                        (uint8_t)MotorMode::CALIBRATE,
+    //                        std::vector<int32_t>(motors_.size(), -100));
+    //         std::this_thread::sleep_for(10ms);
+    //     }
+    //     // 3) wait for stall -> stop -> write zero
+    //     while (!shutting_down_)
+    //     {
+    //         {
+    //             std::lock_guard<std::mutex> lk(mtx_);
+    //             if (all_stalled_locked())
+    //             {
+    //                 send_broadcast(motors_,
+    //                                MsgKind::MOTOR_COMMAND,
+    //                                (uint8_t)MotorMode::SPEED,
+    //                                std::vector<int32_t>(motors_.size(), 0));
+    //                 std::this_thread::sleep_for(500ms);
+    //                 send_broadcast(motors_,
+    //                                MsgKind::SET_MOTOR_PARAM,
+    //                                (uint8_t)ParamField::ENCODER_POS,
+    //                                std::vector<int32_t>(motors_.size(), -8));
+    //                 send_broadcast(motors_,
+    //                        MsgKind::SET_MOTOR_PARAM,
+    //                        (uint8_t)ParamField::MAX_CURRENT,
+    //                        std::vector<int32_t>(motors_.size(), 2500));
+    //         std::this_thread::sleep_for(10ms);
+    //                 break;
+    //             }
+    //         }
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    //     }
+    //     {
+    //         std::lock_guard<std::mutex> lk(mtx_);
+    //         calibrated_ = true;
+    //     }
+    //     cv_.notify_all();
+    //     std::cout << "Calibration complete.\n\n\n\n";
+    // }
 
     bool ControlInterface::all_stalled_locked() const
     {
@@ -225,78 +225,33 @@ namespace grip
             auto frames = bus_.receiveFD(bus_channel_, 128, 10);
             for (auto &f : frames)
             {
-                const uint32_t dev_bits = (f.id & 0x01F);
-                const uint32_t kind_bits = (f.id & 0x3C0);
-                if (kind_bits == (uint32_t)MsgKind::MOTOR_TELEMETRY)
+                for (int i = 0; i < 4; ++i)
                 {
-                    auto dev = (int)dev_bits;
-                    if (std::find(motors_.begin(), motors_.end(), dev) == motors_.end())
+                    int id = (uint8_t)f.data[i * 16];
+                    if (std::find(motors_.begin(), motors_.end(), id) == motors_.end())
                         continue;
                     if (f.data.size() < 14)
                         continue;
-                    Telemetry t;
-                    t.speed = rd_i16(&f.data[0]);
-                    t.iq_mA = rd_i16(&f.data[2]);
-                    t.encoder_counts = rd_i32(&f.data[4]) * 256;
-                    t.bus_mV = rd_u16(&f.data[8]);
-                    t.motor_degC = (int8_t)f.data[10];
-                    t.fault = rd_u16(&f.data[11]);
-                    t.state = f.data[13];
+                    Telemetry t = messageDecode(&f.data[i * 16]);
+                    // std::cout <<  i * 16 << "\n";
+                    // std::cout << "id=" << id << "\n";
                     std::lock_guard<std::mutex> lk(mtx_);
-                    state_[dev] = t;
+                    state_[id] = t;
 #if GRIP_DEBUG_RX
                     if ((int)dev == 1 || (int)dev == 2) 
                     std::cout << "dev=" << (int)dev << " iq=" << t.iq_mA << " enc=" << t.encoder_counts << "\n";
 #endif
                 }
-                else if (kind_bits == (uint32_t)MsgKind::SENSOR_TELEMETRY)
-                {
-                    std::lock_guard<std::mutex> lk(mtx_);
-                    JointAngles j;
-                    j.thumb_mcp = float(rd_i16(&f.data[0])) / 65536.0f * float(M_PI);
-                    j.thumb_ip = float(rd_i16(&f.data[2])) / 65536.0f * float(M_PI);
-                    j.index_mcp = float(rd_i16(&f.data[4])) >= 0 ? float(rd_i16(&f.data[4])) / 65536.0f * float(M_PI) * 6 / 5 : joint_angles_.index_mcp;
-                    j.index_pip = float(rd_i16(&f.data[6])) >= 0 ? float(rd_i16(&f.data[6])) / 65536.0f * float(M_PI) * 6 / 5 : joint_angles_.index_pip;
-                    j.index_dip = float(rd_i16(&f.data[8])) >= 0 ? float(rd_i16(&f.data[8])) / 65536.0f * float(M_PI) * 6 / 5 : joint_angles_.index_dip;
-                    j.middle_mcp = float(rd_i16(&f.data[10])) / 65536.0f * float(M_PI);
-                    j.middle_pip = float(rd_i16(&f.data[12])) / 65536.0f * float(M_PI);
-                    j.middle_dip = float(rd_i16(&f.data[14])) / 65536.0f * float(M_PI);
-                    j.ring_mcp = float(rd_i16(&f.data[16])) / 65536.0f * float(M_PI);
-                    j.ring_pip = float(rd_i16(&f.data[18])) / 65536.0f * float(M_PI);
-                    j.ring_dip = float(rd_i16(&f.data[20])) / 65536.0f * float(M_PI);
-                    j.pinky_mcp = float(rd_i16(&f.data[22])) / 65536.0f * float(M_PI);
-                    j.pinky_pip = float(rd_i16(&f.data[24])) / 65536.0f * float(M_PI);
-                    j.pinky_dip = float(rd_i16(&f.data[26])) / 65536.0f * float(M_PI);
-                    // std::cout << j.index_mcp <<" "<< j.index_pip<<" " << j.index_dip<<"\n";
-                    // std::cout << float(rd_u16(&f.data[4])) <<" "<< float(rd_u16(&f.data[6]))<<" " << float(rd_u16(&f.data[8]))<<"\n";
-
-                    double time_diff = (double(f.timestamp) - double(time_stamp_)) / 10000;
-                    // std::cout << f.timestamp << " " << time_stamp_ << " " << time_diff << '\n';
-                    if (time_diff < 0.001)
-                        continue;
-                    // std::cout << "time_diff: " << time_diff << "\n";
-                    // std::cout << "vel_mcp: " << ((j.index_mcp - joint_angles_.index_mcp) / time_diff) << "\n";
-                    // std::cout << "vel_pip: " << ((j.index_pip - joint_angles_.index_pip) / time_diff) << "\n";
-                    // std::cout << "vel_dip: " << ((j.index_dip - joint_angles_.index_dip) / time_diff) << "\n";
-                    JointAngles j_v;
-                    j_v.index_mcp = (j.index_mcp - joint_angles_.index_mcp) / time_diff;
-                    j_v.index_pip = (j.index_pip - joint_angles_.index_pip) / time_diff;
-                    j_v.index_dip = (j.index_dip - joint_angles_.index_dip) / time_diff;
-
-                    joint_angles_ = j;
-                    joint_vels_ = j_v;
-                    time_stamp_ = f.timestamp;
-                }
-                else if (kind_bits == (uint32_t)MsgKind::BOARDSTATE)
-                {
-                    uint16_t s = rd_i16(&f.data[0]);
-                    // std::cout << s << "\n";
-                    std::lock_guard<std::mutex> lk(mtx_);
-                    board_state_ = int(s);
-                    if (board_state_ == 1) 
-                        calibrated_ = true;
-                    else calibrated_ = false;
-                }
+                // else if (kind_bits == (uint32_t)MsgKind::BOARDSTATE)
+                // {
+                //     uint16_t s = rd_i16(&f.data[0]);
+                //     // std::cout << s << "\n";
+                //     std::lock_guard<std::mutex> lk(mtx_);
+                //     board_state_ = int(s);
+                //     if (board_state_ == 1) 
+                //         calibrated_ = true;
+                //     else calibrated_ = false;
+                // }
             }
         }
     }
@@ -304,32 +259,32 @@ namespace grip
     void ControlInterface::control_loop()
     {
         {
-            send_broadcast(motors_,
-                           MsgKind::SET_MOTOR_PARAM,
-                           (uint8_t)ParamField::CAN_MODE,
-                           std::vector<int32_t>(motors_.size(), (uint32_t)10));
+            // send_broadcast(motors_,
+            //                MsgKind::SET_MOTOR_PARAM,
+            //                (uint8_t)ParamField::CAN_MODE,
+            //                std::vector<int32_t>(motors_.size(), (uint32_t)10));
             // std::this_thread::sleep_for(10ms);
-            send_single(0x1e,
-                        MsgKind::SET_MOTOR_PARAM,
-                        (uint8_t)ParamField::CAN_MODE,
-                        (uint32_t)10);
+            // send_single(0x1e,
+            //             MsgKind::SET_MOTOR_PARAM,
+            //             (uint8_t)ParamField::CAN_MODE,
+            //             (uint32_t)10);
             // std::this_thread::sleep_for(10ms);
         }
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
-        {
-            std::unique_lock<std::mutex> lk(mtx_);
-            cv_.wait(lk, [this]
-                     { return calibrated_ || shutting_down_; });
-        }
+        // {
+        //     std::unique_lock<std::mutex> lk(mtx_);
+        //     cv_.wait(lk, [this]
+        //              { return calibrated_ || shutting_down_; });
+        // }
         if (shutting_down_)
             return;
 
         while (!shutting_down_)
         {
             next += control_period_;
-            std::vector<std::pair<int, int32_t>> cmds;
+            std::vector<CmdStruct> cmds;
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
@@ -338,16 +293,15 @@ namespace grip
                     for (auto &[key, value] : hand_) 
                     {
                         for (auto &[id, state] : value.motors)
-                            state = state_[id];
-                        for (auto &dof : value.dofs)
-                            dof.target = targets_rad_[dof.name];
-                        std::unordered_map<int, MotorCommand> motor_cmd;
-                        auto ctrl_mod = ctrl_mod_[key];
-                        pack_module_inputs(ctrl_mod.lay, value, ctrl_mod.in);
-                        ctrl_mod.c.step(ctrl_mod.in, ctrl_mod.out, value.control_mode);
-                        apply_module_outputs(ctrl_mod.lay, ctrl_mod.out, motor_cmd);
-                        for (const auto &[id, cmd] : motor_cmd)
-                            cmds.push_back({id, cmd.velocity_cmd});
+                        {
+                            CmdStruct cs;
+                            cs.joint_id = id;
+                            cs.control_mode = 0x20;
+                            cs.cmd_joint_angle = 0;
+                            cs.joint_vel_ref = 3000;
+                            cs.motor_current_ref = 0;
+                            cmds.push_back(cs);
+                        }
                     }
                 } else {
                     int cmd_type = (uint8_t)MotorMode::HALL_GUARD;
@@ -364,45 +318,47 @@ namespace grip
                         cmd_type = (uint8_t)MotorMode::TORQUE_STEP;
                         cmd_val = (int16_t) (targets_rad_["Torque"]);
                     }
-                    send_single(1, MsgKind::MOTOR_COMMAND, (uint8_t)cmd_type, (int16_t)cmd_val, (int16_t)0);
+                    // send_single(1, MsgKind::MOTOR_COMMAND, (uint8_t)cmd_type, (int16_t)cmd_val, (int16_t)0);
                 }
             }
-            for (auto &c : cmds)
-            {
-                send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
-                // std::cout << "commands: " << c.first << " data: " << c.second << "\n";
-            }
+            // for (auto &c : cmds)
+            // {
+            //     // send_single(c.first, MsgKind::MOTOR_COMMAND, (uint8_t)MotorMode::SPEED, (int16_t)c.second, (int16_t)0);
+            //     // std::cout << "commands: " << c.first << " data: " << c.second << "\n";
+                
+            // }
+            send_to_broad(cmds);
             std::this_thread::sleep_until(next);
         }
     }
 
-    void ControlInterface::send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int32_t> &values)
+    void ControlInterface::send_to_broad(std::vector<CmdStruct> cmds)
     {
-        auto id = make_can_id(0x1f, kind);
-        auto p = pack_broadcast_payload(devs, field, values);
+        auto id = (uint32_t)0x200 + (uint32_t)0x20;
+        auto p = pack_broadcast_payload(cmds);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }
 
-    void ControlInterface::send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2)
-    {
-        auto id = make_can_id(0x1f, kind);
-        auto p = pack_broadcast_payload(devs, field, values1, values2);
-        bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
-    }
+    // void ControlInterface::send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2)
+    // {
+    //     auto id = (uint32_t)0x200 | (uint32_t)0x20;
+    //     auto p = pack_broadcast_payload(devs, field, values1, values2);
+    //     bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
+    // }
 
-    void ControlInterface::send_single(int dev, MsgKind kind, uint8_t field, int32_t value)
-    {
-        auto id = make_can_id(dev, kind);
-        auto p = pack_single_payload(dev, field, value);
-        bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
-    }
+    // void ControlInterface::send_single(int dev, MsgKind kind, uint8_t field, int32_t value)
+    // {
+    //     auto id = make_can_id(dev, kind);
+    //     auto p = pack_single_payload(dev, field, value);
+    //     bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
+    // }
 
-    void ControlInterface::send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2)
-    {
-        auto id = make_can_id(dev, kind);
-        auto p = pack_single_payload(dev, field, value1, value2);
-        bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
-    }
+    // void ControlInterface::send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2)
+    // {
+    //     auto id = make_can_id(dev, kind);
+    //     auto p = pack_single_payload(dev, field, value1, value2);
+    //     bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
+    // }
 
     std::unordered_map<int, Telemetry> ControlInterface::snapshot() const
     {
@@ -443,6 +399,22 @@ namespace grip
             return;
         auto &mr = m->second;
         mr.control_mode = mode;
+    }
+
+    Telemetry ControlInterface::messageDecode(const uint8_t *p)
+    {
+        Telemetry t;
+        t.control_mode = (uint8_t)p[1];
+        t.motor_position = rd_i16(&p[2]);
+        t.joint_position = rd_i16(&p[4]);
+        t.iq_mA = rd_i16(&p[6]);
+        t.joint_speed = rd_i16(&p[8]);
+        t.tip_tactile = rd_i16(&p[10]);
+        t.motor_speed = rd_i16(&p[12]);
+        t.temperature = (uint8_t)p[14];
+        t.fault = (uint8_t)p[15];
+        // std::cout << "motor_position = " << t.motor_position << "\n";
+        return t;
     }
 
 } // namespace grip
