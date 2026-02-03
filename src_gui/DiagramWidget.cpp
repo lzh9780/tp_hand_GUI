@@ -559,7 +559,7 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
     else if (updateRequest_)
     {
         startIdx = chartHistoryScroll_->value();
-        endIdx = startIdx + m_maxPoints_;
+        endIdx = startIdx + m_maxPoints_ - 1;
         xMin_ = startIdx * m_samplePeriodSec_;
         xMax_ = endIdx * m_samplePeriodSec_;
         updateRequest_ = false;

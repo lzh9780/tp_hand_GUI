@@ -22,7 +22,7 @@ ActionPanel::ActionPanel(QWidget *parent)
     : QFrame(parent)
 {
     root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
+    root->setContentsMargins(5, 5, 5, 5);
     buildUI();
 }
 
@@ -276,6 +276,15 @@ void ActionPanel::load()
     }
 
     int idx = store_->findActionSetByName(selectBox->currentText());
+    if (idx == -1)
+    {
+        selectBox->setCurrentIndex(0);
+        while (selectBox->count() > 1)
+            selectBox->removeItem(1);
+        loadFlowList();
+        load();
+        return;
+    }
     for (const auto &s : store_->actionSetList(idx))
     {
         if (store_->findActionByName(s) == -1)

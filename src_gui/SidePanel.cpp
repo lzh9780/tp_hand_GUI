@@ -25,87 +25,47 @@ SidePanel::SidePanel(QWidget *parent)
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    buildControlRow();
     buildActionsPanel();
     buildSliderPanel();
 
     // Splitter: actions (top) + sliders (bottom)
     auto *splitter = new QSplitter(Qt::Vertical, this);
     // splitter->addWidget(img_label_);
-    splitter->addWidget(actionScroll_);
-    splitter->addWidget(sliderScroll_);
+    splitter->addWidget(actionsPanel_);
+    splitter->addWidget(sliderPanel_);
     // splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
 
-    root->addWidget(controlRow_);
     root->addWidget(splitter);
 
     // Track focus changes for inline name edit UX (as in your app)
     connect(qApp, &QApplication::focusChanged, this, &SidePanel::onFocusChanged);
 }
 
-void SidePanel::buildControlRow()
-{
-    controlRow_ = new QWidget(this);
-    auto *h = new QHBoxLayout(controlRow_);
-    h->setContentsMargins(8, 6, 8, 6);
-
-    btnSave_ = new QPushButton("Save");
-    btnDelete_ = new QPushButton("Delete");
-
-    // QPushButton *recordBtn = new QPushButton();
-    // recordBtn->setText("Record");
-    // recordBtn->setEnabled(false);
-
-    // QPushButton *saveRecordBtn = new QPushButton();
-    // saveRecordBtn->setText("Save Set");
-    // saveRecordBtn->setEnabled(false);
-
-    QPushButton *editBtn = new QPushButton();
-    editBtn->setText("Edit");
-    editBtn->setEnabled(false);
-
-    btnEditName_ = new QPushButton("Rename");
-
-    btnMode_ = new QPushButton("Mode: Follow");
-    btnMode_->setToolTip("Change the joint control mode\n"
-                         "    Follow mode: joints act with the sliders\n"
-                         "    Setup mode: The joints act after press \"Execute\" button");
-
-    btnExecute_ = new QPushButton("Execute");
-    btnExecute_->setEnabled(false);
-
-    QVBoxLayout *btnCol1 = new QVBoxLayout();
-    btnCol1->addWidget(btnSave_);
-    // btnCol1->addWidget(btnDelete_);
-    btnCol1->addWidget(editBtn);
-    btnCol1->addWidget(btnMode_);
-    // saveLine->setSpacing(0);
-
-    QVBoxLayout *btnCol2 = new QVBoxLayout();
-    // btnCol2->addWidget(saveRecordBtn);
-    // btnCol2->addWidget(recordBtn);
-    btnCol2->addWidget(btnDelete_);
-    btnCol2->addWidget(btnEditName_);
-    btnCol2->addWidget(btnExecute_);
-
-    h->addLayout(btnCol1);
-    h->addLayout(btnCol2);
-
-    controlRow_->setLayout(h);
-
-    connect(btnMode_, &QPushButton::clicked, this, &SidePanel::onToggleMode);
-    connect(btnExecute_, &QPushButton::clicked, this, &SidePanel::onExecute);
-    connect(btnSave_, &QPushButton::clicked, this, &SidePanel::onSaveAction);
-}
-
 void SidePanel::buildActionsPanel()
 {
     actionsPanel_ = new QWidget(this);
-    auto *v = new QVBoxLayout(actionsPanel_);
-    v->setContentsMargins(6, 6, 6, 6);
+    auto *actionRoot = new QVBoxLayout(actionsPanel_);
+    actionRoot->setContentsMargins(6, 6, 6, 6);
+    actionRoot->setSpacing(4);
+    auto *actionList = new QWidget;
+    auto *v = new QVBoxLayout(actionList);
+    v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(4);
+
+    btnSave_ = new QPushButton("Save");
+    btnDelete_ = new QPushButton("Delete");
+    btnEditName_ = new QPushButton("Rename");
+
+    auto *btnWidget = new QWidget;
+    QHBoxLayout *h = new QHBoxLayout(btnWidget);
+    h->addWidget(btnSave_);
+    h->addWidget(btnDelete_);
+    h->addWidget(btnEditName_);
+    h->addStretch(1);
+    h->setContentsMargins(0, 0, 0, 0);
+    v->addLayout(h);
 
     // Header: "Actions" [collapse]
     auto *header = new QLabel("Actions:");
@@ -120,8 +80,13 @@ void SidePanel::buildActionsPanel()
     v->addItem(spacer);
 
     actionScroll_ = new QScrollArea;
-    actionScroll_->setWidget(actionsPanel_);
+    actionScroll_->setWidget(actionList);
     actionScroll_->setWidgetResizable(true);
+
+    actionRoot->addWidget(btnWidget);
+    actionRoot->addWidget(actionScroll_);
+
+    connect(btnSave_, &QPushButton::clicked, this, &SidePanel::onSaveAction);
 }
 
 void SidePanel::updateStore(ActionStore *store)
@@ -186,6 +151,7 @@ void SidePanel::loadActions()
                             nameEdit->show();
                             nameEdit->setFocus();
                             nameBtn->hide();
+                            nameEdit->setProperty("rename", true);
                         }
                     }
                 });
@@ -202,12 +168,42 @@ void SidePanel::loadActions()
 void SidePanel::buildSliderPanel()
 {
     sliderPanel_ = new QWidget;
-    sliderVBox_ = new QVBoxLayout(sliderPanel_);
+    auto *sliderRoot = new QVBoxLayout(sliderPanel_);
+    sliderRoot->setContentsMargins(6, 6, 6, 6);
+    sliderRoot->setSpacing(4);
+    auto *sliderWidget = new QWidget;
+    sliderVBox_ = new QVBoxLayout(sliderWidget);
     sliderVBox_->setAlignment(Qt::AlignTop);
 
+    QPushButton *resetBtn = new QPushButton();
+    resetBtn->setText("Reset");
+    
+    btnMode_ = new QPushButton("Mode: Follow");
+    btnMode_->setToolTip("Change the joint control mode\n"
+                         "    Follow mode: joints act with the sliders\n"
+                         "    Setup mode: The joints act after press \"Execute\" button");
+
+    btnExecute_ = new QPushButton("Execute");
+    btnExecute_->setEnabled(false);
+
+    auto *btnWidget = new QWidget;
+    QHBoxLayout *h = new QHBoxLayout(btnWidget);
+    h->addWidget(btnMode_);
+    h->addWidget(btnExecute_);
+    h->addWidget(resetBtn);
+    h->addStretch(1);
+    h->setContentsMargins(0, 0, 0, 0);
+
+    sliderRoot->addWidget(btnWidget);
+
     sliderScroll_ = new QScrollArea;
-    sliderScroll_->setWidget(sliderPanel_);
+    sliderScroll_->setWidget(sliderWidget);
     sliderScroll_->setWidgetResizable(true);
+    sliderRoot->addWidget(sliderScroll_);
+
+    connect(btnMode_, &QPushButton::clicked, this, &SidePanel::onToggleMode);
+    connect(btnExecute_, &QPushButton::clicked, this, &SidePanel::onExecute);
+    connect(resetBtn, &QPushButton::clicked, this, &SidePanel::onReset);
 }
 
 void SidePanel::loadSliderModule(QString name, float min, float max)
@@ -387,6 +383,12 @@ void SidePanel::onExecute()
     emit committed();
 }
 
+void SidePanel::onReset()
+{
+    for (auto *s : sliders_)
+        s->setValue(0);
+}
+
 void SidePanel::onSaveAction()
 {
     if (!store_)
@@ -439,6 +441,7 @@ void SidePanel::onSaveAction()
                             nameEdit->show();
                             nameEdit->setFocus();
                             nameBtn->hide();
+                            nameEdit->setProperty("rename", true);
                         }
                     }
                 });
@@ -540,8 +543,10 @@ void SidePanel::onDeleteAction(QPushButton *btn)
             persistStore();
         }
         if (actionSets.size() > 0)
+        {
             store_->removeActionFromSet(name);
             emit actionStoreUpdate();
+        }
     }
     else
     {
@@ -597,6 +602,49 @@ void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
 
     if (validateNewActionName(edit->text(), btn->text()))
     {
+        QMessageBox msgBox;
+        msgBox.setTextFormat(Qt::MarkdownText);
+        msgBox.setWindowTitle("Rename Action");
+        msgBox.setText(QString("#### Are you sure to rename action %1 to %2?").arg(btn->text(), edit->text()));
+        msgBox.setInformativeText(QString("This action will also be renamed if it has been contained by any action set.\n"
+            "Or you can remove all action with name %1 from action sets.").arg(btn->text()));
+        msgBox.setIcon(QMessageBox::Warning);
+        auto *renameBtn = msgBox.addButton(QMessageBox::Ok);
+        auto *cancelBtn = msgBox.addButton(QMessageBox::Cancel);
+        auto *deleteBtn = msgBox.addButton("Delete All", QMessageBox::ActionRole);
+
+        auto actionSets = store_->findActionInSet(btn->text());
+        if (actionSets.size() > 0)
+        {
+            auto msg = QString("Following action set contains action %1:\n").arg(btn->text());
+            for (auto &action : actionSets)
+                msg.append(QString("  - %1\n").arg(action));
+            msgBox.setDetailedText(msg);
+        }
+        else
+            msgBox.setDetailedText(QString("No action set contains action %1").arg(btn->text()));
+        
+        if (edit->property("rename").toBool() && edit->text() != btn->text())
+        {
+            msgBox.exec();
+
+            if (msgBox.clickedButton() == deleteBtn)
+            {
+                if (actionSets.size() > 0)
+                    store_->removeActionFromSet(btn->text());
+            }
+            else if (msgBox.clickedButton() == renameBtn)
+            {
+                
+                if (actionSets.size() > 0)
+                    store_->renameActionInSet(btn->text(), edit->text());
+            }
+            else
+            {
+                return;
+            }
+        }
+        
         QString aName = edit->text();
 
         if (btn->text().trimmed().isEmpty())
@@ -619,6 +667,7 @@ void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
         btn->setText(aName);
         btn->show();
         edit->hide();
+        emit actionStoreUpdate();
 
         persistStore();
     }
@@ -631,6 +680,8 @@ void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
 
     QTimer::singleShot(0, edit, [edit]
                        { edit->setProperty("validating", false); });
+    QTimer::singleShot(0, edit, [edit]
+                       { edit->setProperty("rename", false); });
 }
 
 void SidePanel::modeChange(const QString &mode)

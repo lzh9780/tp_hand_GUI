@@ -68,6 +68,7 @@ private slots:
     void onAnySliderChanged();
     void onToggleMode();
     void onExecute();
+    void onReset();
     void onSaveAction();               // begin/cancel inline add
     void onActionNameClicked();        // apply saved action to sliders
     void onFocusChanged(QWidget* old, QWidget* now);
@@ -78,7 +79,6 @@ private slots:
 
 private:
     // Build sections
-    void buildControlRow();
     void buildActionsPanel();
     void buildSliderPanel();
 
@@ -96,7 +96,6 @@ private:
     int addingRowIndex_{-1}; // index for inline "Save"/"Cancel" row
 
     // UI: control row
-    QWidget* controlRow_{nullptr};
     QPushButton* btnMode_{nullptr};
     QPushButton* btnExecute_{nullptr};
     QPushButton* btnSave_{nullptr};

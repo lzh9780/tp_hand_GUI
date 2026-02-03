@@ -11,9 +11,6 @@
 #include "protocol_codec.hpp"
 #include "can_bus.hpp"
 #include "settings.hpp"
-// #include "control_policy_native.hpp"
-// #include "grip/finger_ctrl.h"
-// #include "wrist_control.hpp"
 #include "HandControl.hpp"
 #include "ModuleRt.hpp"
 

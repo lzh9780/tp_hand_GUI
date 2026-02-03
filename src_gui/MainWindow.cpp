@@ -187,6 +187,10 @@ void MainWindow::buildUI()
     auto *actLog = tabsMenu->addAction("Log");
     auto *actMotor = tabsMenu->addAction("Motor Control");
     // auto* actInfo = tabsMenu->addAction("Robot Info");
+    auto* settingsMenu = menuBar()->addMenu("&Settings");
+    auto *TextMenu = settingsMenu->addMenu("Window Zoom");
+    auto *actShrink = TextMenu->addAction("Zoom Out -");
+    auto *actEnlarge = TextMenu->addAction("Zoom In +");
 
     connect(actHandDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
     connect(actConnect, &QAction::triggered, this, &MainWindow::openConnectorTab);
@@ -235,6 +239,7 @@ void MainWindow::onSidePanelValuesChanged()
         }
         for (auto &[key, value] : joint_target)
             ogre_->setJointPosition(key, value);
+        log_->append("");
     }
     else if (dev_cfg_.device_type != 0 && ctrl_)
     {
@@ -247,12 +252,33 @@ void MainWindow::onSidePanelValuesChanged()
 void MainWindow::onSidePanelCommitted()
 {
     auto deg = side_->jointDegrees();
-    for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
+
+    if (dev_cfg_.device_type == 0 && ctrl_)
     {
-        float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-        ctrl_->submit_target(dof_names[i].toUtf8().constData(), rad);
+        // ctrl_->set_control_mode("Position");
+        std::unordered_map<std::string, float> joint_target;
+        for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
+        {
+            float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
+            ctrl_->submit_target(dof_names[i].toUtf8().constData(), rad);
+            // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
+            log_->append("Execute: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
+            // ogre_->setJointPosition(dof_names[i].toUtf8().constData(), rad);
+            std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad);
+            for (const auto &j : joint_pos)
+            {
+                const auto &name = j.first;
+                auto item = joint_target.find(name);
+                if (item != joint_target.end())
+                    item->second += j.second;
+                else
+                    joint_target.emplace(name, j.second);
+            }
+        }
+        for (auto &[key, value] : joint_target)
+            ogre_->setJointPosition(key, value);
     }
-    log_->append("Execute: batch targets sent.");
+    log_->append("Execute: batch targets sent.\n");
 }
 
 void MainWindow::onSidePanelNotify(const QString &msg)

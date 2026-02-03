@@ -4,6 +4,7 @@
 #include "MainWindow.h"
 #include <csignal>
 #include <pybind11/embed.h>
+#include <QStyleFactory>
 
 using namespace grip;
 
@@ -55,6 +56,13 @@ int main(int argc, char **argv)
     pybind11::gil_scoped_release release;
 
     QApplication app(argc, argv);
+
+    QApplication::setStyle(QStyleFactory::create("Fusion"));
+
+    // Optional: set a fixed font to reduce layout differences
+    QFont f("Segoe UI");          // or "Noto Sans"
+    f.setPointSize(10);
+    app.setFont(f);
 
     MainWindow window(cfg);
     window.show();
