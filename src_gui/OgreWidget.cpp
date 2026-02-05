@@ -936,7 +936,7 @@ void OgreWidget::buildInstance(const std::string &instance,
     // 1) Create link nodes (empty for now)
     for (const auto &kv : mModel.links)
     {
-        auto *node = mWorld->createChildSceneNode(instance + "_" + kv.first);
+        auto *node = R.root->createChildSceneNode(instance + "_" + kv.first);
         R.linkNodes[kv.first] = node;
     }
 

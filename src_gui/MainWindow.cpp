@@ -7,6 +7,7 @@
 #include <QVBoxLayout>
 #include <QStatusBar>
 #include <QTimer>
+#include <QString>
 #include <QStringList>
 #include <QMenuBar>
 #include <QTabWidget>
@@ -238,7 +239,7 @@ void MainWindow::onSidePanelValuesChanged()
             }
         }
         for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition(key, value);
+            ogre_->setJointPosition("cmd", key, value);
         log_->append("");
     }
     else if (dev_cfg_.device_type != 0 && ctrl_)
@@ -276,7 +277,7 @@ void MainWindow::onSidePanelCommitted()
             }
         }
         for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition(key, value);
+            ogre_->setJointPosition("cmd", key, value);
     }
     log_->append("Execute: batch targets sent.\n");
 }
@@ -317,9 +318,9 @@ void MainWindow::onDeviceConnect()
                 // log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
                 log_->append("Current control mode: " + side_->modeText());
 
-                auto timer_ = new QTimer(this);
-                connect(timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-                timer_->start(10);
+                read_timer_ = new QTimer(this);
+                connect(read_timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+                read_timer_->start(10);
             }
 
             motor_->load(hand_cfg_);
@@ -329,6 +330,7 @@ void MainWindow::onDeviceConnect()
                 {
                     dof_names << QString::fromStdString(d.name);
                     dofs_inverted_index.emplace(d.name, key);
+                    dof_map.emplace(d.id, d.name);
                 }
                 for (auto &j : value.joints)
                     joints_inverted_index.emplace(j, key);
@@ -336,7 +338,7 @@ void MainWindow::onDeviceConnect()
             // side_->loadSliders(dof_names);
             // qDebug() << "Hand Controllor loaded";
             side_->loadHandControllor(hand_cfg_);
-            ogre_->loadURDF(hand_cfg_.urdf_file);
+            ogre_->loadURDFDual(hand_cfg_.urdf_file);
         }
         else
         {
@@ -376,6 +378,8 @@ void MainWindow::onDeviceDisconnect()
     actionFlow_->clearAll();
     if (ctrl_)
     {
+        if (read_timer_)
+            read_timer_->stop();
         ctrl_->stop_all();
         delete ctrl_;
         ctrl_ = nullptr;
@@ -421,14 +425,28 @@ void MainWindow::onSidePanelAddAction(const QString &msg)
 
 void MainWindow::readJointAngles()
 {
-    grip::JointAngles j = ctrl_->get_joint_angles();
-    float thumb_angle = j.thumb_ip + j.thumb_mcp;
-    float index_angle = j.index_mcp + j.index_pip + j.index_dip;
-    float middle_angle = j.middle_mcp + j.middle_pip + j.middle_dip;
-    float ring_angle = j.ring_mcp + j.ring_pip + j.ring_dip;
-    float pinky_angle = j.pinky_mcp + j.pinky_pip + j.pinky_dip;
-
-    side_->updateJoints(thumb_angle, index_angle, middle_angle, ring_angle, pinky_angle);
+    grip::StateMap state = ctrl_->snapshot();
+    std::unordered_map<std::string, int> joints;
+    std::unordered_map<std::string, float> joint_target;
+    for (auto &[i, data] : state){
+        auto j = dof_map.find(i);
+        if (j == dof_map.end()) continue;
+        joints.emplace(dof_map[i], data.joint_position);
+        float rad = float(data.joint_position) * float(M_PI) / 180.0f / 100.0;
+        std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_map[i], rad);
+        for (const auto &j : joint_pos)
+        {
+            const auto &name = j.first;
+            auto item = joint_target.find(name);
+            if (item != joint_target.end())
+                item->second += j.second;
+            else
+                joint_target.emplace(name, j.second);
+        }
+    }
+    for (auto &[key, value] : joint_target)
+            ogre_->setJointPosition("fb", key, value);
+    side_->updateJoints(joints);
 }
 
 void MainWindow::onConnectorModelChange(const QString &model_name)

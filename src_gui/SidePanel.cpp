@@ -719,12 +719,25 @@ void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data)
     }
 }
 
-void SidePanel::updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky)
+void SidePanel::updateJoints(const std::unordered_map<std::string, int> state)
 {
     // for (auto l : currValueLabels_) {
     //     l->setText("  (%1)".arg(sliders_[i]->value()));
     // }
-    currValueLabels_[3]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
+    // currValueLabels_[3]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
+    for (auto &[name, val]: state)
+    {
+        int idx = 0;
+        for (auto sName : nameLabels_)
+        {
+            if (sName->text().toUtf8().constData() == name)
+            {
+                currValueLabels_[idx]->setText(QString("  (%1)").arg(float(float(val) / float(100)), 0, 'f', 2));
+                continue;
+            }
+            ++idx;
+        }
+    }
 }
 
 void SidePanel::onControlChanged()

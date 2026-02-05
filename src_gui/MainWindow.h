@@ -77,6 +77,7 @@ private:
 
     std::unordered_map<std::string, std::string> dofs_inverted_index;
     std::unordered_map<std::string, std::string> joints_inverted_index;
+    std::unordered_map<int, std::string> dof_map;
 
     // params
     bool withCan = true;
@@ -98,6 +99,7 @@ private:
     std::string action_path_;
     std::string urdf_path_;
     QStringList dof_names;
+    QTimer* read_timer_;
 
     QTabWidget* upperTabs;
     QTabWidget* lowerTabs;

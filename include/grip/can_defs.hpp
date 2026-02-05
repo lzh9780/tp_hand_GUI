@@ -85,6 +85,7 @@ struct ModuleState
 };
 
 using HandStateMap = std::unordered_map<std::string, ModuleState>;
+using StateMap = std::unordered_map<int, Telemetry>;
 
 // Motor command separate from Telemetry (feedback)
 struct MotorCommand

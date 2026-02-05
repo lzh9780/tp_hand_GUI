@@ -5,7 +5,7 @@ software_version: 0
 
 hand_struct:
   WRIST:
-    dofs:
+    active_dofs:
       - pitch
       - yaw
     joints:
@@ -13,9 +13,9 @@ hand_struct:
       - yaw
     dof_joint_map: [[1, 0], [0, 1]]
     route: [{max: 50, min: -30}, {max: 21, min: -21}]
-    motors: [1, 2]
+    ids: [1, 2]
   PINKY:
-    dofs:
+    active_dofs:
       - pinky
     route: [{max: 150, min: 0}]
     joints:
@@ -23,9 +23,9 @@ hand_struct:
       - pinky_pip
       - pinky_dip
     dof_joint_map: [[1, 1, 1]]
-    motors: [3]
+    ids: [3]
   RING_FINGER:
-    dofs:
+    active_dofs:
       - ring
     route: [{max: 150, min: 0}]
     joints:
@@ -33,9 +33,9 @@ hand_struct:
       - ring_pip
       - ring_dip
     dof_joint_map: [[1, 1, 1]]
-    motors: [6]
+    ids: [6]
   MIDDLE_FINGER:
-    dofs:
+    active_dofs:
       - middle
     route: [{max: 150, min: 0}]
     joints:
@@ -43,9 +43,9 @@ hand_struct:
       - middle_pip
       - middle_dip
     dof_joint_map: [[1, 1, 1]]
-    motors: [4]
+    ids: [4]
   INDEX_FINGER:
-    dofs:
+    active_dofs:
       - index
     route: [{max: 150, min: 0}]
     joints:
@@ -53,9 +53,9 @@ hand_struct:
       - index_pip
       - index_dip
     dof_joint_map: [[1, 1, 1]]
-    motors: [7]
+    ids: [7]
   THUMB:
-    dofs:
+    active_dofs:
       - thumb
     route: [{max: 150, min: 0}]
     joints:
@@ -63,7 +63,7 @@ hand_struct:
       - thumb_mcp
       - thumb_ip
     dof_joint_map: [[1, 1, 1]]
-    motors: [5]
+    ids: [5]
 
 control_policy: ["hall_protect", "cascaded_pid"]
 wrist_control_policy: ["default", "soft"]

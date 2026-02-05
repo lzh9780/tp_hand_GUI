@@ -73,20 +73,15 @@ namespace grip
             for (auto m = n.begin(); m != n.end(); ++m)
             {
                 ModuleStruct ms;
-                for (const auto motor : m->second["motors"])
-                    ms.motors.push_back(motor.as<int32_t>());
-
-                if (ms.motors.size() <= 0)
-                    add("No motor info for " + m->first.as<std::string>() + "\n");
 
                 for (const auto joint : m->second["joints"])
                     ms.joints.push_back(joint.as<std::string>());
 
-                if (ms.motors.size() <= 0)
+                if (ms.joints.size() <= 0)
                     add("No joint info for " + m->first.as<std::string>() + "\n");
 
                 int counter = 0;
-                for (const auto name : m->second["dofs"])
+                for (const auto name : m->second["active_dofs"])
                 {
                     DofInfo d;
                     d.name = name.as<std::string>();
@@ -98,6 +93,13 @@ namespace grip
                     {
                         add("Map size does not match dof size");
                     }
+                    if (counter >= m->second["ids"].size())
+                    {
+                        add("number of Ids does not match dof size");
+                    }
+
+                    if (auto dof_id = m->second["ids"][counter])
+                        d.id = dof_id.as<int>(d.id);
 
                     if (auto route = m->second["route"][counter])
                     {
@@ -121,7 +123,7 @@ namespace grip
                     counter += 1;
                 }
 
-                if (ms.motors.size() <= 0)
+                if (ms.dofs.size() <= 0)
                     add("No dof info for " + m->first.as<std::string>() + "\n");
 
                 hand.structs[m->first.as<std::string>()] = std::move(ms);

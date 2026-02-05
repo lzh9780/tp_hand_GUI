@@ -26,22 +26,22 @@ void MotorPanel::load(grip::HandSettings hand)
         auto *nameLbl = new QLabel(s.first.c_str());
         contentLyt->addWidget(nameLbl);
 
-        for (auto m : s.second.motors) {
-            auto *hb = new QHBoxLayout();
+        // for (auto m : s.second.motors) {
+        //     auto *hb = new QHBoxLayout();
 
-            auto *motorLbl = new QLabel(QString("motor_%1   ").arg(m));
-            auto *motorBox = new QComboBox();
-            motorBox->addItem("Normal");
-            motorBox->addItem("Zero Torque");
-            motorBox->addItem("Keep Force");
-            motorBox->setCurrentIndex(0);
+        //     auto *motorLbl = new QLabel(QString("motor_%1   ").arg(m));
+        //     auto *motorBox = new QComboBox();
+        //     motorBox->addItem("Normal");
+        //     motorBox->addItem("Zero Torque");
+        //     motorBox->addItem("Keep Force");
+        //     motorBox->setCurrentIndex(0);
 
-            hb->addWidget(motorLbl);
-            hb->addWidget(motorBox);
-            hb->setContentsMargins(8, 0, 0, 0);
+        //     hb->addWidget(motorLbl);
+        //     hb->addWidget(motorBox);
+        //     hb->setContentsMargins(8, 0, 0, 0);
 
-            contentLyt->addLayout(hb);
-        }
+        //     contentLyt->addLayout(hb);
+        // }
     }
 
     auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);

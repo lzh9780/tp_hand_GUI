@@ -17,6 +17,7 @@ struct CanDeviceSettings {
 };
 
 struct DofInfo {
+    int id;
     std::string name;
     std::pair<float, float> route;
     std::vector<float> dof_joint_map;
@@ -25,7 +26,6 @@ struct DofInfo {
 struct ModuleStruct {
     std::vector<DofInfo> dofs;
     std::vector<std::string> joints;
-    std::vector<int> motors;
 };
 
 struct AppSettings {

@@ -46,7 +46,7 @@ public:
     // void setFrame(const QImage img);
     void modeChange(const QString& mode);
     void applyCameraData(std::unordered_map<std::string, float>& data);
-    void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
+    void updateJoints(const std::unordered_map<std::string, int> state);
     void loadActions();
     // void loadSliders(const QStringList &jointNames);
     void loadHandControllor(grip::HandSettings hand_cfg);

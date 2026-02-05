@@ -11,9 +11,6 @@
 #include "protocol_codec.hpp"
 #include "can_bus.hpp"
 #include "settings.hpp"
-// #include "control_policy_native.hpp"
-// #include "grip/finger_ctrl.h"
-// #include "wrist_control.hpp"
 
 namespace grip {
 
@@ -43,7 +40,6 @@ public:
 
     // state
     std::unordered_map<int, Telemetry> snapshot() const;
-    JointAngles get_joint_angles() const;
     int get_board_state() const;
     void set_module_control_mode(std::string module, int mode);
     HandStateMap get_hand_runtime_data();
@@ -55,22 +51,11 @@ private:
     bool all_stalled_locked() const;
 
     void send_to_broad(std::vector<CmdStruct> cmd);
-    // void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2);
-    // void send_single(int dev, MsgKind kind, uint8_t field, int32_t value);
-    // void send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2);
 
     void drain_pending_targets_locked();
     Telemetry messageDecode(const uint8_t *p);
 
 private:
-    // struct ControlModule {
-    //     ModuleState ms = ModuleState();
-    //     HandControl c = HandControl(ms);
-    //     ModuleLayout lay = ModuleLayout();
-    //     ModuleInputSnapshot in = ModuleInputSnapshot();
-    //     ModuleOutputSnapshot out = ModuleOutputSnapshot();
-    // };
-
     // hw
     CanBus bus_{33,0};
     uint32_t bus_channel_{0};
@@ -80,11 +65,9 @@ private:
     HandStateMap hand_{};
 
     // shared state
+    int device_type = 0;
     std::unordered_map<int, Telemetry> state_;
     std::unordered_map<std::string, float> targets_rad_;
-    JointAngles joint_angles_;
-    JointAngles joint_vels_;
-    uint32_t time_stamp_ = 0;
     int board_state_;
     std::string mode_{"Position"};
     // std::unordered_map<std::string, ControlModule> ctrl_mod_;
