@@ -99,9 +99,9 @@ struct CmdStruct
 {
     uint8_t joint_id = 0;
     uint8_t control_mode = 0;
-    uint16_t cmd_joint_angle = 0;
-    uint16_t joint_vel_ref = 0;
-    uint16_t motor_current_ref = 0;
+    int16_t cmd_joint_angle = 0;
+    int16_t joint_vel_ref = 0;
+    int16_t motor_current_ref = 0;
 };
 
 } // namespace grip

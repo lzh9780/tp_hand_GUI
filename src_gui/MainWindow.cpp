@@ -222,8 +222,8 @@ void MainWindow::onSidePanelValuesChanged()
         std::unordered_map<std::string, float> joint_target;
         for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
         {
-            float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-            ctrl_->submit_target(dof_names[i].toUtf8().constData(), rad);
+            float rad = float(deg[i] / 2000.0f * 150.f) * float(M_PI) / 180.0f / 100.0;
+            ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i] / 100.0));
             // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
             log_->append("Follow: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
             // ogre_->setJointPosition(dof_names[i].toUtf8().constData(), rad);
@@ -239,7 +239,7 @@ void MainWindow::onSidePanelValuesChanged()
             }
         }
         for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition("cmd", key, value);
+            ogre_->setJointPosition("fb", key, value);
         log_->append("");
     }
     else if (dev_cfg_.device_type != 0 && ctrl_)
@@ -261,7 +261,7 @@ void MainWindow::onSidePanelCommitted()
         for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
         {
             float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-            ctrl_->submit_target(dof_names[i].toUtf8().constData(), rad);
+            ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i] / 100.0));
             // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
             log_->append("Execute: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
             // ogre_->setJointPosition(dof_names[i].toUtf8().constData(), rad);
@@ -277,7 +277,7 @@ void MainWindow::onSidePanelCommitted()
             }
         }
         for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition("cmd", key, value);
+            ogre_->setJointPosition("fb", key, value);
     }
     log_->append("Execute: batch targets sent.\n");
 }
@@ -323,17 +323,18 @@ void MainWindow::onDeviceConnect()
                 read_timer_->start(10);
             }
 
-            motor_->load(hand_cfg_);
+            // motor_->load(hand_cfg_);
             for (const auto &[key, value] : hand_cfg_.structs)
             {
-                for (auto &d : value.dofs)
+                for (auto &j : value)
                 {
-                    dof_names << QString::fromStdString(d.name);
-                    dofs_inverted_index.emplace(d.name, key);
-                    dof_map.emplace(d.id, d.name);
+                    if (j.id >= 0)
+                        dof_names << QString::fromStdString(j.name);
+                    joints_inverted_index.emplace(j.name, key);
+                    dof_map.emplace(j.id, j.name);
                 }
-                for (auto &j : value.joints)
-                    joints_inverted_index.emplace(j, key);
+                // for (auto &j : value.joints)
+                //     joints_inverted_index.emplace(j, key);
             }
             // side_->loadSliders(dof_names);
             // qDebug() << "Hand Controllor loaded";
@@ -432,7 +433,7 @@ void MainWindow::readJointAngles()
         auto j = dof_map.find(i);
         if (j == dof_map.end()) continue;
         joints.emplace(dof_map[i], data.joint_position);
-        float rad = float(data.joint_position) * float(M_PI) / 180.0f / 100.0;
+        float rad = float(data.joint_position) * float(M_PI) / 180.0f / 10.0;
         std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_map[i], rad);
         for (const auto &j : joint_pos)
         {
@@ -445,7 +446,7 @@ void MainWindow::readJointAngles()
         }
     }
     for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition("fb", key, value);
+            ogre_->setJointPosition("cmd", key, value);
     side_->updateJoints(joints);
 }
 
@@ -518,33 +519,36 @@ void MainWindow::openDiagram()
 
 std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value)
 {
-    auto module_name = dofs_inverted_index.find(dof_name);
-    if (module_name == dofs_inverted_index.end())
+    // auto module_name = dofs_inverted_index.find(dof_name);
+    // if (module_name == dofs_inverted_index.end())
+    //     return {};
+    auto module_name = joints_inverted_index.find(dof_name);
+    if (module_name == joints_inverted_index.end())
         return {};
     auto module_struct = hand_cfg_.structs.find(module_name->second);
     if (module_struct == hand_cfg_.structs.end())
         return {};
     auto ms = module_struct->second;
     std::vector<float> map;
-    for (auto &d : ms.dofs)
+    for (auto &j : ms)
     {
-        if (d.name == dof_name)
+        if (j.name == dof_name)
         {
-            map = d.dof_joint_map;
+            map = j.joint_feedback_map;
             break;
         }
     }
     if (map.size() == 0)
         return {};
-    float sum = 0;
-    for (float v : map)
-        sum += v;
+    // float sum = 0;
+    // for (float v : map)
+    //     sum += v;
 
     std::unordered_map<std::string, float> result;
     int counter = 0;
     while (counter < map.size())
     {
-        result.emplace(ms.joints[counter], value * map[counter] / sum);
+        result.emplace(ms[counter].name, value * map[counter]);
         counter += 1;
     }
     return result;
@@ -560,20 +564,22 @@ std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string join
         return {};
     auto ms = module_struct->second;
     int idx = 0;
-    for (auto j : ms.joints)
+    for (auto j : ms)
     {
-        if (j == joint_name)
+        if (j.name == joint_name)
             break;
         idx += 1;
     }
-    if (idx >= ms.joints.size())
+    if (idx >= ms.size())
         return {};
     std::unordered_map<std::string, float> result;
-    for (auto dof : ms.dofs)
+    for (auto j : ms)
     {
-        if (idx >= dof.dof_joint_map.size())
+        if (j.id <= 0) 
             continue;
-        result.emplace(dof.name, dof.dof_joint_map[idx] * value);
+        if (idx >= j.joint_feedback_map.size())
+            continue;
+        result.emplace(j.name, j.joint_feedback_map[idx] * value);
     }
     return result;
 }

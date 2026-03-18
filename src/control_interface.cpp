@@ -13,10 +13,11 @@ namespace grip
     {
         for (const auto &[key, value] : hand_cfg.structs)
         {
-            for (const auto &dof : value.dofs)
+            for (const auto &joint : value)
             {
                 Telemetry t;
-                state_.emplace(dof.id, t);
+                state_.emplace(joint.id, t);
+                joint_names_.emplace(joint.id, joint.name);
             }
         }
         device_type = 0;
@@ -36,7 +37,7 @@ namespace grip
         targets_rad_["Torque"] = 0.0f;
         targets_rad_["-"] = 0.0f;
 
-        device_type = 0;
+        device_type = 1;
     }
 
     ControlInterface::~ControlInterface()
@@ -247,15 +248,15 @@ namespace grip
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
-                if (device_type = 0) 
+                if (device_type == 0) 
                 {
                     for (auto &[id, value] : state_) 
                     {
-                        if (id == 1 or id == 2) continue;
+                        if (id != 5) continue;
                         CmdStruct cs;
                         cs.joint_id = id;
                         cs.control_mode = 0x20;
-                        cs.cmd_joint_angle = 0;
+                        cs.cmd_joint_angle = targets_rad_[joint_names_[id]];
                         cs.joint_vel_ref = 3000;
                         cs.motor_current_ref = 0;
                         cmds.push_back(cs);
@@ -285,7 +286,7 @@ namespace grip
 
     void ControlInterface::send_to_broad(std::vector<CmdStruct> cmds)
     {
-        auto id = (uint32_t)0x200 + (uint32_t)0x20;
+        auto id = (uint32_t)0x200 + (uint32_t)0x40;
         auto p = pack_broadcast_payload(cmds);
         bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
     }

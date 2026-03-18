@@ -268,9 +268,10 @@ void SidePanel::loadHandControllor(grip::HandSettings hand_cfg)
         ctrlHl->addWidget(mode_box);
         sliderVBox_->addLayout(ctrlHl);
 
-        for (auto d : s.second.dofs)
+        for (auto j : s.second)
         {
-            loadSliderModule(QString(d.name.c_str()), d.route.first, d.route.second);
+            if (j.id <= 0) continue; 
+            loadSliderModule(QString(j.name.c_str()), j.route.first, j.route.second);
         }
 
         connect(mode_box, &QComboBox::currentTextChanged,
@@ -732,7 +733,7 @@ void SidePanel::updateJoints(const std::unordered_map<std::string, int> state)
         {
             if (sName->text().toUtf8().constData() == name)
             {
-                currValueLabels_[idx]->setText(QString("  (%1)").arg(float(float(val) / float(100)), 0, 'f', 2));
+                currValueLabels_[idx]->setText(QString("  (%1)").arg(float(float(val) / float(10)), 0, 'f', 2));
                 continue;
             }
             ++idx;

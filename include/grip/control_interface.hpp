@@ -70,7 +70,7 @@ private:
     std::unordered_map<std::string, float> targets_rad_;
     int board_state_;
     std::string mode_{"Position"};
-    // std::unordered_map<std::string, ControlModule> ctrl_mod_;
+    std::unordered_map<int, std::string> joint_names_;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;

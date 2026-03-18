@@ -16,17 +16,15 @@ struct CanDeviceSettings {
     TimingPair bit_timing{};
 };
 
-struct DofInfo {
-    int id;
+struct JointInfo {
     std::string name;
-    std::pair<float, float> route;
-    std::vector<float> dof_joint_map;
+    int id = -1;
+    std::pair<float, float> route{0, 0};
+    bool have_joint_feedback = false;
+    std::vector<float> joint_feedback_map{};
 };
 
-struct ModuleStruct {
-    std::vector<DofInfo> dofs;
-    std::vector<std::string> joints;
-};
+using ModuleStruct = std::vector<JointInfo>;
 
 struct AppSettings {
     CanDeviceSettings can_device{};

@@ -74,57 +74,55 @@ namespace grip
             {
                 ModuleStruct ms;
 
-                for (const auto joint : m->second["joints"])
-                    ms.joints.push_back(joint.as<std::string>());
-
-                if (ms.joints.size() <= 0)
-                    add("No joint info for " + m->first.as<std::string>() + "\n");
-
                 int counter = 0;
-                for (const auto name : m->second["active_dofs"])
+                for (const auto joint : m->second["joints"])
                 {
-                    DofInfo d;
-                    d.name = name.as<std::string>();
+                    JointInfo j;
+                    j.name = joint.as<std::string>();
                     if (counter >= m->second["route"].size())
-                    {
-                        add("Route size does not match dof size");
-                    }
-                    if (counter >= m->second["dof_joint_map"].size())
-                    {
-                        add("Map size does not match dof size");
-                    }
+                        add("Route size does not match joint number");
+                    if (counter >= m->second["joint_feedback_map"].size())
+                        add("Map size does not match joint number");
                     if (counter >= m->second["ids"].size())
-                    {
-                        add("number of Ids does not match dof size");
-                    }
+                        add("number of Ids does not match joint number");
+                    if (counter >= m->second["joint_feedback"].size())
+                        add("number of feedback states does not match joint number");
 
                     if (auto dof_id = m->second["ids"][counter])
-                        d.id = dof_id.as<int>(d.id);
+                        j.id = dof_id.as<int>(j.id);
 
-                    if (auto route = m->second["route"][counter])
-                    {
-                        if (auto min = route["min"])
-                            d.route.first = min.as<float_t>(d.route.first);
-                        if (auto max = route["max"])
-                            d.route.second = max.as<float_t>(d.route.second);
+                    if (j.id >= 0) {
+                        if (auto route = m->second["route"][counter])
+                        {
+                            if (auto min = route["min"])
+                                j.route.first = min.as<float_t>(j.route.first);
+                            if (auto max = route["max"])
+                                j.route.second = max.as<float_t>(j.route.second);
+                        }
+                        if (j.route.first >= j.route.second)
+                            add("Route range error: " + j.name + "\n");
                     }
 
-                    if (d.route.first >= d.route.second)
-                        add("Route range error: " + d.name + "\n");
+                    if (auto jf = m->second["joint_feedback"][counter])
+                        j.have_joint_feedback = jf.as<bool>(j.have_joint_feedback);
+                    if (j.have_joint_feedback)
+                    {
+                        if (auto map = m->second["joint_feedback_map"][counter])
+                        {
+                            for (auto v : map)
+                                j.joint_feedback_map.push_back(v.as<float>());
+                        }
+                    }
 
-                    if (auto map = m->second["dof_joint_map"][counter])
-                        for (auto v : map)
-                            d.dof_joint_map.push_back(v.as<float>());
+                    // if (j.dof_joint_map.size() != ms.joints.size())
+                    //     add("Map size for " + d.name + " dose not match the number of joints\n");
 
-                    if (d.dof_joint_map.size() != ms.joints.size())
-                        add("Map size for " + d.name + " dose not match the number of joints\n");
-
-                    ms.dofs.push_back(d);
+                    ms.push_back(j);
                     counter += 1;
                 }
 
-                if (ms.dofs.size() <= 0)
-                    add("No dof info for " + m->first.as<std::string>() + "\n");
+                if (ms.size() <= 0)
+                    add("No joint info for " + m->first.as<std::string>() + "\n");
 
                 hand.structs[m->first.as<std::string>()] = std::move(ms);
                 if (!valid_device(m->first.as<std::string>()))

@@ -75,7 +75,7 @@ private:
     grip::HandSettings hand_cfg_{};
     grip::ActuatorSettings act_cfg_{};
 
-    std::unordered_map<std::string, std::string> dofs_inverted_index;
+    // std::unordered_map<std::string, std::string> dofs_inverted_index;
     std::unordered_map<std::string, std::string> joints_inverted_index;
     std::unordered_map<int, std::string> dof_map;
 

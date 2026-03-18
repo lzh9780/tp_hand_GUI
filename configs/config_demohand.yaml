@@ -5,67 +5,60 @@ software_version: 0
 
 hand_struct:
   WRIST:
-    active_dofs:
-      - pitch
-      - yaw
     joints:
       - pitch
       - yaw
-    dof_joint_map: [[1, 0], [0, 1]]
-    route: [{max: 50, min: -30}, {max: 21, min: -21}]
     ids: [1, 2]
+    route: [{max: 50, min: -30}, {max: 21, min: -21}]
+    joint_feedback: [true, true]
+    joint_feedback_map: [[1, 0], [0, 1]]
   PINKY:
-    active_dofs:
-      - pinky
-    route: [{max: 150, min: 0}]
     joints:
       - pinky_mcp
       - pinky_pip
       - pinky_dip
-    dof_joint_map: [[1, 1, 1]]
-    ids: [3]
+    ids: [3, -1, -1]
+    route: [{max: 150, min: 0}, {}, {}]
+    joint_feedback: [true, false, false]
+    joint_feedback_map: [[0.33, 0.33, 0.33], [0, 0, 0], [0, 0, 0]]
   RING_FINGER:
-    active_dofs:
-      - ring
-    route: [{max: 150, min: 0}]
     joints:
       - ring_mcp
       - ring_pip
       - ring_dip
-    dof_joint_map: [[1, 1, 1]]
-    ids: [6]
+    ids: [6, -1, -1]
+    route: [{max: 150, min: 0}, {}, {}]
+    joint_feedback: [true, false, false]
+    joint_feedback_map: [[0.33, 0.33, 0.33], [0, 0, 0], [0, 0, 0]] 
   MIDDLE_FINGER:
-    active_dofs:
-      - middle
-    route: [{max: 150, min: 0}]
     joints:
       - middle_mcp
       - middle_pip
       - middle_dip
-    dof_joint_map: [[1, 1, 1]]
-    ids: [4]
+    ids: [4, -1, -1]
+    route: [{max: 150, min: 0}, {}, {}]
+    joint_feedback: [true, false, false]
+    joint_feedback_map: [[0.33, 0.33, 0.33], [0, 0, 0], [0, 0, 0]] 
   INDEX_FINGER:
-    active_dofs:
-      - index
-    route: [{max: 150, min: 0}]
     joints:
       - index_mcp
       - index_pip
       - index_dip
-    dof_joint_map: [[1, 1, 1]]
-    ids: [7]
+    ids: [7, -1, -1]
+    route: [{max: 150, min: 0}, {}, {}]
+    joint_feedback: [true, false, false]
+    joint_feedback_map: [[0.33, 0.33, 0.33], [0, 0, 0], [0, 0, 0]] 
   THUMB:
-    active_dofs:
-      - thumb
-    route: [{max: 150, min: 0}]
     joints:
       - thumb_cmc
       - thumb_mcp
       - thumb_ip
-    dof_joint_map: [[1, 1, 1]]
-    ids: [5]
+    ids: [5, -1, -1]
+    route: [{max: 2000, min: 0}, {}, {}]
+    joint_feedback: [true, false, false]
+    joint_feedback_map: [[0.33, 0.33, 0.33], [0, 0, 0], [0, 0, 0]] 
 
-control_policy: ["hall_protect", "cascaded_pid"]
+control_policy: ["Hall_Position_mode", "Joint_Position_with_Limit_mode", "Cascaded_PID_mode"]
 wrist_control_policy: ["default", "soft"]
 
 urdf_file: "robots/demohand/urdf/Demo_urdf_v1.urdf"
