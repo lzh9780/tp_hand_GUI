@@ -137,7 +137,7 @@ void PlotPanel::onStartToggled(bool on)
     }
 }
 
-void PlotPanel::feedData(const HandStateMap &hand)
+void PlotPanel::feedData(const StateMap &hand)
 {
     // Update history
     if (m_startMode_)

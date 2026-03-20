@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iostream>
 #include <cmath>
+#include <stdexcept>
 
 namespace grip
 {
@@ -21,23 +22,7 @@ namespace grip
             }
         }
         device_type = 0;
-    }
-
-    ControlInterface::ControlInterface(const ActuatorSettings &actuator_cfg,
-                                       std::chrono::milliseconds period)
-        : control_period_(period)
-    {
-        motors_.push_back(actuator_cfg.device_id);
-        state_[actuator_cfg.device_id] = Telemetry{};
-
-        targets_rad_["Max Velocity"] = 0.0f;
-        targets_rad_["Max Current"] = 0.0f;
-        targets_rad_["Position"] = 0.0f;
-        targets_rad_["Velocity"] = 0.0f;
-        targets_rad_["Torque"] = 0.0f;
-        targets_rad_["-"] = 0.0f;
-
-        device_type = 1;
+        num_joint = state_.size();
     }
 
     ControlInterface::~ControlInterface()
@@ -45,29 +30,25 @@ namespace grip
         stop_all();
         try
         {
-            bus_.close();
+            if (ctrl)
+            {
+                grip_control_close_bus(ctrl);
+                ctrl = nullptr;
+            }
         }
         catch (...)
         {
         }
     }
 
-    HandStateMap ControlInterface::get_hand_runtime_data()
+    void ControlInterface::start_bus()
     {
-        std::lock_guard<std::mutex> lk(mtx_);
-        HandStateMap hand = hand_;
-        return hand;
-    }
-
-    void ControlInterface::start_bus(const CanDeviceSettings &cfg)
-    {
-        bus_channel_ = cfg.channel_index;
-        bus_ = CanBus(cfg.device_type, cfg.device_index);
-        bus_.open();
-        BitTime arb{cfg.bit_timing.arbitration.tseg1, cfg.bit_timing.arbitration.tseg2, cfg.bit_timing.arbitration.sjw, cfg.bit_timing.arbitration.brp};
-        BitTime dta{cfg.bit_timing.data_phase.tseg1, cfg.bit_timing.data_phase.tseg2, cfg.bit_timing.data_phase.sjw, cfg.bit_timing.data_phase.brp};
-        bus_.configure(bus_channel_, cfg.core_clock_hz, arb, dta, cfg.termination_enabled);
-        bus_.start(bus_channel_);
+        grip_can_device_settings_t *cfg = grip_device_setting_create(33, 0, 0);
+        ctrl = grip_control_create(0, 1);
+        if (grip_control_start_bus(ctrl, cfg) == GRIP_OK)
+            std::cout << "Can device open successfully\n";
+        else
+            throw std::runtime_error("Can device fail to open");
         rx_thread_ = std::thread([this]
                                  { receiver_loop(); });
     }
@@ -82,85 +63,15 @@ namespace grip
             ctrl_thread_.join();
         try
         {
-            bus_.close();
+            if (ctrl)
+            {
+                grip_control_close_bus(ctrl);
+                ctrl = nullptr;
+            }
         }
         catch (...)
         {
         }
-    }
-
-    // void ControlInterface::run_calibration()
-    // {
-    //     using namespace std::chrono_literals;
-
-    //     {
-    //         send_broadcast(motors_,
-    //                        MsgKind::SET_MOTOR_PARAM,
-    //                        (uint8_t)ParamField::CAN_MODE,
-    //                        std::vector<int32_t>(motors_.size(), (uint32_t)10));
-    //         std::this_thread::sleep_for(10ms);
-    //     }
-    //     // 1) MAX_CURRENT
-    //     {
-    //         send_broadcast(motors_,
-    //                        MsgKind::SET_MOTOR_PARAM,
-    //                        (uint8_t)ParamField::MAX_CURRENT,
-    //                        std::vector<int32_t>(motors_.size(), 1500));
-    //         std::this_thread::sleep_for(10ms);
-    //     }
-    //     // 2) CALIBRATE negative speed
-    //     {
-    //         send_broadcast(motors_,
-    //                        MsgKind::MOTOR_COMMAND,
-    //                        (uint8_t)MotorMode::CALIBRATE,
-    //                        std::vector<int32_t>(motors_.size(), -100));
-    //         std::this_thread::sleep_for(10ms);
-    //     }
-    //     // 3) wait for stall -> stop -> write zero
-    //     while (!shutting_down_)
-    //     {
-    //         {
-    //             std::lock_guard<std::mutex> lk(mtx_);
-    //             if (all_stalled_locked())
-    //             {
-    //                 send_broadcast(motors_,
-    //                                MsgKind::MOTOR_COMMAND,
-    //                                (uint8_t)MotorMode::SPEED,
-    //                                std::vector<int32_t>(motors_.size(), 0));
-    //                 std::this_thread::sleep_for(500ms);
-    //                 send_broadcast(motors_,
-    //                                MsgKind::SET_MOTOR_PARAM,
-    //                                (uint8_t)ParamField::ENCODER_POS,
-    //                                std::vector<int32_t>(motors_.size(), -8));
-    //                 send_broadcast(motors_,
-    //                        MsgKind::SET_MOTOR_PARAM,
-    //                        (uint8_t)ParamField::MAX_CURRENT,
-    //                        std::vector<int32_t>(motors_.size(), 2500));
-    //         std::this_thread::sleep_for(10ms);
-    //                 break;
-    //             }
-    //         }
-    //         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    //     }
-    //     {
-    //         std::lock_guard<std::mutex> lk(mtx_);
-    //         calibrated_ = true;
-    //     }
-    //     cv_.notify_all();
-    //     std::cout << "Calibration complete.\n\n\n\n";
-    // }
-
-    bool ControlInterface::all_stalled_locked() const
-    {
-        for (auto d : motors_)
-        {
-            auto it = state_.find(d);
-            if (it == state_.end())
-                return false;
-            if (it->second.fault != (uint16_t)FaultCode::MOTOR_STALL)
-                return false;
-        }
-        return true;
     }
 
     void ControlInterface::start_control_loop()
@@ -192,44 +103,25 @@ namespace grip
     {
         while (!shutting_down_)
         {
-            auto frames = bus_.receiveFD(bus_channel_, 128, 10);
-            for (auto &f : frames)
+            Telemetry *data = (Telemetry *)malloc(num_joint * sizeof(Telemetry));
+            grip_status_t st = grip_receive_step(ctrl, data, num_joint);
+            if (st != GRIP_OK)
+                std::cout << grip_get_last_error(ctrl);
+
+            for (int j = 0; j < num_joint; j++)
             {
-                for (int i = 0; i < 4; ++i)
-                {
-                    int id = (uint8_t)f.data[i * 16];
-                    if (state_.find(id) == state_.end())
-                        continue;
-                    if (f.data.size() < 14)
-                        continue;
-                    Telemetry t = messageDecode(&f.data[i * 16]);
-                    // std::cout <<  i * 16 << "\n";
-                    // std::cout << "id=" << id << "\n";
-                    std::lock_guard<std::mutex> lk(mtx_);
-                    state_[id] = t;
-#if GRIP_DEBUG_RX
-                    if ((int)dev == 1 || (int)dev == 2) 
-                    std::cout << "dev=" << (int)dev << " iq=" << t.iq_mA << " enc=" << t.encoder_counts << "\n";
-#endif
-                }
+                grip_device_t id = (grip_device_t)data[j].dev_id;
+                if (id != j)
+                    continue;
+                std::lock_guard<std::mutex> lk(mtx_);
+                state_[id] = data[id];
             }
+            free(data);
         }
     }
 
     void ControlInterface::control_loop()
     {
-        {
-            // send_broadcast(motors_,
-            //                MsgKind::SET_MOTOR_PARAM,
-            //                (uint8_t)ParamField::CAN_MODE,
-            //                std::vector<int32_t>(motors_.size(), (uint32_t)10));
-            // std::this_thread::sleep_for(10ms);
-            // send_single(0x1e,
-            //             MsgKind::SET_MOTOR_PARAM,
-            //             (uint8_t)ParamField::CAN_MODE,
-            //             (uint32_t)10);
-            // std::this_thread::sleep_for(10ms);
-        }
         using clock = std::chrono::steady_clock;
         auto next = clock::now();
 
@@ -244,54 +136,29 @@ namespace grip
         while (!shutting_down_)
         {
             next += control_period_;
-            std::vector<CmdStruct> cmds;
+            CmdStruct *cmds = (CmdStruct *)malloc(num_joint * sizeof(CmdStruct *));
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
-                if (device_type == 0) 
+                for (auto &[id, value] : state_)
                 {
-                    for (auto &[id, value] : state_) 
-                    {
-                        if (id != 5) continue;
-                        CmdStruct cs;
-                        cs.joint_id = id;
-                        cs.control_mode = 0x20;
-                        cs.cmd_joint_angle = targets_rad_[joint_names_[id]];
-                        cs.joint_vel_ref = 3000;
-                        cs.motor_current_ref = 0;
-                        cmds.push_back(cs);
-                    }
-                } else {
-                    int cmd_type = (uint8_t)MotorMode::HALL_GUARD;
-                    int cmd_val = 0;
-                    // std::lock_guard<std::mutex> lk(mtx_);
-                    if (mode_ == "Position") {
-                        cmd_type = (uint8_t)MotorMode::HALL_GUARD;
-                        cmd_val = (int16_t) (targets_rad_["Position"] / 6.28 * 65535);
-                    } else if (mode_ == "Velocity") {
-                        cmd_type = (uint8_t)MotorMode::SPEED;
-                        cmd_val = (int16_t) targets_rad_["Velocity"];
-                        std::cout << "Velocity cmd sent "<< cmd_val << "\n";
-                    } else if (mode_ == "Torque") {
-                        cmd_type = (uint8_t)MotorMode::TORQUE_STEP;
-                        cmd_val = (int16_t) (targets_rad_["Torque"]);
-                    }
-                    // send_single(1, MsgKind::MOTOR_COMMAND, (uint8_t)cmd_type, (int16_t)cmd_val, (int16_t)0);
+                    if (id != 5) continue;
+                    CmdStruct cs;
+                    cs.dev_id = static_cast<grip_device_t>(id);
+                    cs.control_mode = static_cast<grip_control_mode_t>(0x20);
+                    cs.cmd_joint_angle = targets_rad_[joint_names_[id]];
+                    cs.joint_vel_ref = 3000;
+                    cs.motor_torque_ref = 0;
+                    cmds[id] = cs;
                 }
             }
-            send_to_broad(cmds);
+            grip_send_command(ctrl, cmds, num_joint);
+            free(cmds);
             std::this_thread::sleep_until(next);
         }
     }
 
-    void ControlInterface::send_to_broad(std::vector<CmdStruct> cmds)
-    {
-        auto id = (uint32_t)0x200 + (uint32_t)0x40;
-        auto p = pack_broadcast_payload(cmds);
-        bus_.transmitFD(bus_channel_, std::vector<ZCAN_FD_MSG>{CanBus::buildFD(id, p, (uint8_t)bus_channel_, 0)});
-    }
-
-    std::unordered_map<int, Telemetry> ControlInterface::snapshot() const
+    StateMap ControlInterface::snapshot() const
     {
         std::lock_guard<std::mutex> lk(mtx_);
         return state_;
@@ -304,27 +171,7 @@ namespace grip
 
     void ControlInterface::set_module_control_mode(std::string module, int mode)
     {
-        auto m = hand_.find(module);
-        if (m == hand_.end())
-            return;
-        auto &mr = m->second;
-        mr.control_mode = mode;
-    }
-
-    Telemetry ControlInterface::messageDecode(const uint8_t *p)
-    {
-        Telemetry t;
-        t.control_mode = (uint8_t)p[1];
-        t.motor_position = rd_i16(&p[2]);
-        t.joint_position = rd_i16(&p[4]);
-        t.iq_mA = rd_i16(&p[6]);
-        t.joint_speed = rd_i16(&p[8]);
-        t.tip_tactile = rd_i16(&p[10]);
-        t.motor_speed = rd_i16(&p[12]);
-        t.temperature = (uint8_t)p[14];
-        t.fault = (uint8_t)p[15];
-        // std::cout << "motor_position = " << t.motor_position << "\n";
-        return t;
+        return;
     }
 
 } // namespace grip

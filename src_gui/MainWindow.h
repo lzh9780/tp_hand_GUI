@@ -3,13 +3,13 @@
 #include <QMainWindow>
 #include <vector>
 #include <QThread>
-#include "grip/can_defs.hpp"
 #include "grip/settings.hpp"
+#include "grip/control_interface.hpp"
 #include "ActionStore.hpp"
 #include "PyCamWorker.h"
 #include "OgreWidget.h"
 #include "MotorPanel.hpp"
-#include "PlotPanel.hpp"
+// #include "PlotPanel.hpp"
 
 class SidePanel;
 class Connector;
@@ -94,12 +94,12 @@ private:
     QThread* workerThread_ = nullptr;
     Connector* connect_;
     CameraWidget* camera_;
-    PlotPanel* plot_;
+    // PlotPanel* plot_;
     std::string config_path_;
     std::string action_path_;
     std::string urdf_path_;
     QStringList dof_names;
-    QTimer* read_timer_;
+    QTimer* read_timer_ = nullptr;
 
     QTabWidget* upperTabs;
     QTabWidget* lowerTabs;

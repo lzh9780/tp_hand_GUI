@@ -52,31 +52,31 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/vendor)
 
 # Vendor library
-if (WIN32)
-  set(ZLG_DLL "${CMAKE_SOURCE_DIR}/vendor/usbcanfd.dll")
-  set(ZLG_LIB "${CMAKE_SOURCE_DIR}/vendor/usbcanfd.lib")
-  add_library(zlgcanfd SHARED IMPORTED GLOBAL)
-  set_target_properties(zlgcanfd PROPERTIES
-    IMPORTED_LOCATION "${ZLG_DLL}"
-    IMPORTED_IMPLIB   "${ZLG_LIB}")
-elseif(APPLE)
-  set(ZLG_DYLIB "${CMAKE_SOURCE_DIR}/vendor/libusbcanfd.dylib")
-  add_library(zlgcanfd SHARED IMPORTED GLOBAL)
-  set_target_properties(zlgcanfd PROPERTIES IMPORTED_LOCATION "${ZLG_DYLIB}")
-else()
-  set(ZLG_SO "${CMAKE_SOURCE_DIR}/vendor/libusbcanfd.so")
-  add_library(zlgcanfd SHARED IMPORTED GLOBAL)
-  set_target_properties(zlgcanfd PROPERTIES IMPORTED_LOCATION "${ZLG_SO}")
-endif()
+# if (WIN32)
+#   set(ZLG_DLL "${CMAKE_SOURCE_DIR}/vendor/usbcanfd.dll")
+#   set(ZLG_LIB "${CMAKE_SOURCE_DIR}/vendor/usbcanfd.lib")
+#   add_library(zlgcanfd SHARED IMPORTED GLOBAL)
+#   set_target_properties(zlgcanfd PROPERTIES
+#     IMPORTED_LOCATION "${ZLG_DLL}"
+#     IMPORTED_IMPLIB   "${ZLG_LIB}")
+# elseif(APPLE)
+#   set(ZLG_DYLIB "${CMAKE_SOURCE_DIR}/vendor/libusbcanfd.dylib")
+#   add_library(zlgcanfd SHARED IMPORTED GLOBAL)
+#   set_target_properties(zlgcanfd PROPERTIES IMPORTED_LOCATION "${ZLG_DYLIB}")
+# else()
+set(TPHAND_SO "${CMAKE_SOURCE_DIR}/lib/libtphandapi.so")
+add_library(tphandapi SHARED IMPORTED GLOBAL)
+set_target_properties(tphandapi PROPERTIES IMPORTED_LOCATION "${TPHAND_SO}")
+# endif()
 
 # Core
 add_library(grip_core STATIC
   src/settings.cpp
-  src/can_bus.cpp
   src/control_interface.cpp
 )
-target_link_libraries(grip_core PUBLIC yaml-cpp zlgcanfd)
+target_link_libraries(grip_core PUBLIC yaml-cpp tphandapi)
 set_target_properties(grip_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(grip_core PRIVATE include)
 
 # CLI binary (non-GUI)
 add_executable(grip_cli src/main.cpp)
@@ -107,8 +107,8 @@ if (BUILD_GUI)
     src_gui/DraggableTabBar.cpp
     src_gui/DraggableTabWidget.cpp
     src_gui/ActionPanel.cpp
-    src_gui/DiagramWidget.cpp
-    src_gui/PlotPanel.cpp
+    # src_gui/DiagramWidget.cpp
+    # src_gui/PlotPanel.cpp
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})
@@ -125,6 +125,7 @@ if (BUILD_GUI)
     tinyxml2
     ${QT_PACKAGE}::Charts
   )
+  target_include_directories(grip_gui PRIVATE include)
   
   # target_link_libraries(grip_gui PRIVATE grip_core ${QT_PACKAGE}::Widgets)
   set_target_properties(grip_gui PROPERTIES BUILD_RPATH "${_rpath}" INSTALL_RPATH "${_rpath}")

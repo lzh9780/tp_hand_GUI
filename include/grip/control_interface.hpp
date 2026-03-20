@@ -7,10 +7,12 @@
 #include <atomic>
 #include <functional>
 #include <deque>
-#include "can_defs.hpp"
-#include "protocol_codec.hpp"
-#include "can_bus.hpp"
+#include "interface.h"
 #include "settings.hpp"
+
+using Telemetry = grip_telemetry_t;
+using CmdStruct = grip_command_t;
+using StateMap = std::unordered_map<int, Telemetry>;
 
 namespace grip {
 
@@ -21,16 +23,12 @@ public:
     // build with device list and a joint_key lookup
     ControlInterface(const HandSettings& hand_cfg,
                      std::chrono::milliseconds control_period = std::chrono::milliseconds(1));
-    
-    ControlInterface(const ActuatorSettings& actuator_cfg,
-                     std::chrono::milliseconds control_period = std::chrono::milliseconds(1));
 
     ~ControlInterface();
 
     // bring-up
-    void start_bus(const CanDeviceSettings& cfg);
+    void start_bus();
     void stop_all();
-    void run_calibration();
 
     // loops
     void start_control_loop();
@@ -39,34 +37,28 @@ public:
     void submit_target(std::string ctrl_joint, float radians);
 
     // state
-    std::unordered_map<int, Telemetry> snapshot() const;
+    StateMap snapshot() const;
     int get_board_state() const;
     void set_module_control_mode(std::string module, int mode);
-    HandStateMap get_hand_runtime_data();
 
 private:
     void receiver_loop();
     void control_loop();
-    
-    bool all_stalled_locked() const;
-
-    void send_to_broad(std::vector<CmdStruct> cmd);
 
     void drain_pending_targets_locked();
-    Telemetry messageDecode(const uint8_t *p);
 
 private:
     // hw
-    CanBus bus_{33,0};
+    grip_control_t *ctrl = nullptr;
     uint32_t bus_channel_{0};
 
     // model
     std::vector<int> motors_;
-    HandStateMap hand_{};
 
     // shared state
+    int num_joint = 0;
     int device_type = 0;
-    std::unordered_map<int, Telemetry> state_;
+    StateMap state_;
     std::unordered_map<std::string, float> targets_rad_;
     int board_state_;
     std::string mode_{"Position"};

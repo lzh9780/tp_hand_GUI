@@ -1,5 +1,3 @@
-#include "grip/settings.hpp"
-#include "grip/control_interface.hpp"
 #include <QApplication>
 #include "MainWindow.h"
 #include <csignal>

@@ -9,8 +9,6 @@
 #include <QScrollBar>
 #include <deque>
 
-#include "grip/can_defs.hpp"
-
 QT_CHARTS_USE_NAMESPACE
 
 class QComboBox;

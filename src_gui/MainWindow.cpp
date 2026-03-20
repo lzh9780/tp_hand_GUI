@@ -1,6 +1,5 @@
 #include "MainWindow.h"
 #include "SidePanel.h"
-#include "grip/control_interface.hpp"
 #include <QTextEdit>
 #include <QSplitter>
 #include <QHBoxLayout>
@@ -17,8 +16,7 @@
 #include "CameraWidget.hpp"
 #include "ActionPanel.hpp"
 
-static const std::vector<std::string> full_joints_list
-{
+static const std::vector<std::string> full_joints_list{
     "thumb_cmc_pull",
     "thumb_cmc_rot",
     "thumb_mcp",
@@ -42,8 +40,7 @@ static const std::vector<std::string> full_joints_list
     "pinky_roll",
     "roll",
     "pitch",
-    "yaw"
-};
+    "yaw"};
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -83,8 +80,7 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
                             dof_pos.emplace(name, buff.second);
                     }
                 }
-                side_->applyCameraData(dof_pos);
-            });
+                side_->applyCameraData(dof_pos); });
     connect(worker_, &PyCamWorker::status, this, [this](const QString &s)
             { statusBar()->showMessage(s, 2000); });
     connect(worker_, &PyCamWorker::error, this, [this](const QString &e)
@@ -174,7 +170,8 @@ void MainWindow::buildUI()
     connect(lowerTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onLowerTabCloseRequested);
     connect(actionFlow_, &ActionPanel::actionUpdate, this, &MainWindow::onActionPanelActionUpdate);
     connect(side_, &SidePanel::addAction, this, &MainWindow::onSidePanelAddAction);
-    connect(side_, &SidePanel::actionStoreUpdate, this, [=]() { actionFlow_->reload(); });
+    connect(side_, &SidePanel::actionStoreUpdate, this, [=]()
+            { actionFlow_->reload(); });
 
     // auto* mainMenu = menuBar()->addMenu("&Menu");
     auto *tabsMenu = menuBar()->addMenu("Tabs");
@@ -188,7 +185,7 @@ void MainWindow::buildUI()
     auto *actLog = tabsMenu->addAction("Log");
     auto *actMotor = tabsMenu->addAction("Motor Control");
     // auto* actInfo = tabsMenu->addAction("Robot Info");
-    auto* settingsMenu = menuBar()->addMenu("&Settings");
+    auto *settingsMenu = menuBar()->addMenu("&Settings");
     auto *TextMenu = settingsMenu->addMenu("Window Zoom");
     auto *actShrink = TextMenu->addAction("Zoom Out -");
     auto *actEnlarge = TextMenu->addAction("Zoom In +");
@@ -216,7 +213,7 @@ void MainWindow::onSidePanelValuesChanged()
         return;
     auto deg = side_->jointDegrees();
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
-    if (dev_cfg_.device_type == 0 && ctrl_)
+    if (ctrl_)
     {
         // ctrl_->set_control_mode("Position");
         std::unordered_map<std::string, float> joint_target;
@@ -242,19 +239,13 @@ void MainWindow::onSidePanelValuesChanged()
             ogre_->setJointPosition("fb", key, value);
         log_->append("");
     }
-    else if (dev_cfg_.device_type != 0 && ctrl_)
-    {
-        float rad = float(deg[2]);
-        ctrl_->submit_target(side_->get_control_mode(), rad);
-        // ctrl_->set_control_mode(side_->get_control_mode());
-    }
 }
 
 void MainWindow::onSidePanelCommitted()
 {
     auto deg = side_->jointDegrees();
 
-    if (dev_cfg_.device_type == 0 && ctrl_)
+    if (ctrl_)
     {
         // ctrl_->set_control_mode("Position");
         std::unordered_map<std::string, float> joint_target;
@@ -300,60 +291,39 @@ void MainWindow::onDeviceConnect()
     try
     {
         dev_cfg_ = grip::load_device_settings(config_path_);
-        if (dev_cfg_.device_type == 0)
+        hand_cfg_ = grip::load_hand_settings(config_path_);
+
+        ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
+        if (withCan)
         {
-            hand_cfg_ = grip::load_hand_settings(config_path_);
+            ctrl_->start_bus();
+            log_->append("Device Connected. ");
+            ctrl_->start_control_loop();
+            // log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
+            log_->append("Current control mode: " + side_->modeText());
 
-            ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
-            if (withCan)
-            {
-                ctrl_->start_bus(cfg_.can_device);
-                log_->append("Device Connected. ");
-                log_->append("Start Calibration... ");
-                // ctrl_->run_calibration();
-                // while (ctrl_->get_board_state() != 1)
-                //     log_->append(".");
-                log_->append("Calibration Complete. ");
-                ctrl_->start_control_loop();
-                // log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
-                log_->append("Current control mode: " + side_->modeText());
-
-                read_timer_ = new QTimer(this);
-                connect(read_timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
-                read_timer_->start(10);
-            }
-
-            // motor_->load(hand_cfg_);
-            for (const auto &[key, value] : hand_cfg_.structs)
-            {
-                for (auto &j : value)
-                {
-                    if (j.id >= 0)
-                        dof_names << QString::fromStdString(j.name);
-                    joints_inverted_index.emplace(j.name, key);
-                    dof_map.emplace(j.id, j.name);
-                }
-                // for (auto &j : value.joints)
-                //     joints_inverted_index.emplace(j, key);
-            }
-            // side_->loadSliders(dof_names);
-            // qDebug() << "Hand Controllor loaded";
-            side_->loadHandControllor(hand_cfg_);
-            ogre_->loadURDFDual(hand_cfg_.urdf_file);
+            read_timer_ = new QTimer(this);
+            connect(read_timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
+            read_timer_->start(10);
         }
-        else
+
+        // motor_->load(hand_cfg_);
+        for (const auto &[key, value] : hand_cfg_.structs)
         {
-            act_cfg_ = grip::load_actuator_settings(config_path_);
-
-            ctrl_ = new grip::ControlInterface(act_cfg_, std::chrono::milliseconds(10));
-            if (withCan)
+            for (auto &j : value)
             {
-                ctrl_->start_bus(cfg_.can_device);
-                log_->append("Device Connected. ");
-                ctrl_->start_control_loop();
+                if (j.id >= 0)
+                    dof_names << QString::fromStdString(j.name);
+                joints_inverted_index.emplace(j.name, key);
+                dof_map.emplace(j.id, j.name);
             }
-            side_->loadActuatorControllor(act_cfg_);
+            // for (auto &j : value.joints)
+            //     joints_inverted_index.emplace(j, key);
         }
+        // side_->loadSliders(dof_names);
+        // qDebug() << "Hand Controllor loaded";
+        side_->loadHandControllor(hand_cfg_);
+        ogre_->loadURDFDual(hand_cfg_.urdf_file);
         auto *store = new ActionStore(action_path_.c_str());
         store->load();
         side_->updateStore(store);
@@ -380,7 +350,11 @@ void MainWindow::onDeviceDisconnect()
     if (ctrl_)
     {
         if (read_timer_)
+        {
             read_timer_->stop();
+            delete read_timer_;
+            read_timer_ = nullptr;
+        }
         ctrl_->stop_all();
         delete ctrl_;
         ctrl_ = nullptr;
@@ -426,12 +400,14 @@ void MainWindow::onSidePanelAddAction(const QString &msg)
 
 void MainWindow::readJointAngles()
 {
-    grip::StateMap state = ctrl_->snapshot();
+    StateMap state = ctrl_->snapshot();
     std::unordered_map<std::string, int> joints;
     std::unordered_map<std::string, float> joint_target;
-    for (auto &[i, data] : state){
+    for (auto &[i, data] : state)
+    {
         auto j = dof_map.find(i);
-        if (j == dof_map.end()) continue;
+        if (j == dof_map.end())
+            continue;
         joints.emplace(dof_map[i], data.joint_position);
         float rad = float(data.joint_position) * float(M_PI) / 180.0f / 10.0;
         std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_map[i], rad);
@@ -446,7 +422,7 @@ void MainWindow::readJointAngles()
         }
     }
     for (auto &[key, value] : joint_target)
-            ogre_->setJointPosition("cmd", key, value);
+        ogre_->setJointPosition("cmd", key, value);
     side_->updateJoints(joints);
 }
 
@@ -498,23 +474,23 @@ void MainWindow::openActionPanelTab()
 
 void MainWindow::openDiagram()
 {
-    auto *plot = new PlotPanel(this);
-    upperTabs->addTab(plot, "Diagram");
+    // auto *plot = new PlotPanel(this);
+    // upperTabs->addTab(plot, "Diagram");
 
-    auto timer_ = new QTimer(plot); // lifetime tied to this panel
+    // auto timer_ = new QTimer(plot); // lifetime tied to this panel
 
-    connect(timer_, &QTimer::timeout, plot, [this, plot]() {
-        grip::HandStateMap snapshot;
-        {
-            std::lock_guard<std::mutex> lk(mtx_);
-            if (ctrl_)
-                snapshot = ctrl_->get_hand_runtime_data();
-        }
-        plot->feedData(snapshot);
-    });
+    // connect(timer_, &QTimer::timeout, plot, [this, plot]() {
+    //     StateMap snapshot;
+    //     {
+    //         std::lock_guard<std::mutex> lk(mtx_);
+    //         if (ctrl_)
+    //             snapshot = ctrl_->snapshot();
+    //     }
+    //     plot->feedData(snapshot);
+    // });
 
-    plot->setUpdateTimer(timer_);
-    timer_->start(20);
+    // plot->setUpdateTimer(timer_);
+    // timer_->start(20);
 }
 
 std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value)
@@ -575,7 +551,7 @@ std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string join
     std::unordered_map<std::string, float> result;
     for (auto j : ms)
     {
-        if (j.id <= 0) 
+        if (j.id <= 0)
             continue;
         if (idx >= j.joint_feedback_map.size())
             continue;
