@@ -16,96 +16,18 @@
 #include "CameraWidget.hpp"
 #include "ActionPanel.hpp"
 
-static const std::vector<std::string> full_joints_list{
-    "thumb_cmc_pull",
-    "thumb_cmc_rot",
-    "thumb_mcp",
-    "thumb_ip",
-    "index_mcp",
-    "index_pip",
-    "index_dip",
-    "index_sway",
-    "middle_mcp",
-    "middle_pip",
-    "middle_dip",
-    "middle_sway",
-    "ring_mcp",
-    "ring_pip",
-    "ring_dip",
-    "ring_sway",
-    "pinky_mcp",
-    "pinky_pip",
-    "pinky_dip",
-    "pinky_sway",
-    "pinky_roll",
-    "roll",
-    "pitch",
-    "yaw"};
-
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
     : QMainWindow(parent), cfg_(cfg)
 {
     buildUI();
     resize(800, 600);
-
-    // Worker thread
-    workerThread_ = new QThread(this);
-    worker_ = new PyCamWorker();
-    worker_->moveToThread(workerThread_);
-
-    // Start worker when thread starts
-    connect(this, &QObject::destroyed, workerThread_, &QThread::quit);
-
-    // Display frames
-    connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage &img)
-            { camera_->setFrame(img); });
-
-    connect(worker_, &PyCamWorker::newJoint, this, [this](const QVector<double> &joints)
-            { 
-                if (joints.size() != full_joints_list.size()) 
-                    return;
-                std::unordered_map<std::string, float> dof_pos;
-                for (int i = 0; i < full_joints_list.size(); ++i)
-                {
-                    const auto joint_name = full_joints_list[i];
-                    std::unordered_map<std::string, float> dof_pos_buff = jointsToDofs(joint_name, joints[i]);
-                    for (const auto &buff : dof_pos_buff)
-                    {
-                        const auto &name = buff.first;
-                        auto item = dof_pos.find(name);
-                        if (item != dof_pos.end())
-                            item->second += buff.second;
-                        else
-                            dof_pos.emplace(name, buff.second);
-                    }
-                }
-                side_->applyCameraData(dof_pos); });
-    connect(worker_, &PyCamWorker::status, this, [this](const QString &s)
-            { statusBar()->showMessage(s, 2000); });
-    connect(worker_, &PyCamWorker::error, this, [this](const QString &e)
-            {
-        statusBar()->showMessage(QString("Error: %1").arg(e), 5000);
-        log_->append(QString("Error: %1").arg(e)); });
-
-    connect(worker_, &PyCamWorker::runningChanged, this, [this](bool r)
-            { camera_->onChange(r); });
-
-    workerThread_->start();
 }
 
 MainWindow::~MainWindow()
 {
-    if (worker_)
-    {
-        QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
-        worker_->deleteLater();
-    }
-    if (workerThread_)
-    {
-        workerThread_->quit();
-        workerThread_->wait();
-    }
+    if (camera_)
+        camera_->stopAll();
     if (ctrl_)
         ctrl_->stop_all();
 }
@@ -161,9 +83,9 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::valuesChanged, this, &MainWindow::onSidePanelValuesChanged);
     connect(side_, &SidePanel::committed, this, &MainWindow::onSidePanelCommitted);
     connect(side_, &SidePanel::notify, this, &MainWindow::onSidePanelNotify);
-    // connect(side_, &SidePanel::mode_change, this, &MainWindow::onSidePanelControlModeChaneg);
+    connect(motor_, &MotorPanel::mode_change, this, &MainWindow::onJointPanelControlModeChange);
     connect(connect_, &Connector::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
-    connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
+    // connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
     connect(connect_, &Connector::modelChange, this, &MainWindow::onConnectorModelChange);
     connect(connect_, &Connector::stateCheck, this, &MainWindow::onConnectorStateCheck);
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
@@ -172,6 +94,34 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::addAction, this, &MainWindow::onSidePanelAddAction);
     connect(side_, &SidePanel::actionStoreUpdate, this, [=]()
             { actionFlow_->reload(); });
+    connect(camera_, &CameraWidget::dataUpdate, this, [this](const QVector<double> &joints)
+            {
+                auto full_joints_list = camera_->getFullList();
+                std::unordered_map<std::string, float> dof_pos;
+                for (int i = 0; i < full_joints_list.size(); ++i)
+                {
+                    const auto joint_name = full_joints_list[i];
+                    std::unordered_map<std::string, float> dof_pos_buff = jointsToDofs(joint_name, joints[i]);
+                    for (const auto &buff : dof_pos_buff)
+                    {
+                        const auto &name = buff.first;
+                        auto item = dof_pos.find(name);
+                        if (item != dof_pos.end())
+                            item->second += buff.second;
+                        else
+                            dof_pos.emplace(name, buff.second);
+                    }
+                }
+                side_->applyCameraData(dof_pos); 
+            });
+    connect(camera_, &CameraWidget::controlSwitch, this, [this](const QString &msg)
+            { side_->modeChange(msg); });
+            connect(camera_, &CameraWidget::status, this, [this](const QString &s)
+            { statusBar()->showMessage(s, 2000); });
+    connect(camera_, &CameraWidget::error, this, [this](const QString &e)
+            {
+                statusBar()->showMessage(QString("Error: %1").arg(e), 5000);
+                log_->append(QString("Error: %1").arg(e)); });
 
     // auto* mainMenu = menuBar()->addMenu("&Menu");
     auto *tabsMenu = menuBar()->addMenu("Tabs");
@@ -182,8 +132,8 @@ void MainWindow::buildUI()
     // auto* actAlgoPanel = tabsMenu->addAction("Control Algorithm");
     auto *actDiagram = tabsMenu->addAction("Diagrams");
     auto *actHandDetect = tabsMenu->addAction("Hand Detect");
+    auto *actJoint = tabsMenu->addAction("Joint Modes");
     auto *actLog = tabsMenu->addAction("Log");
-    auto *actMotor = tabsMenu->addAction("Motor Control");
     // auto* actInfo = tabsMenu->addAction("Robot Info");
     auto *settingsMenu = menuBar()->addMenu("&Settings");
     auto *TextMenu = settingsMenu->addMenu("Window Zoom");
@@ -194,7 +144,7 @@ void MainWindow::buildUI()
     connect(actConnect, &QAction::triggered, this, &MainWindow::openConnectorTab);
     connect(actLog, &QAction::triggered, this, &MainWindow::openLogTab);
     connect(actUrdfLoader, &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
-    connect(actMotor, &QAction::triggered, this, &MainWindow::openMotorControlTab);
+    connect(actJoint, &QAction::triggered, this, &MainWindow::openMotorControlTab);
     connect(actActionFlow, &QAction::triggered, this, &MainWindow::openActionPanelTab);
     connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
 
@@ -323,6 +273,7 @@ void MainWindow::onDeviceConnect()
         // side_->loadSliders(dof_names);
         // qDebug() << "Hand Controllor loaded";
         side_->loadHandControllor(hand_cfg_);
+        motor_->load(hand_cfg_);
         ogre_->loadURDFDual(hand_cfg_.urdf_file);
         auto *store = new ActionStore(action_path_.c_str());
         store->load();
@@ -355,7 +306,6 @@ void MainWindow::onDeviceDisconnect()
             delete read_timer_;
             read_timer_ = nullptr;
         }
-        ctrl_->stop_all();
         delete ctrl_;
         ctrl_ = nullptr;
     }
@@ -374,15 +324,6 @@ void MainWindow::onConnectorStateCheck(Qt::CheckState state)
         withCan = false;
 }
 
-void MainWindow::onCameraWidgetControlSwitch(const QString &msg)
-{
-    side_->modeChange(msg);
-    if (msg == "Start Camera")
-        QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
-    else
-        QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
-}
-
 void MainWindow::onActionPanelActionUpdate(const QString &msg)
 {
     side_->applyActionNameToSliders(msg);
@@ -393,32 +334,35 @@ void MainWindow::onSidePanelAddAction(const QString &msg)
     actionFlow_->addAction(msg);
 }
 
-// void MainWindow::onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode)
-// {
-//     ctrl_->set_module_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
-// }
+void MainWindow::onJointPanelControlModeChange(const QString &module_name, const QString &control_mode)
+{
+    ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
+}
 
 void MainWindow::readJointAngles()
 {
-    StateMap state = ctrl_->snapshot();
+    HandStateMap state = ctrl_->snapshot();
     std::unordered_map<std::string, int> joints;
     std::unordered_map<std::string, float> joint_target;
-    for (auto &[i, data] : state)
+    for (auto &[name, joint_group] : state)
     {
-        auto j = dof_map.find(i);
-        if (j == dof_map.end())
-            continue;
-        joints.emplace(dof_map[i], data.joint_position);
-        float rad = float(data.joint_position) * float(M_PI) / 180.0f / 10.0;
-        std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_map[i], rad);
-        for (const auto &j : joint_pos)
+        for (auto &[joint_name, data] : joint_group.joints)
         {
-            const auto &name = j.first;
-            auto item = joint_target.find(name);
-            if (item != joint_target.end())
-                item->second += j.second;
-            else
-                joint_target.emplace(name, j.second);
+            // auto j = dof_map.find(i);
+            // if (j == dof_map.end())
+            //     continue;
+            joints.emplace(joint_name, data.position);
+            float rad = float(data.position) * float(M_PI) / 180.0f;
+            std::unordered_map<std::string, float> joint_pos = dofsToJoints(joint_name, rad);
+            for (const auto &j : joint_pos)
+            {
+                const auto &name = j.first;
+                auto item = joint_target.find(name);
+                if (item != joint_target.end())
+                    item->second += j.second;
+                else
+                    joint_target.emplace(name, j.second);
+            }
         }
     }
     for (auto &[key, value] : joint_target)
@@ -474,23 +418,23 @@ void MainWindow::openActionPanelTab()
 
 void MainWindow::openDiagram()
 {
-    // auto *plot = new PlotPanel(this);
-    // upperTabs->addTab(plot, "Diagram");
+    auto *plot = new PlotPanel(this);
+    upperTabs->addTab(plot, "Diagram");
 
-    // auto timer_ = new QTimer(plot); // lifetime tied to this panel
+    auto timer_ = new QTimer(plot); // lifetime tied to this panel
 
-    // connect(timer_, &QTimer::timeout, plot, [this, plot]() {
-    //     StateMap snapshot;
-    //     {
-    //         std::lock_guard<std::mutex> lk(mtx_);
-    //         if (ctrl_)
-    //             snapshot = ctrl_->snapshot();
-    //     }
-    //     plot->feedData(snapshot);
-    // });
+    connect(timer_, &QTimer::timeout, plot, [this, plot]()
+            {
+        HandStateMap snapshot;
+        {
+            std::lock_guard<std::mutex> lk(mtx_);
+            if (ctrl_)
+                snapshot = ctrl_->snapshot();
+        }
+        plot->feedData(snapshot); });
 
-    // plot->setUpdateTimer(timer_);
-    // timer_->start(20);
+    plot->setUpdateTimer(timer_);
+    timer_->start(20);
 }
 
 std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value)
@@ -555,7 +499,7 @@ std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string join
             continue;
         if (idx >= j.joint_feedback_map.size())
             continue;
-        result.emplace(j.name, j.joint_feedback_map[idx] * value);
+        result.emplace(j.name, (j.joint_feedback_map[idx] == 0 ? 0 : 1) * value);
     }
     return result;
 }

@@ -2,14 +2,14 @@
 #include <mutex>
 #include <QMainWindow>
 #include <vector>
-#include <QThread>
 #include "grip/settings.hpp"
 #include "grip/control_interface.hpp"
 #include "ActionStore.hpp"
-#include "PyCamWorker.h"
+
 #include "OgreWidget.h"
 #include "MotorPanel.hpp"
-// #include "PlotPanel.hpp"
+#include "PlotPanel.hpp"
+#include "grip/data_def.hpp"
 
 class SidePanel;
 class Connector;
@@ -45,12 +45,11 @@ private slots:
     void onSidePanelNotify(const QString& msg);
     void onConnectorDeviceConnect(const QString &msg);
     void onConnectorStateCheck(Qt::CheckState state);
-    void onCameraWidgetControlSwitch(const QString &msg);
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
     void onActionPanelActionUpdate(const QString &msg);
     void onSidePanelAddAction(const QString &msg);
-    // void onSidePanelControlModeChaneg(const QString &module_name, const QString &control_mode);
+    void onJointPanelControlModeChange(const QString &module_name, const QString &control_mode);
 
 private:
     void buildUI();
@@ -75,7 +74,6 @@ private:
     grip::HandSettings hand_cfg_{};
     grip::ActuatorSettings act_cfg_{};
 
-    // std::unordered_map<std::string, std::string> dofs_inverted_index;
     std::unordered_map<std::string, std::string> joints_inverted_index;
     std::unordered_map<int, std::string> dof_map;
 
@@ -90,8 +88,6 @@ private:
     OgreWidget* ogre_;
     MotorPanel* motor_;
     ActionPanel* actionFlow_;
-    PyCamWorker* worker_ = nullptr;
-    QThread* workerThread_ = nullptr;
     Connector* connect_;
     CameraWidget* camera_;
     // PlotPanel* plot_;

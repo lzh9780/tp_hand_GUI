@@ -6,8 +6,6 @@
 #include <QLabel>
 #include <algorithm>
 
-using grip::HandStateMap;
-
 PlotPanel::PlotPanel(QWidget *parent)
     : QWidget(parent)
 {
@@ -137,7 +135,7 @@ void PlotPanel::onStartToggled(bool on)
     }
 }
 
-void PlotPanel::feedData(const StateMap &hand)
+void PlotPanel::feedData(const HandStateMap &hand)
 {
     // Update history
     if (m_startMode_)

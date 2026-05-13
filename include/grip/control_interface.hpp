@@ -9,10 +9,7 @@
 #include <deque>
 #include "interface.h"
 #include "settings.hpp"
-
-using Telemetry = grip_telemetry_t;
-using CmdStruct = grip_command_t;
-using StateMap = std::unordered_map<int, Telemetry>;
+#include "data_def.hpp"
 
 namespace grip {
 
@@ -35,9 +32,10 @@ public:
 
     // target API (GUI or any producer can call this): radians!
     void submit_target(std::string ctrl_joint, float radians);
+    void submit_control_mode(std::string ctrl_joint, std::string mode);
 
     // state
-    StateMap snapshot() const;
+    HandStateMap snapshot() const;
     int get_board_state() const;
     void set_module_control_mode(std::string module, int mode);
 
@@ -56,10 +54,12 @@ private:
     std::vector<int> motors_;
 
     // shared state
+    bool data_updated{false};
     int num_joint = 0;
     int device_type = 0;
-    StateMap state_;
+    HandStateMap state_;
     std::unordered_map<std::string, float> targets_rad_;
+    std::unordered_map<std::string, int> control_mode_;
     int board_state_;
     std::string mode_{"Position"};
     std::unordered_map<int, std::string> joint_names_;
@@ -75,6 +75,7 @@ private:
     // target inbox
     std::mutex inbox_mtx_;
     std::deque<std::pair<std::string,float>> inbox_;
+    std::deque<std::pair<std::string,std::string>> mode_inbox_;
 };
 
 } // namespace grip

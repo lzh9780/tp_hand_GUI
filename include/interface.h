@@ -39,6 +39,7 @@ extern "C"
     /* ---------- Protocol / telemetry defs ---------- */
     typedef enum
     {
+        GRIP_INVAILD_DEV = 0x00,
         GRIP_WRIST_JOINT_PITCH = 0x01,
         GRIP_WRIST_JOINT_YAW = 0x02,
         GRIP_FINGER_JOINT_PINKY = 0x03,
@@ -50,6 +51,7 @@ extern "C"
         // GRIP_DEVICE_BROADCAST = 0x1F
     } grip_device_t;
     GRIP_C_API const char *grip_device_str(grip_device_t d);
+    GRIP_C_API const char *grip_finger_str(grip_device_t d);
 
     typedef enum
     {
@@ -73,11 +75,12 @@ extern "C"
         GRIP_CTRLMODE_CASCADED_PID = 0x50,
         GRIP_CTRLMODE_MIT_TORQUE = 0x60,
         GRIP_CTRLMODE_HYBRID = 0x70,
-        GRIP_CTRLMODE_FORCE_POS_HYBRID = 0x80,
+        // GRIP_CTRLMODE_FORCE_POS_HYBRID = 0x80,
         GRIP_CTRLMODE_EMERGENCY = 0x90,
         GRIP_CTRLMODE_HM = 0xA0,
     } grip_control_mode_t;
     GRIP_C_API const char *grip_control_mode_str(grip_control_mode_t c);
+    GRIP_C_API const uint16_t grip_control_mode_id(const char *mode_name);
 
     GRIP_C_API char **grip_fault_code_str(uint8_t code);
 
@@ -87,14 +90,22 @@ extern "C"
         grip_control_mode_t control_mode;
         int32_t motor_position; /* hall-counts */
         float joint_position;   /* degree */
-        int32_t motor_torque;   /* normalization (value 0-1000) */
-        float joint_speed;      /* degree/s */
-        float tip_tactile;      /* N */
         float motor_speed;      /* hall-counts/s */
-        int32_t temp_cC;        /* centi-C */
-        uint8_t fault_code;
+        float joint_speed;      /* degree/s */
+        int32_t motor_torque;   /* normalization (value 0-1000) */
+        // float tip_tactile;      /* N */
+        // int32_t temp_cC;        /* centi-C */
+        // uint8_t fault_code;
         uint32_t timestamp_ms;
-    } grip_telemetry_t;
+    } grip_joint_sensor_t;
+
+    typedef struct
+    {
+        const char *device;
+        int16_t tip_tactile;
+        int16_t tip_proximity_sense;
+        uint32_t timestamp_ms;
+    } grip_tip_sensor_t;
 
     typedef struct
     {
@@ -116,9 +127,9 @@ extern "C"
     typedef struct grip_can_bus grip_can_bus_t;
     typedef struct grip_control grip_control_t;
     typedef struct grip_can_frame grip_can_frame_t;
+    typedef struct grip_telemetry grip_telemetry_t;
 
     /* ---------- Control interface (minimal C port) ---------- */
-    /* This C port focuses on: start bus, submit targets, periodic TX, RX telemetry decode, snapshot. */
     GRIP_C_API grip_can_device_settings_t *grip_device_setting_create(uint32_t device_type,
                                                                       uint32_t device_index,
                                                                       uint32_t channel_index);
@@ -127,9 +138,10 @@ extern "C"
     GRIP_C_API grip_status_t grip_control_close_bus(grip_control_t *ctl);
 
     GRIP_C_API grip_status_t grip_send_command(grip_control_t *ctl, grip_command_t *cmd, size_t len);
-    GRIP_C_API grip_status_t grip_receive_step(grip_control_t *ctl, grip_telemetry_t *tels, size_t len);
+    GRIP_C_API grip_status_t grip_receive_step(grip_control_t *ctl, grip_joint_sensor_t *tels,
+                                               grip_tip_sensor_t *tips, size_t joint_num);
 
-    const char *grip_get_last_error(grip_control_t *ctl);
+    GRIP_C_API const char *grip_get_last_error(grip_control_t *ctl);
 
 #ifdef __cplusplus
 }

@@ -26,22 +26,32 @@ void MotorPanel::load(grip::HandSettings hand)
         auto *nameLbl = new QLabel(s.first.c_str());
         contentLyt->addWidget(nameLbl);
 
-        // for (auto m : s.second.motors) {
-        //     auto *hb = new QHBoxLayout();
+        for (auto j : s.second)
+        {
+            if (j.id == -1)
+                continue;
+            auto *ctrlHl = new QHBoxLayout();
+            auto *mode_lable = new QLabel(QString(j.name.c_str()));
+            auto *mode_box = new QComboBox();
 
-        //     auto *motorLbl = new QLabel(QString("motor_%1   ").arg(m));
-        //     auto *motorBox = new QComboBox();
-        //     motorBox->addItem("Normal");
-        //     motorBox->addItem("Zero Torque");
-        //     motorBox->addItem("Keep Force");
-        //     motorBox->setCurrentIndex(0);
+            if (s.first != "WRIST")
+            {
+                for (auto p : hand.control_policies)
+                    mode_box->addItem(p.c_str());
+            }
+            else
+            {
+                for (auto p : hand.wrist_control)
+                    mode_box->addItem(p.c_str());
+            }
+            ctrlHl->addWidget(mode_lable);
+            ctrlHl->addWidget(mode_box);
+            contentLyt->addLayout(ctrlHl);
 
-        //     hb->addWidget(motorLbl);
-        //     hb->addWidget(motorBox);
-        //     hb->setContentsMargins(8, 0, 0, 0);
-
-        //     contentLyt->addLayout(hb);
-        // }
+            connect(mode_box, &QComboBox::currentTextChanged,
+                this, [=]()
+                { emit mode_change(mode_lable->text(), mode_box->currentText()); });
+        }
     }
 
     auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);

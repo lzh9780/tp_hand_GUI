@@ -134,18 +134,14 @@ void SidePanel::loadActions()
                     if (old == nameEdit && now != nameEdit)
                     {
                         if (now != btnSave_)
-                        {
                             validate(nameEdit, nameBtn);
-                        }
                     }
 
                     if (old == nameBtn)
                     {
 
                         if (now == btnDelete_)
-                        {
                             onDeleteAction(nameBtn);
-                        }
                         else if (now == btnEditName_)
                         {
                             nameEdit->show();
@@ -246,37 +242,14 @@ void SidePanel::loadHandControllor(grip::HandSettings hand_cfg)
 {
     for (auto s : hand_cfg.structs)
     {
-        auto *ctrlHl = new QHBoxLayout();
         auto *mode_lable = new QLabel(s.first.c_str());
-        mode_box = new QComboBox();
-
-        if (s.first != "WRIST")
-        {
-            for (auto p : hand_cfg.control_policies)
-            {
-                mode_box->addItem(p.c_str());
-            }
-        }
-        else
-        {
-            for (auto p : hand_cfg.wrist_control)
-            {
-                mode_box->addItem(p.c_str());
-            }
-        }
-        ctrlHl->addWidget(mode_lable);
-        ctrlHl->addWidget(mode_box);
-        sliderVBox_->addLayout(ctrlHl);
+        sliderVBox_->addWidget(mode_lable);
 
         for (auto j : s.second)
         {
             if (j.id <= 0) continue; 
             loadSliderModule(QString(j.name.c_str()), j.route.first, j.route.second);
         }
-
-        connect(mode_box, &QComboBox::currentTextChanged,
-                this, [=]()
-                { emit mode_change(mode_lable->text(), mode_box->currentText()); });
     }
 }
 
@@ -335,9 +308,7 @@ void SidePanel::onAnySliderChanged()
 void SidePanel::onValueEditChanged()
 {
     for (int i = 0; i < valueLabels_.size(); ++i)
-    {
         sliders_[i]->setValue((int)(atof(valueLabels_[i]->text().toUtf8().constData()) * 100.0));
-    }
 }
 
 void SidePanel::onMaxVelocityChanged()
@@ -425,18 +396,13 @@ void SidePanel::onSaveAction()
                     if (old == nameEdit && now != nameEdit)
                     {
                         if (now != btnSave_)
-                        {
                             validate(nameEdit, nameBtn);
-                        }
                     }
 
                     if (old == nameBtn)
                     {
-
                         if (now == btnDelete_)
-                        {
                             onDeleteAction(nameBtn);
-                        }
                         else if (now == btnEditName_)
                         {
                             nameEdit->show();
@@ -692,14 +658,14 @@ void SidePanel::modeChange(const QString &mode)
         for (auto s : sliders_)
             s->setEnabled(false);
         for (auto e : valueLabels_)
-            e->setEnabled(false);
+            e->setReadOnly(true);
     }
     else
     {
         for (auto s : sliders_)
             s->setEnabled(true);
         for (auto e : valueLabels_)
-            e->setEnabled(true);
+            e->setReadOnly(false);
     }
 }
 

@@ -13,6 +13,9 @@ public:
     void load(grip::HandSettings hand);
     void removeAll();
 
+signals:
+    void mode_change(const QString& module, const QString& control_mode);
+
 private:
     QVBoxLayout* root;
 };

@@ -58,7 +58,12 @@ hand_struct:
     joint_feedback: [true, false, false]
     joint_feedback_map: [[0.33, 0.33, 0.33], [0, 0, 0], [0, 0, 0]] 
 
-control_policy: ["Hall_Position_mode", "Joint_Position_with_Limit_mode", "Cascaded_PID_mode"]
+control_policy: 
+  - "zero_torque"
+  - "current"
+  - "hall_position"
+  - "joint_position"
+  - "impedance"
 wrist_control_policy: ["default", "soft"]
 
 urdf_file: "robots/demohand/urdf/Demo_urdf_v1.urdf"

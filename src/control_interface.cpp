@@ -14,12 +14,21 @@ namespace grip
     {
         for (const auto &[key, value] : hand_cfg.structs)
         {
+            // using config data to init state structure
+            JointGroup jp;
             for (const auto &joint : value)
             {
-                Telemetry t;
-                state_.emplace(joint.id, t);
+                if (joint.id == -1)
+                    continue;
+                DevState j;
+                jp.joints.emplace(joint.name, j);
+                DevState m;
+                jp.motors.emplace(joint.name, m);
+                jp.control_mode.emplace(joint.name, 0);
+                // add joint name index
                 joint_names_.emplace(joint.id, joint.name);
             }
+            state_.emplace(key, jp);
         }
         device_type = 0;
         num_joint = state_.size();
@@ -61,17 +70,6 @@ namespace grip
             rx_thread_.join();
         if (ctrl_thread_.joinable())
             ctrl_thread_.join();
-        try
-        {
-            if (ctrl)
-            {
-                grip_control_close_bus(ctrl);
-                ctrl = nullptr;
-            }
-        }
-        catch (...)
-        {
-        }
     }
 
     void ControlInterface::start_control_loop()
@@ -84,7 +82,14 @@ namespace grip
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
         inbox_.emplace_back(ctrl_joint, radians);
-        // std::cout << ctrl_joint << radians << '\n';
+        data_updated = true;
+    }
+
+    void ControlInterface::submit_control_mode(std::string ctrl_joint, std::string mode)
+    {
+        std::lock_guard<std::mutex> ql(inbox_mtx_);
+        mode_inbox_.emplace_back(ctrl_joint, mode);
+        data_updated = true;
     }
 
     void ControlInterface::drain_pending_targets_locked()
@@ -95,26 +100,65 @@ namespace grip
             auto [d, r] = inbox_.front();
             inbox_.pop_front();
             targets_rad_[d] = r;
-            // std::cout << d << " " << r << '\n';
         }
+        while (!mode_inbox_.empty())
+        {
+            auto [d, m] = mode_inbox_.front();
+            mode_inbox_.pop_front();
+            uint16_t mode_id = grip_control_mode_id(m.c_str());
+            if (mode_id == 0xff)
+                continue;
+            control_mode_[d] = mode_id;
+        }
+        data_updated = false;
     }
 
     void ControlInterface::receiver_loop()
     {
         while (!shutting_down_)
         {
-            Telemetry *data = (Telemetry *)malloc(num_joint * sizeof(Telemetry));
-            grip_status_t st = grip_receive_step(ctrl, data, num_joint);
+            JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
+            TipTels *tip_data = (TipTels *)malloc((num_joint + 1) * sizeof(TipTels));
+            grip_status_t st = grip_receive_step(ctrl, data, tip_data, (num_joint + 1));
             if (st != GRIP_OK)
                 std::cout << grip_get_last_error(ctrl);
 
-            for (int j = 0; j < num_joint; j++)
+            for (int j = 0; j < num_joint + 1; j++)
             {
                 grip_device_t id = (grip_device_t)data[j].dev_id;
-                if (id != j)
+                if (id == 0 || id != j)
                     continue;
-                std::lock_guard<std::mutex> lk(mtx_);
-                state_[id] = data[id];
+
+                DevState joint_state;
+                joint_state.position = data[id].joint_position;
+                joint_state.velocity = data[id].joint_speed;
+                joint_state.effort = 0;
+                // std::cout << id << " " << data[id].joint_position << "\n";
+
+                DevState motor_state;
+                motor_state.position = data[id].motor_position;
+                motor_state.velocity = data[id].motor_speed;
+                motor_state.effort = data[id].motor_torque;
+
+                TipTels ts;
+                ts.device = tip_data[id].device;
+                ts.timestamp_ms = tip_data[id].timestamp_ms;
+                ts.tip_tactile = tip_data[id].tip_tactile;
+                ts.tip_proximity_sense = tip_data[id].tip_proximity_sense;
+
+                for (const auto & [key, val] : state_)
+                {
+                    if (joint_names_.find(id) != joint_names_.end() && 
+                        val.joints.find(joint_names_[id]) != val.joints.end())
+                    {
+                        std::lock_guard<std::mutex> lk(mtx_);
+                        state_[key].control_mode[joint_names_[id]] = data[id].control_mode;
+                        state_[key].joints[joint_names_[id]] = joint_state;
+                        state_[key].motors[joint_names_[id]] = motor_state;
+                        state_[key].tip_sensor = ts;
+                        break;
+                    }
+                }
             }
             free(data);
         }
@@ -122,9 +166,6 @@ namespace grip
 
     void ControlInterface::control_loop()
     {
-        using clock = std::chrono::steady_clock;
-        auto next = clock::now();
-
         // {
         //     std::unique_lock<std::mutex> lk(mtx_);
         //     cv_.wait(lk, [this]
@@ -135,30 +176,36 @@ namespace grip
 
         while (!shutting_down_)
         {
-            next += control_period_;
-            CmdStruct *cmds = (CmdStruct *)malloc(num_joint * sizeof(CmdStruct *));
+            std::this_thread::sleep_for(std::chrono::milliseconds(control_period_));
+            if (!data_updated)
+                continue;
+            std::vector<CmdStruct> cmds;
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
-                for (auto &[id, value] : state_)
+                for (auto &[id, name] : joint_names_)
                 {
-                    if (id != 5) continue;
                     CmdStruct cs;
+                    if (id != 5)
+                        continue;
                     cs.dev_id = static_cast<grip_device_t>(id);
-                    cs.control_mode = static_cast<grip_control_mode_t>(0x20);
-                    cs.cmd_joint_angle = targets_rad_[joint_names_[id]];
-                    cs.joint_vel_ref = 3000;
+                    cs.control_mode = static_cast<grip_control_mode_t>(control_mode_[name]);
+                    cs.cmd_joint_angle = targets_rad_[name] * 0.01;
+                    // std::cout << targets_rad_[name] * 0.01 << "\n";
+                    cs.joint_vel_ref = 300;
                     cs.motor_torque_ref = 0;
-                    cmds[id] = cs;
+                    cmds.push_back(cs);
                 }
             }
-            grip_send_command(ctrl, cmds, num_joint);
-            free(cmds);
-            std::this_thread::sleep_until(next);
+            CmdStruct *send_cmds = (CmdStruct *)malloc((cmds.size()) * sizeof(CmdStruct));
+            for (size_t i = 0; i < cmds.size(); i++)
+                send_cmds[i] = cmds[i];
+            grip_send_command(ctrl, send_cmds, num_joint);
+            free(send_cmds);
         }
     }
 
-    StateMap ControlInterface::snapshot() const
+    HandStateMap ControlInterface::snapshot() const
     {
         std::lock_guard<std::mutex> lk(mtx_);
         return state_;

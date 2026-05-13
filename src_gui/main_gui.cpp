@@ -1,7 +1,7 @@
+#include <pybind11/embed.h>
 #include <QApplication>
 #include "MainWindow.h"
 #include <csignal>
-#include <pybind11/embed.h>
 #include <QStyleFactory>
 
 using namespace grip;

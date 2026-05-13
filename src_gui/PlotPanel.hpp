@@ -11,7 +11,8 @@
 #include <deque>
 
 #include "DiagramWidget.hpp"
-#include "interface.h"
+#include "grip/data_def.hpp"
+
 
 class PlotPanel : public QWidget
 {
@@ -20,7 +21,7 @@ public:
     explicit PlotPanel(QWidget *parent = nullptr);
 
     // Called by MainWindow’s timer
-    void feedData(const StateMap &hand);
+    void feedData(const HandStateMap &hand);
 
     void setUpdateTimer(QTimer *timer);
 
@@ -46,7 +47,7 @@ private:
     bool m_startMode_{false};
 
     // Shared history for this panel
-    std::deque<StateMap> history_;
+    std::deque<HandStateMap> history_;
     int historyLimit_{5000};
     long long totalSamples_{0}; // total samples ever seen
     double samplePeriodSec_{0.02};

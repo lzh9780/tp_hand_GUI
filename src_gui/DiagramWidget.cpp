@@ -15,10 +15,10 @@
 #include <QSplitter>
 #include <QDebug>
 
-using grip::HandStateMap;
-using grip::JointState;
-using grip::ModuleState;
-using grip::Telemetry;
+// using grip::HandStateMap;
+// using grip::JointState;
+// using grip::ModuleState;
+// using grip::Telemetry;
 
 DiagramWidget::DiagramWidget(QWidget *parent)
     : QWidget(parent)
@@ -184,7 +184,7 @@ void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
     for (const auto &modPair : hand)
     {
         const std::string &modNameStd = modPair.first;
-        const ModuleState &mod = modPair.second;
+        const JointGroup &mod = modPair.second;
         QString modName = QString::fromStdString(modNameStd);
 
         ModuleUi &mui = m_modules_[modName];
@@ -244,7 +244,7 @@ void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
                 info.moduleName = modName;
                 info.jointName = jointName;
                 info.isJoint = true;
-                info.motorId = -1;
+                info.motorName = "";
                 info.checkBox = cb;
                 info.series = nullptr;
 
@@ -259,10 +259,10 @@ void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
         {
             for (const auto &mPair : mod.motors)
             {
-                int motorId = mPair.first;
-                QString id = modName + QString(".M%1").arg(motorId);
+                QString motorName = QString::fromStdString(mPair.first);
+                QString id = modName + QString(".M")+motorName;
 
-                QString label = QString("Motor %1").arg(motorId);
+                QString label = QString("Motor ")+motorName;
                 QCheckBox *cb = new QCheckBox(label, mui.signalsWidget);
                 cb->setChecked(false);
                 cb->setProperty("signalId", id);
@@ -273,7 +273,7 @@ void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
                 info.moduleName = modName;
                 info.jointName = QString("");
                 info.isJoint = false;
-                info.motorId = motorId;
+                info.motorName = motorName;
                 info.checkBox = cb;
                 info.series = nullptr;
 
@@ -491,14 +491,14 @@ bool DiagramWidget::getValueForSignalAtSample(const SignalInfo &sig,
     auto modIt = hand.find(sig.moduleName.toStdString());
     if (modIt == hand.end())
         return false;
-    const ModuleState &mod = modIt->second;
+    const JointGroup &mod = modIt->second;
 
     if (sig.isJoint)
     {
         auto jIt = mod.joints.find(sig.jointName.toStdString());
         if (jIt == mod.joints.end())
             return false;
-        const JointState &js = jIt->second;
+        const DevState &js = jIt->second;
         switch (m_type_)
         {
         case DiagramType::JointPosition:
@@ -513,20 +513,20 @@ bool DiagramWidget::getValueForSignalAtSample(const SignalInfo &sig,
     }
     else
     {
-        auto mIt = mod.motors.find(sig.motorId);
+        auto mIt = mod.motors.find(sig.motorName.toStdString());
         if (mIt == mod.motors.end())
             return false;
-        const Telemetry &t = mIt->second;
+        const DevState &t = mIt->second;
         switch (m_type_)
         {
         case DiagramType::MotorPosition:
-            outValue = static_cast<float>(t.motor_position);
+            outValue = static_cast<float>(t.position);
             return true;
         case DiagramType::MotorVelocity:
-            outValue = static_cast<float>(t.motor_speed);
+            outValue = static_cast<float>(t.velocity);
             return true;
         case DiagramType::MotorCurrent:
-            outValue = static_cast<float>(t.iq_mA);
+            outValue = static_cast<float>(t.effort);
             return true;
         default:
             return false;

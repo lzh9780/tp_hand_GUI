@@ -9,6 +9,8 @@
 #include <QScrollBar>
 #include <deque>
 
+#include "grip/data_def.hpp"
+
 QT_CHARTS_USE_NAMESPACE
 
 class QComboBox;
@@ -29,10 +31,10 @@ public:
     void setLiveMode(bool isLive);
 
     // Called only to build modules / checkboxes from the *latest* hand state
-    void updateSignalListFromHand(const grip::HandStateMap &hand);
+    void updateSignalListFromHand(const HandStateMap &hand);
 
     // Render a time window [startIdxDeque .. endIdxDeque] from shared history
-    void renderWindow(const std::deque<grip::HandStateMap> &history,
+    void renderWindow(const std::deque<HandStateMap> &history,
                       double samplePeriodSec,
                       int historyOffsetSamples,  // totalSamples - history.size()
                       int startIdxDeque,         // inclusive, in deque indices
@@ -65,7 +67,7 @@ private:
         QString id;
         QString moduleName;
         QString jointName;
-        int motorId{-1};
+        QString motorName;
         bool isJoint{true};
 
         QCheckBox *checkBox{nullptr};
@@ -112,11 +114,11 @@ private:
     QColor colorForId(const QString &id) const;
 
     void clearSignalUi();
-    void rebuildSignalList(const grip::HandStateMap &hand);
+    void rebuildSignalList(const HandStateMap &hand);
 
     void ensureSeries(SignalInfo &sig);
     bool getValueForSignalAtSample(const SignalInfo &sig,
-                                   const grip::HandStateMap &hand,
+                                   const HandStateMap &hand,
                                    float &outValue) const;
 
     void updateModuleHeaderState(const QString &moduleName);
