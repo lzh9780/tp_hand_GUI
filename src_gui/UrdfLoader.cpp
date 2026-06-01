@@ -73,7 +73,7 @@ bool UrdfLoader::loadFile(const std::string &path, UrdfModel &out)
     {
         UrdfLink L;
         L.name = link->Attribute("name") ? link->Attribute("name") : "";
-        std::cout << L.name << "\n";
+        // std::cout << L.name << "\n";
 
         // Parse visual elements for the link
         for (auto *visual = link->FirstChildElement("visual"); visual; visual = visual->NextSiblingElement("visual"))
@@ -94,18 +94,27 @@ bool UrdfLoader::loadFile(const std::string &path, UrdfModel &out)
                     V.geometryType = GeometryType::Cylinder;
                     V.size[0] = atof(cylinder->Attribute("radius"));
                     V.size[1] = atof(cylinder->Attribute("length"));
+
                 }
                 auto *sphere = geometry->FirstChildElement("sphere");
                 if (sphere)
                 {
                     V.geometryType = GeometryType::Sphere;
                     V.size[0] = atof(sphere->Attribute("radius"));
+
                 }
                 auto *mesh = geometry->FirstChildElement("mesh");
                 if (mesh)
                 {
                     V.geometryType = GeometryType::Mesh;
                     V.meshFile = mesh->Attribute("filename") ? mesh->Attribute("filename") : "";
+
+                    //  add scale begin
+                    if (const char *s = mesh->Attribute("scale"))
+                    {
+                        V.scale = parseXYZ(s);
+                    }
+                    //  add scale end
                 }
             }
 
@@ -132,6 +141,35 @@ bool UrdfLoader::loadFile(const std::string &path, UrdfModel &out)
                     C.size = parseXYZ(box->Attribute("size"));
                 }
                 // Handle other geometry types (cylinder, sphere, mesh)
+
+                //   add begin
+                auto *cylinder = geometry->FirstChildElement("cylinder");
+                if (cylinder)
+                {
+                    C.geometryType = GeometryType::Cylinder;
+                    if (cylinder->Attribute("radius"))
+                        C.size[0] = atof(cylinder->Attribute("radius"));
+                    if (cylinder->Attribute("length"))
+                        C.size[1] = atof(cylinder->Attribute("length"));
+                }
+                auto *sphere = geometry->FirstChildElement("sphere");
+                if (sphere)
+                {
+                    C.geometryType = GeometryType::Sphere;
+                    if (sphere->Attribute("radius"))
+                        C.size[0] = atof(sphere->Attribute("radius"));
+                }
+                auto *mesh = geometry->FirstChildElement("mesh");
+                if (mesh)
+                {
+                    C.geometryType = GeometryType::Mesh;
+                    C.meshFile = mesh->Attribute("filename") ? mesh->Attribute("filename") : "";
+                    if (const char *s = mesh->Attribute("scale"))
+                    {
+                        C.scale = parseXYZ(s);
+                    }
+                }
+                //   add end
             }
             auto *origin = collision->FirstChildElement("origin");
             if (origin)

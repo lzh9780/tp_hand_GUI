@@ -39,6 +39,13 @@ public:
     int actionSetCount() const;
     QString actionSetName(int idx) const;
     QStringList actionSetList(int idx) const;
+    int findActionSetByName(const QString &name) const;
+    void setActionSetValues(int idx, const QVector<QString> &actions);
+    void addActionSet(const QString &name, const QVector<QString> &actions);
+    void removeActionSet(int idx);
+    QVector<QString> findActionInSet(const QString &action_name);
+    void removeActionFromSet(const QString &action_name);
+    void renameActionInSet(const QString &action_name, const QString &new_name);
 
     // Access raw json (if needed)
     const QJsonArray &actions() const { return actions_; }

@@ -43,33 +43,34 @@ public:
 
     // Mode string exactly as UI shows it ("Mode: Follow"/"Mode: Setup")
     QString modeText() const;
-    void setFrame(const QImage img);
+    // void setFrame(const QImage img);
     void modeChange(const QString& mode);
-    void applyCameraData(const QVector<double>& data);
-    void updateJoints(const float thumb, const float index, const float middle, const float ring, const float pinky);
+    void applyCameraData(std::unordered_map<std::string, float>& data);
+    void updateJoints(const std::unordered_map<std::string, int> state);
     void loadActions();
     // void loadSliders(const QStringList &jointNames);
     void loadHandControllor(grip::HandSettings hand_cfg);
     void loadActuatorControllor(grip::ActuatorSettings act_cfg);
     void updateStore(ActionStore *store);
     std::string get_control_mode();
+    void removeAll();
+    void applyActionNameToSliders(const QString &name);
 
 signals:
     void valuesChanged();
     void committed();                  // Execute in Setup mode
     void notify(const QString& msg);   // status/log message
-    void mode_change(const QString& module, const QString& control_mode);   // status/log message
+    void addAction(const QString& action);
+    void actionStoreUpdate();
 
 private slots:
     void onAnySliderChanged();
     void onToggleMode();
     void onExecute();
+    void onReset();
     void onSaveAction();               // begin/cancel inline add
     void onActionNameClicked();        // apply saved action to sliders
     void onFocusChanged(QWidget* old, QWidget* now);
-    // void onNameEditingFinished();
-    void onToggleActions();
-    void onToggleActionSets();
     void onControlChanged();
     void onValueEditChanged();
     void onMaxVelocityChanged();
@@ -77,7 +78,6 @@ private slots:
 
 private:
     // Build sections
-    void buildControlRow();
     void buildActionsPanel();
     void buildSliderPanel();
 
@@ -85,7 +85,7 @@ private:
     void applyActionToSliders(int actionIndex);
     void persistStore();
     bool validateNewActionName(const QString& n, const QString& o) const;
-    void vialdate(QLineEdit* edit, QPushButton* btn);
+    void validate(QLineEdit* edit, QPushButton* btn);
     void onDeleteAction(QPushButton* btn);
     void loadSliderModule(QString name, float min, float max);
 
@@ -95,7 +95,6 @@ private:
     int addingRowIndex_{-1}; // index for inline "Save"/"Cancel" row
 
     // UI: control row
-    QWidget* controlRow_{nullptr};
     QPushButton* btnMode_{nullptr};
     QPushButton* btnExecute_{nullptr};
     QPushButton* btnSave_{nullptr};
@@ -117,8 +116,8 @@ private:
     QScrollArea* sliderScroll_{nullptr};
     QScrollArea* actionScroll_{nullptr};
     QVBoxLayout* sliderVBox_{nullptr};
-    QList<QSlider*> sliders_;
-    QList<QLineEdit*>  valueLabels_;  // number next to each slider
+    QList<QSlider*> sliders_{};
+    QList<QLineEdit*>  valueLabels_{};  // number next to each slider
     QList<QLabel*>  currValueLabels_;
     QList<QLabel*>  nameLabels_;
     QList<std::pair<QLabel*, QLabel*>> valueLbls;

@@ -21,6 +21,11 @@ struct UrdfVisual
     GeometryType geometryType;
     std::array<float, 3> size{0.0f, 0.0f, 0.0f}; // size for box, radius for sphere, etc.
     std::string meshFile;                        // Only used if geometry is a mesh
+
+    // add start
+    std::array<float, 3> scale{1.0f, 1.0f, 1.0f}; // Only used if geometry is a mesh (mm->m needs 0.001)
+    // add end
+
     std::array<float, 3> xyz{0.0f, 0.0f, 0.0f};  // Position
     std::array<float, 3> rpy{0.0f, 0.0f, 0.0f};  // Orientation (roll, pitch, yaw)
 };

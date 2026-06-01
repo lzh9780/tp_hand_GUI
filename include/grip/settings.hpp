@@ -16,38 +16,16 @@ struct CanDeviceSettings {
     TimingPair bit_timing{};
 };
 
-struct PidGains { double kp{0.005}, ki{0.00005}, kd{0.0001}; };
-
-struct NativeJointConfig {
-    int32_t linear_zero_counts{500};
-    std::vector<double> feedforward_mA; // size 15 (0..140 step 10°)
-};
-
-struct MotorInfo {
-    int id;
-    std::vector<int> joint_map;
-};
-
 struct JointInfo {
     std::string name;
-    std::pair<float, float> route;
+    int id = -1;
+    std::pair<float, float> route{0, 0};
+    std::pair<float, float> hall_route{0, 0};
+    bool have_joint_feedback = false;
+    std::vector<float> joint_feedback_map{};
 };
 
-struct ModuleStruct {
-    std::vector<JointInfo> joints;
-    std::vector<MotorInfo> motors;
-};
-
-struct NativePolicySettings {
-    PidGains pid{};
-    int32_t min_current_mA{-1000}, max_current_mA{1000};
-    double initial_theta_rad{0.74918};
-    double tendon_fix_mm{9.410}, tendon_port_mm{9.413};
-    int    coupling_ratio{1};
-    double pitch_mm_per_rev{1.0};
-    int    counts_per_rev{262144};
-    std::unordered_map<std::string, NativeJointConfig> joint_tables;
-};
+using ModuleStruct = std::vector<JointInfo>;
 
 struct AppSettings {
     CanDeviceSettings can_device{};
@@ -64,7 +42,7 @@ struct HandSettings {
     std::unordered_map<std::string, ModuleStruct> structs;
     std::vector<std::string> control_policies;
     std::vector<std::string> wrist_control;
-    NativePolicySettings native_policy{};
+    std::string urdf_file;
 };
 
 struct ActuatorSettings {
@@ -74,7 +52,6 @@ struct ActuatorSettings {
     float psi_f{0.0};
     int n_pole_pairs{0};
     int device_id{0};
-    NativePolicySettings native_policy{};
 };
 
 struct SettingsError : public std::runtime_error { using std::runtime_error::runtime_error; };
@@ -85,5 +62,6 @@ HandSettings load_hand_settings(const std::string& yaml_path);
 ActuatorSettings load_actuator_settings(const std::string& yaml_path);
 void validate_settings(const AppSettings& s, const std::string& yaml_path);
 void validate_settings(const HandSettings& s, const std::string& path);
+void throw_errors(std::vector<std::string> errs);
 
 } // namespace grip

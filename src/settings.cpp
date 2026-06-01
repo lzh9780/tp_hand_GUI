@@ -10,7 +10,7 @@ namespace grip
 
     static bool valid_device(const std::string &s)
     {
-        static const std::set<std::string> k{"THUMB", "INDEX_FINGER", "MIDDLE_FINGER", "RING_FINGER", "PINKY_FINGER"};
+        static const std::set<std::string> k{"THUMB", "INDEX_FINGER", "MIDDLE_FINGER", "RING_FINGER", "PINKY", "WRIST"};
         return k.count(s) > 0;
     }
     static auto rt(const YAML::Node &n) { return Timing{n["tseg1"].as<int>(), n["tseg2"].as<int>(), n["sjw"].as<int>(), n["brp"].as<int>()}; }
@@ -40,140 +40,169 @@ namespace grip
         return s;
     }
 
-    DeviceSettings load_device_settings(const std::string& yaml_path)
+    DeviceSettings load_device_settings(const std::string &yaml_path)
     {
         YAML::Node y = YAML::LoadFile(yaml_path);
         DeviceSettings device;
 
-        if (auto n = y["type"]) {
+        if (auto n = y["type"])
+        {
             device.device_type = n.as<std::string>() == "hand" ? 0 : (n.as<std::string>() == "linear_actuator" ? 1 : 2);
         }
 
-        if (auto hardware = y["hardware_version"]) 
+        if (auto hardware = y["hardware_version"])
             device.hardware_version = hardware.as<int32_t>(device.hardware_version);
 
-        if (auto software = y["software_version"]) 
+        if (auto software = y["software_version"])
             device.software_version = software.as<int32_t>(device.software_version);
-        
+
         return device;
     }
 
-
-    HandSettings load_hand_settings(const std::string& yaml_path)
+    HandSettings load_hand_settings(const std::string &yaml_path)
     {
         YAML::Node y = YAML::LoadFile(yaml_path);
         HandSettings hand;
 
-        if (auto n = y["hand_struct"]) {
-            
-            for (auto m = n.begin(); m != n.end(); ++m)
-                {
-                    ModuleStruct ms;
-                    int counter = 0;
-                    for (const auto name : m->second["joints"]) {
-                        JointInfo j;
-                        j.name = name.as<std::string>();
-                        j.route.first = m->second["route"][counter]["min"].as<float_t>(j.route.first);
-                        j.route.second = m->second["route"][counter]["max"].as<float_t>(j.route.second);
-                        ms.joints.push_back(j);
-                        counter += 1;
-                    }
-                    for (const auto motor : m->second["motors"]) {
-                        MotorInfo mi;
-                        mi.id = motor["id"].as<int32_t>(mi.id);
-                        for (const auto p : motor["param"]) {
-                            mi.joint_map.push_back(p.as<int32_t>());
-                        }
-                        // std::cout << mi.id << '\n';
-                        ms.motors.push_back(mi);
-                        
-                    }
-                    hand.structs[m->first.as<std::string>()] = std::move(ms);
-                }
-        } 
+        std::vector<std::string> errs;
+        auto add = [&](std::string m)
+        { errs.push_back(yaml_path + " — " + m); };
 
-        if (auto p = y["control_policy"]) {
-            for (auto const policy : p) {
+        if (auto n = y["hand_struct"])
+        {
+            for (auto m = n.begin(); m != n.end(); ++m)
+            {
+                ModuleStruct ms;
+
+                int counter = 0;
+                for (const auto joint : m->second["joints"])
+                {
+                    JointInfo j;
+                    j.name = joint.as<std::string>();
+                    if (counter >= m->second["route"].size())
+                        add("Route size does not match joint number");
+                    if (counter >= m->second["hall_route"].size())
+                        add("Hall route size does not match joint number");
+                    if (counter >= m->second["joint_feedback_map"].size())
+                        add("Map size does not match joint number");
+                    if (counter >= m->second["ids"].size())
+                        add("number of Ids does not match joint number");
+                    if (counter >= m->second["joint_feedback"].size())
+                        add("number of feedback states does not match joint number");
+
+                    if (auto dof_id = m->second["ids"][counter])
+                        j.id = dof_id.as<int>(j.id);
+
+                    if (j.id >= 0) {
+                        if (auto route = m->second["route"][counter])
+                        {
+                            if (auto min = route["min"])
+                                j.route.first = min.as<float_t>(j.route.first);
+                            if (auto max = route["max"])
+                                j.route.second = max.as<float_t>(j.route.second);
+                        }
+                        if (auto hall_route = m->second["hall_route"][counter])
+                        {
+                            if (auto min = hall_route["min"])
+                                j.hall_route.first = min.as<float_t>(j.hall_route.first);
+                            if (auto max = hall_route["max"])
+                                j.hall_route.second = max.as<float_t>(j.hall_route.second);
+                        }
+                        if (j.route.first >= j.route.second)
+                            add("Route range error: " + j.name + "\n");
+                        if (j.hall_route.first >= j.hall_route.second)
+                            add("Route range error: " + j.name + "\n");
+                    }
+
+                    if (auto jf = m->second["joint_feedback"][counter])
+                        j.have_joint_feedback = jf.as<bool>(j.have_joint_feedback);
+                    if (j.have_joint_feedback)
+                    {
+                        if (auto map = m->second["joint_feedback_map"][counter])
+                        {
+                            for (auto v : map)
+                                j.joint_feedback_map.push_back(v.as<float>());
+                        }
+                    }
+
+                    // if (j.dof_joint_map.size() != ms.joints.size())
+                    //     add("Map size for " + d.name + " dose not match the number of joints\n");
+
+                    ms.push_back(j);
+                    counter += 1;
+                }
+
+                if (ms.size() <= 0)
+                    add("No joint info for " + m->first.as<std::string>() + "\n");
+
+                hand.structs[m->first.as<std::string>()] = std::move(ms);
+                if (!valid_device(m->first.as<std::string>()))
+                    add("Invalid module: "+ m->first.as<std::string>() + "\n");
+            }
+        }
+
+        if (auto p = y["control_policy"])
+        {
+            for (auto const policy : p)
+            {
                 hand.control_policies.push_back(policy.as<std::string>());
             }
         }
+        if (hand.control_policies.size() <= 0)
+            add("No finger control policy available.\n");
 
-        if (auto p = y["wrist_control_policy"]) {
-            for (auto const policy : p) {
+        if (auto p = y["wrist_control_policy"])
+        {
+            for (auto const policy : p)
+            {
                 hand.wrist_control.push_back(policy.as<std::string>());
             }
         }
+        if (hand.wrist_control.size() <= 0)
+            add("No wrist control policy available.\n");
 
-        if (auto n = y["native_policy"])
-        {
-            if (auto p = n["pid"])
-            {
-                hand.native_policy.pid.kp = p["kp"].as<double>(hand.native_policy.pid.kp);
-                hand.native_policy.pid.ki = p["ki"].as<double>(hand.native_policy.pid.ki);
-                hand.native_policy.pid.kd = p["kd"].as<double>(hand.native_policy.pid.kd);
-            }
-            if (auto lim = n["current_limits_mA"])
-            {
-                hand.native_policy.min_current_mA = lim["min"].as<int32_t>(hand.native_policy.min_current_mA);
-                hand.native_policy.max_current_mA = lim["max"].as<int32_t>(hand.native_policy.max_current_mA);
-            }
-            hand.native_policy.initial_theta_rad = n["initial_theta_rad"].as<double>(hand.native_policy.initial_theta_rad);
-            if (auto g = n["geometry"])
-            {
-                hand.native_policy.tendon_fix_mm = g["tendon_fix_mm"].as<double>(hand.native_policy.tendon_fix_mm);
-                hand.native_policy.tendon_port_mm = g["tendon_port_mm"].as<double>(hand.native_policy.tendon_port_mm);
-                hand.native_policy.coupling_ratio = g["coupling_ratio"].as<int>(hand.native_policy.coupling_ratio);
-            }
-            if (auto sd = n["screw_drive"])
-            {
-                hand.native_policy.pitch_mm_per_rev = sd["pitch_mm_per_rev"].as<double>(hand.native_policy.pitch_mm_per_rev);
-                hand.native_policy.counts_per_rev = sd["counts_per_rev"].as<int>(hand.native_policy.counts_per_rev);
-            }
-            if (auto jt = n["joint_tables"])
-            {
-                for (auto it = jt.begin(); it != jt.end(); ++it)
-                {
-                    NativeJointConfig jc;
-                    jc.linear_zero_counts = it->second["linear_zero_counts"].as<int32_t>(jc.linear_zero_counts);
-                    if (auto ff = it->second["feedforward_mA"])
-                        for (auto v : ff)
-                            jc.feedforward_mA.push_back(v.as<double>());
-                    hand.native_policy.joint_tables[it->first.as<std::string>()] = std::move(jc);
-                }
-            }
-        }
+        if (auto p = y["urdf_file"])
+            hand.urdf_file = p.as<std::string>();
+
+        throw_errors(errs);
 
         return hand;
     }
 
-    ActuatorSettings load_actuator_settings(const std::string& yaml_path)
+    ActuatorSettings load_actuator_settings(const std::string &yaml_path)
     {
         YAML::Node y = YAML::LoadFile(yaml_path);
         ActuatorSettings act;
 
-        if (auto r = y["route"]) {
-            act.route.first=r["min"].as<float_t>(act.route.first);
-            act.route.second=r["max"].as<float_t>(act.route.second);
+        if (auto r = y["route"])
+        {
+            act.route.first = r["min"].as<float_t>(act.route.first);
+            act.route.second = r["max"].as<float_t>(act.route.second);
         }
 
-        if (auto mc = y["max_current"]) {
-            act.max_current=mc.as<int32_t>(act.max_current);
+        if (auto mc = y["max_current"])
+        {
+            act.max_current = mc.as<int32_t>(act.max_current);
         }
 
-        if (auto mv = y["max_velocity"]) {
-            act.max_vel=mv.as<int32_t>(act.max_vel);
+        if (auto mv = y["max_velocity"])
+        {
+            act.max_vel = mv.as<int32_t>(act.max_vel);
         }
 
-        if (auto p = y["psi_f"]) {
-            act.psi_f=p.as<float_t>(act.psi_f);
+        if (auto p = y["psi_f"])
+        {
+            act.psi_f = p.as<float_t>(act.psi_f);
         }
 
-        if (auto p = y["n_pole_pairs"]) {
-            act.n_pole_pairs=p.as<float_t>(act.n_pole_pairs);
+        if (auto p = y["n_pole_pairs"])
+        {
+            act.n_pole_pairs = p.as<float_t>(act.n_pole_pairs);
         }
 
-        if (auto p = y["device_id"]) {
-            act.device_id=p.as<float_t>(act.device_id);
+        if (auto p = y["device_id"])
+        {
+            act.device_id = p.as<float_t>(act.device_id);
         }
 
         return act;
@@ -197,14 +226,20 @@ namespace grip
         //             add("duplicate joint name: " + s.models[i]);
         //     }
         // }
-        if (!errs.empty())
+
+        auto check_t = [&](const char *w, const Timing &t)
         {
-            std::ostringstream oss;
-            oss << "Invalid configuration:\n";
-            for (auto &e : errs)
-                oss << "  - " << e << "\n";
-            throw SettingsError(oss.str());
-        }
+            if (t.tseg1 < 0 || t.tseg2 < 0 || t.sjw < 0 || t.brp < 0)
+                add(std::string("can_device.bit_timing.") + w + ": fields must be positive");
+            if (t.tseg1 > 31 || t.tseg2 > 15 || t.sjw > 7 || t.brp > 1024)
+                add(std::string("can_device.bit_timing.") + w + ": out of typical range");
+        };
+        check_t("arbitration", s.can_device.bit_timing.arbitration);
+        check_t("data_phase", s.can_device.bit_timing.data_phase);
+        if (s.can_device.core_clock_hz < 1'000'000 || s.can_device.core_clock_hz > 200'000'000)
+            add("can_device.core_clock_hz out of range");
+
+        throw_errors(errs);
     }
 
     void validate_settings(const HandSettings &s, const std::string &path)
@@ -213,22 +248,11 @@ namespace grip
         auto add = [&](std::string m)
         { errs.push_back(path + " — " + m); };
 
-        if (s.native_policy.min_current_mA > s.native_policy.max_current_mA)
-            add("native_policy.current_limits_mA: min>max");
-        if (s.native_policy.counts_per_rev <= 0 || s.native_policy.pitch_mm_per_rev <= 0)
-            add("native_policy.screw_drive invalid");
-        if (s.native_policy.tendon_fix_mm <= 0 || s.native_policy.tendon_port_mm <= 0)
-            add("native_policy.geometry invalid");
-        // require a table for each joint key you’ll use (use "_mcp" defaults)
-        static const std::unordered_map<std::string, std::string> dev2key = {
-            {"THUMB", "thumb_mcp"}, {"INDEX_FINGER", "index_finger_mcp"}, {"MIDDLE_FINGER", "middle_finger_mcp"}, {"RING_FINGER", "ring_finger_mcp"}, {"PINKY_FINGER", "pinky_mcp"}};
-        // for (auto &n : s.models)
-        // {
-        //     auto it = dev2key.find(n);
-        //     if (it != dev2key.end() && !s.native_policy.joint_tables.count(it->second))
-        //         add("native_policy.joint_tables missing entry for " + it->second);
-        // }
+        throw_errors(errs);
+    }
 
+    void throw_errors(std::vector<std::string> errs)
+    {
         if (!errs.empty())
         {
             std::ostringstream oss;

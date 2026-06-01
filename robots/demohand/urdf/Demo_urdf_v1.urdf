@@ -26,7 +26,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="./robots/demohand/meshes/base_link.STL" />
+          filename="../meshes/base_link.STL" />
       </geometry>
       <material
         name="">
@@ -85,7 +85,7 @@
     </collision>
   </link>
   <joint
-    name="joint1_1"
+    name="pinky_mcp"
     type="revolute">
     <origin
       xyz="-0.32226 -0.052285 0.024636"
@@ -143,7 +143,7 @@
     </collision>
   </link>
   <joint
-    name="joint1_2"
+    name="pinky_pip"
     type="revolute">
     <origin
       xyz="-0.03359 0 -0.0017"
@@ -201,7 +201,7 @@
     </collision>
   </link>
   <joint
-    name="joint1_3"
+    name="pinky_dip"
     type="revolute">
     <origin
       xyz="-0.03 0 -0.0047"
@@ -259,7 +259,7 @@
     </collision>
   </link>
   <joint
-    name="joint2_1"
+    name="ring_mcp"
     type="revolute">
     <origin
       xyz="-0.33407 -0.023685 0.024636"
@@ -317,7 +317,7 @@
     </collision>
   </link>
   <joint
-    name="joint2_2"
+    name="ring_pip"
     type="revolute">
     <origin
       xyz="-0.03359 0 -0.0015"
@@ -375,7 +375,7 @@
     </collision>
   </link>
   <joint
-    name="joint2_3"
+    name="ring_dip"
     type="revolute">
     <origin
       xyz="-0.03 0 -0.0049"
@@ -433,7 +433,7 @@
     </collision>
   </link>
   <joint
-    name="joint3_1"
+    name="middle_mcp"
     type="revolute">
     <origin
       xyz="-0.34286 0.0013152 0.024636"
@@ -491,7 +491,7 @@
     </collision>
   </link>
   <joint
-    name="joint3_2"
+    name="middle_pip"
     type="revolute">
     <origin
       xyz="-0.03359 0 -0.0026"
@@ -549,7 +549,7 @@
     </collision>
   </link>
   <joint
-    name="jonit3_3"
+    name="middle_dip"
     type="revolute">
     <origin
       xyz="-0.03 0 -0.0038"
@@ -607,7 +607,7 @@
     </collision>
   </link>
   <joint
-    name="joint4_1"
+    name="index_mcp"
     type="revolute">
     <origin
       xyz="-0.3328 0.026315 0.024636"
@@ -665,7 +665,7 @@
     </collision>
   </link>
   <joint
-    name="joint4_2"
+    name="index_pip"
     type="revolute">
     <origin
       xyz="-0.03359 0 -0.0026"
@@ -723,7 +723,7 @@
     </collision>
   </link>
   <joint
-    name="joint4_3"
+    name="index_dip"
     type="revolute">
     <origin
       xyz="-0.03 0 -0.0002"
@@ -781,7 +781,7 @@
     </collision>
   </link>
   <joint
-    name="joint5_1"
+    name="thumb_cmc"
     type="revolute">
     <origin
       xyz="-0.27277 0.022223 0.044042"
@@ -839,7 +839,7 @@
     </collision>
   </link>
   <joint
-    name="joint5_2"
+    name="thumb_mcp"
     type="revolute">
     <origin
       xyz="-0.03359 0 -0.0026"
@@ -897,7 +897,7 @@
     </collision>
   </link>
   <joint
-    name="joint5_3"
+    name="thumb_ip"
     type="revolute">
     <origin
       xyz="-0.03 0 -0.0002"

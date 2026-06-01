@@ -1,9 +1,50 @@
 {
     "action_sets": [
+        {
+            "actions": [
+                "test1",
+                "test6"
+            ],
+            "name": "test_set1"
+        },
+        {
+            "actions": [
+                "test1",
+                "test6",
+                "test666",
+                "test999"
+            ],
+            "name": "test_set2"
+        },
+        {
+            "actions": [
+                "test666",
+                "test6",
+                "test1"
+            ],
+            "name": "test_set3"
+        },
+        {
+            "actions": [
+                "test666",
+                "test666",
+                "test666"
+            ],
+            "name": "test_set4"
+        },
+        {
+            "actions": [
+                "test1",
+                "test6"
+            ],
+            "name": "test_set1_copy"
+        }
     ],
     "actions": [
         {
             "joints": [
+                0,
+                0,
                 0,
                 0,
                 0,
@@ -18,12 +59,16 @@
                 0,
                 0,
                 0,
+                0,
+                0,
                 0
             ],
             "name": "test999"
         },
         {
             "joints": [
+                10,
+                0,
                 0,
                 0,
                 0,
@@ -34,6 +79,8 @@
         },
         {
             "joints": [
+                60,
+                0,
                 0,
                 0,
                 0,

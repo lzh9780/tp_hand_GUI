@@ -7,13 +7,9 @@
 #include <atomic>
 #include <functional>
 #include <deque>
-#include "can_defs.hpp"
-#include "protocol_codec.hpp"
-#include "can_bus.hpp"
+#include "interface.h"
 #include "settings.hpp"
-#include "control_policy_native.hpp"
-#include "grip/finger_ctrl.h"
-#include "wrist_control.hpp"
+#include "data_def.hpp"
 
 namespace grip {
 
@@ -24,68 +20,48 @@ public:
     // build with device list and a joint_key lookup
     ControlInterface(const HandSettings& hand_cfg,
                      std::chrono::milliseconds control_period = std::chrono::milliseconds(1));
-    
-    ControlInterface(const ActuatorSettings& actuator_cfg,
-                     std::chrono::milliseconds control_period = std::chrono::milliseconds(1));
 
     ~ControlInterface();
 
     // bring-up
-    void start_bus(const CanDeviceSettings& cfg);
+    void start_bus();
     void stop_all();
-    // void run_calibration(const CalibrationSettings& calib);
-    void run_calibration();
 
     // loops
     void start_control_loop();
 
     // target API (GUI or any producer can call this): radians!
     void submit_target(std::string ctrl_joint, float radians);
+    void submit_control_mode(std::string ctrl_joint, std::string mode);
 
     // state
-    std::unordered_map<int, Telemetry> snapshot() const;
-    JointAngles get_joint_angles() const;
+    HandStateMap snapshot() const;
     int get_board_state() const;
-    void set_control_mode(std::string mode);
-    void set_module_control_mode(std::string module, std::string mode);
+    void set_module_control_mode(std::string module, int mode);
 
 private:
     void receiver_loop();
     void control_loop();
-    
-    bool all_stalled_locked() const;
-
-    void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int32_t>& values);
-    void send_broadcast(std::vector<int> devs, MsgKind kind, uint8_t field, const std::vector<int16_t> &values1, const std::vector<int16_t> &values2);
-    void send_single(int dev, MsgKind kind, uint8_t field, int32_t value);
-    void send_single(int dev, MsgKind kind, uint8_t field, int16_t value1, int16_t value2);
 
     void drain_pending_targets_locked();
 
 private:
     // hw
-    CanBus bus_{33,0};
+    grip_control_t *ctrl = nullptr;
     uint32_t bus_channel_{0};
 
     // model
-    std::vector<int> devices_;
-    std::unordered_map<std::string, ModuleStruct> hand_{};
-    std::unordered_map<int, std::string> joint_key_; // Matched the current algorithm. Will be removed later
-    std::unordered_map<int, std::string> ctrl_key_; // Matched the current algorithm. Will be removed later
-    NativePolicy policy_;
-    JointAngles offset_;
-    fc_ctx_t ctrl_;
-    Controller wrist_;
+    std::vector<int> motors_;
 
     // shared state
-    std::unordered_map<int, Telemetry> state_;
+    int num_joint = 0;
+    int device_type = 0;
+    HandStateMap state_;
     std::unordered_map<std::string, float> targets_rad_;
-    JointAngles joint_angles_;
-    JointAngles joint_vels_;
-    uint32_t time_stamp_ = 0;
+    std::unordered_map<std::string, int> control_mode_;
     int board_state_;
     std::string mode_{"Position"};
-    std::unordered_map<std::string, std::string> module_control_mode;
+    std::unordered_map<int, std::string> joint_names_;
 
     // threads
     std::thread rx_thread_, ctrl_thread_;
@@ -98,7 +74,7 @@ private:
     // target inbox
     std::mutex inbox_mtx_;
     std::deque<std::pair<std::string,float>> inbox_;
-    IO in;
+    std::deque<std::pair<std::string,std::string>> mode_inbox_;
 };
 
 } // namespace grip
