@@ -16,6 +16,7 @@
 #include <QImage>
 #include <QPixmap>
 #include <QComboBox>
+#include <QTabWidget>
 #include <cmath>
 
 SidePanel::SidePanel(QWidget *parent)

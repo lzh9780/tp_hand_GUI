@@ -54,7 +54,6 @@ private:
     std::vector<int> motors_;
 
     // shared state
-    bool data_updated{false};
     int num_joint = 0;
     int device_type = 0;
     HandStateMap state_;

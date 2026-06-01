@@ -81,6 +81,8 @@ namespace grip
                     j.name = joint.as<std::string>();
                     if (counter >= m->second["route"].size())
                         add("Route size does not match joint number");
+                    if (counter >= m->second["hall_route"].size())
+                        add("Hall route size does not match joint number");
                     if (counter >= m->second["joint_feedback_map"].size())
                         add("Map size does not match joint number");
                     if (counter >= m->second["ids"].size())
@@ -99,7 +101,16 @@ namespace grip
                             if (auto max = route["max"])
                                 j.route.second = max.as<float_t>(j.route.second);
                         }
+                        if (auto hall_route = m->second["hall_route"][counter])
+                        {
+                            if (auto min = hall_route["min"])
+                                j.hall_route.first = min.as<float_t>(j.hall_route.first);
+                            if (auto max = hall_route["max"])
+                                j.hall_route.second = max.as<float_t>(j.hall_route.second);
+                        }
                         if (j.route.first >= j.route.second)
+                            add("Route range error: " + j.name + "\n");
+                        if (j.hall_route.first >= j.hall_route.second)
                             add("Route range error: " + j.name + "\n");
                     }
 

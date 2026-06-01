@@ -169,7 +169,7 @@ void MainWindow::onSidePanelValuesChanged()
         std::unordered_map<std::string, float> joint_target;
         for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
         {
-            float rad = float(deg[i] / 2000.0f * 150.f) * float(M_PI) / 180.0f / 100.0;
+            float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
             ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i] / 100.0));
             // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
             log_->append("Follow: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
@@ -336,6 +336,7 @@ void MainWindow::onSidePanelAddAction(const QString &msg)
 
 void MainWindow::onJointPanelControlModeChange(const QString &module_name, const QString &control_mode)
 {
+    qDebug() << control_mode;
     ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
 }
 

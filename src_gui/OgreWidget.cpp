@@ -190,7 +190,7 @@ void OgreWidget::initOgre()
     // Light
     auto *light = mScene->createLight("MainLight");
     auto *lnode = mScene->getRootSceneNode()->createChildSceneNode();
-    lnode->setPosition(3, 5, 8);
+    lnode->setPosition(3, 5, -8);
     lnode->attachObject(light);
 
     // RViz-like grid (on XY plane, Z up)
@@ -496,7 +496,7 @@ void OgreWidget::attachVisual(Ogre::SceneNode *linkNode, const UrdfVisual &V, in
         std::array<float, 3> s{1.f, 1.f, 1.f};
         if constexpr (true)
         { // if your UrdfVisual has .scale, use it; else keep 1,1,1
-          // s = V.scale;
+          s = V.scale;
         }
         std::string full = resolvePathRelative(urdf_dir + "/dummy", V.meshFile);
         if (auto *mov = createAnyMeshOrManual(baseName + "_mesh", full, s))
@@ -1033,6 +1033,8 @@ void OgreWidget::attachVisualToInstance(RobotInstance &R,
     case GeometryType::Mesh:
     {
         std::array<float, 3> s{1.f, 1.f, 1.f}; // use V.scale if you added it
+        s = V.scale;
+        // vnode->setScale(V.scale[0], V.scale[1], V.scale[2]);
         std::string full = resolvePathRelative(urdf_dir + "/dummy", V.meshFile);
         if (auto *mov = createAnyMeshOrManual(base + "_mesh", full, s))
         {

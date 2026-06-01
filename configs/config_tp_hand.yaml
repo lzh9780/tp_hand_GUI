@@ -1,0 +1,74 @@
+type: hand
+
+hardware_version: 0
+software_version: 0
+
+hand_struct:
+  WRIST:
+    joints:
+      - pitch
+      - yaw
+    ids: [1, 2]
+    route: [{max: 80, min: -20}, {max: 20, min: -20}]
+    hall_route: [{max: 3000, min: 0}, {max: 3000, min: 0}]
+    joint_feedback: [true, true]
+    joint_feedback_map: [[1, 0], [0, 1]]
+  PINKY:
+    joints:
+      - pinky_mcp
+      - pinky_pip
+    ids: [3, -1]
+    route: [{max: 90, min: 0}, {}]
+    hall_route: [{max: 2000, min: 0}, {}]
+    joint_feedback: [true, false]
+    joint_feedback_map: [[1, 1.166], [0, 0]]
+  RING_FINGER:
+    joints:
+      - ring_mcp
+      - ring_pip
+    ids: [6, -1]
+    route: [{max: 90, min: 0}, {}]
+    hall_route: [{max: 2000, min: 0}, {}]
+    joint_feedback: [true, false]
+    joint_feedback_map: [[1, 1.166], [0, 0]]
+  MIDDLE_FINGER:
+    joints:
+      - middle_mcp
+      - middle_pip
+    ids: [4, -1]
+    route: [{max: 90, min: 0}, {}]
+    hall_route: [{max: 2000, min: 0}, {}]
+    joint_feedback: [true, false]
+    joint_feedback_map: [[1, 1.166], [0, 0]]
+  INDEX_FINGER:
+    joints:
+      - index_mcp
+      - index_pip
+    ids: [7, -1]
+    route: [{max: 90, min: 0}, {}]
+    hall_route: [{max: 2000, min: 0}, {}]
+    joint_feedback: [true, false]
+    joint_feedback_map: [[1, 1.166], [0, 0]]
+  THUMB:
+    joints:
+      - thumb_rot
+      - thumb_mcp
+      - thumb_dip
+    ids: [5, 8, -1]
+    route: [{max: 80, min: 0}, {max: 60, min: 0}, {}]
+    hall_route: [{max: 2000, min: 0}, {max: 2000, min: 0}, {}]
+    joint_feedback: [true, true, false]
+    joint_feedback_map: [[1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
+
+control_policy: 
+  - "zero_torque"
+  # - "current"
+  - "hall_position"
+  - "joint_position"
+  # - "impedance"
+wrist_control_policy: 
+  - "zero_torque"
+  - "hall_position"
+  - "joint_position"
+
+urdf_file: "robots/model3_description_2/model3_urdf.urdf"

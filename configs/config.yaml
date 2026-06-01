@@ -9,6 +9,7 @@ can_device:
     data_phase:  { tseg1: 1, tseg2: 0, sjw: 0, brp: 2 }
 
 models:
+  - tp_hand
   - demohand
-  - demo_linear
-  - demo_rotary
+  # - demo_linear
+  # - demo_rotary

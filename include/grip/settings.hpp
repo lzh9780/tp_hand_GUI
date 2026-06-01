@@ -20,6 +20,7 @@ struct JointInfo {
     std::string name;
     int id = -1;
     std::pair<float, float> route{0, 0};
+    std::pair<float, float> hall_route{0, 0};
     bool have_joint_feedback = false;
     std::vector<float> joint_feedback_map{};
 };

@@ -31,7 +31,7 @@ namespace grip
             state_.emplace(key, jp);
         }
         device_type = 0;
-        num_joint = state_.size();
+        num_joint = joint_names_.size();
     }
 
     ControlInterface::~ControlInterface()
@@ -82,14 +82,12 @@ namespace grip
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
         inbox_.emplace_back(ctrl_joint, radians);
-        data_updated = true;
     }
 
     void ControlInterface::submit_control_mode(std::string ctrl_joint, std::string mode)
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
         mode_inbox_.emplace_back(ctrl_joint, mode);
-        data_updated = true;
     }
 
     void ControlInterface::drain_pending_targets_locked()
@@ -110,7 +108,6 @@ namespace grip
                 continue;
             control_mode_[d] = mode_id;
         }
-        data_updated = false;
     }
 
     void ControlInterface::receiver_loop()
@@ -161,6 +158,7 @@ namespace grip
                 }
             }
             free(data);
+            free(tip_data);
         }
     }
 
@@ -177,31 +175,23 @@ namespace grip
         while (!shutting_down_)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(control_period_));
-            if (!data_updated)
-                continue;
-            std::vector<CmdStruct> cmds;
+            CmdStruct *cmds = (CmdStruct *)malloc(num_joint * sizeof(CmdStruct));
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
                 for (auto &[id, name] : joint_names_)
                 {
                     CmdStruct cs;
-                    if (id != 5)
-                        continue;
                     cs.dev_id = static_cast<grip_device_t>(id);
                     cs.control_mode = static_cast<grip_control_mode_t>(control_mode_[name]);
-                    cs.cmd_joint_angle = targets_rad_[name] * 0.01;
-                    // std::cout << targets_rad_[name] * 0.01 << "\n";
-                    cs.joint_vel_ref = 300;
+                    cs.cmd_joint_angle = targets_rad_[name];
+                    cs.joint_vel_ref = 0;
                     cs.motor_torque_ref = 0;
-                    cmds.push_back(cs);
+                    cmds[cs.dev_id - 1] = cs;
                 }
             }
-            CmdStruct *send_cmds = (CmdStruct *)malloc((cmds.size()) * sizeof(CmdStruct));
-            for (size_t i = 0; i < cmds.size(); i++)
-                send_cmds[i] = cmds[i];
-            grip_send_command(ctrl, send_cmds, num_joint);
-            free(send_cmds);
+            grip_send_command(ctrl, cmds, num_joint);
+            free(cmds);
         }
     }
 

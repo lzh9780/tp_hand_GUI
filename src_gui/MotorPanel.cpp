@@ -50,7 +50,8 @@ void MotorPanel::load(grip::HandSettings hand)
 
             connect(mode_box, &QComboBox::currentTextChanged,
                 this, [=]()
-                { emit mode_change(mode_lable->text(), mode_box->currentText()); });
+                { emit mode_change(mode_lable->text(), mode_box->currentText()); 
+                qDebug() << mode_box->currentText();});
         }
     }
 
