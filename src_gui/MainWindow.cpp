@@ -83,6 +83,8 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::valuesChanged, this, &MainWindow::onSidePanelValuesChanged);
     connect(side_, &SidePanel::committed, this, &MainWindow::onSidePanelCommitted);
     connect(side_, &SidePanel::notify, this, &MainWindow::onSidePanelNotify);
+    connect(side_, &SidePanel::controlChanged, this, &MainWindow::onSidePanelControlChanged);
+    connect(side_, &SidePanel::openAdvancePanel, this, &MainWindow::openMotorControlTab);
     connect(motor_, &MotorPanel::mode_change, this, &MainWindow::onJointPanelControlModeChange);
     connect(connect_, &Connector::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
     // connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
@@ -162,6 +164,7 @@ void MainWindow::onSidePanelValuesChanged()
     if (side_->modeText() != "Mode: Follow")
         return;
     auto deg = side_->jointDegrees();
+    auto control_mode = side_->getControlModes();
     // log_->append("Follow: " + QString::number(deg.size()) + " targets sent");
     if (ctrl_)
     {
@@ -170,11 +173,15 @@ void MainWindow::onSidePanelValuesChanged()
         for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
         {
             float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-            ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i] / 100.0));
+            ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i]));
             // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
             log_->append("Follow: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
             // ogre_->setJointPosition(dof_names[i].toUtf8().constData(), rad);
-            std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad);
+            std::unordered_map<std::string, float> joint_pos = {};
+            if (control_mode[i] == "hall_position")
+                joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), float(deg[i]), true);
+            else 
+                joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad, false);
             for (const auto &j : joint_pos)
             {
                 const auto &name = j.first;
@@ -194,6 +201,7 @@ void MainWindow::onSidePanelValuesChanged()
 void MainWindow::onSidePanelCommitted()
 {
     auto deg = side_->jointDegrees();
+    auto control_mode = side_->getControlModes();
 
     if (ctrl_)
     {
@@ -202,11 +210,15 @@ void MainWindow::onSidePanelCommitted()
         for (int i = 0; i < deg.size() && i < (int)dof_names.size(); ++i)
         {
             float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-            ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i] / 100.0));
+            ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i]));
             // std::cout << "cmd_type: " << dof_names[i].toUtf8().constData() << ", val: " << rad << "\n";
             log_->append("Execute: " + QString(dof_names[i].toUtf8().constData()) + ", " + QString::number(rad));
             // ogre_->setJointPosition(dof_names[i].toUtf8().constData(), rad);
-            std::unordered_map<std::string, float> joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad);
+            std::unordered_map<std::string, float> joint_pos = {};
+            if (control_mode[i] == "hall_position")
+                joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), float(deg[i]), true);
+            else 
+                joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad, false);
             for (const auto &j : joint_pos)
             {
                 const auto &name = j.first;
@@ -226,6 +238,37 @@ void MainWindow::onSidePanelCommitted()
 void MainWindow::onSidePanelNotify(const QString &msg)
 {
     log_->append(msg);
+}
+
+void MainWindow::onSidePanelControlChanged(const QString &name, const QString &mode)
+{
+    for (auto mod : hand_cfg_.structs)
+    {
+        if (mod.first == "WRIST" && name == "wrist")
+        {
+            for (auto j : mod.second)
+            {
+                if (!motor_->checkJointStandalone(QString(j.name.c_str())))
+                {
+                    side_->applyModeChange(&hand_cfg_, QString(j.name.c_str()), mode);
+                    motor_->applyModeChange(QString(j.name.c_str()), mode);
+                    ctrl_->submit_control_mode(j.name, mode.toUtf8().constData());
+                }
+            }
+        }
+        else if (mod.first != "WRIST" && name == "finger")
+        {
+            for (auto j : mod.second)
+            {
+                if (!motor_->checkJointStandalone(QString(j.name.c_str())))
+                {
+                    side_->applyModeChange(&hand_cfg_, QString(j.name.c_str()), mode);
+                    motor_->applyModeChange(QString(j.name.c_str()), mode);
+                    ctrl_->submit_control_mode(j.name, mode.toUtf8().constData());
+                }
+            }
+        }
+    }
 }
 
 void MainWindow::onConnectorDeviceConnect(const QString &msg)
@@ -272,7 +315,7 @@ void MainWindow::onDeviceConnect()
         }
         // side_->loadSliders(dof_names);
         // qDebug() << "Hand Controllor loaded";
-        side_->loadHandControllor(hand_cfg_);
+        side_->loadHandControllor(&hand_cfg_);
         motor_->load(hand_cfg_);
         ogre_->loadURDFDual(hand_cfg_.urdf_file);
         auto *store = new ActionStore(action_path_.c_str());
@@ -336,8 +379,12 @@ void MainWindow::onSidePanelAddAction(const QString &msg)
 
 void MainWindow::onJointPanelControlModeChange(const QString &module_name, const QString &control_mode)
 {
-    qDebug() << control_mode;
-    ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
+    if (motor_->checkJointStandalone(module_name))
+    {
+        qDebug() << "standalone change";
+        side_->applyModeChange(&hand_cfg_, module_name, control_mode);
+        ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
+    }
 }
 
 void MainWindow::readJointAngles()
@@ -354,7 +401,7 @@ void MainWindow::readJointAngles()
             //     continue;
             joints.emplace(joint_name, data.position);
             float rad = float(data.position) * float(M_PI) / 180.0f;
-            std::unordered_map<std::string, float> joint_pos = dofsToJoints(joint_name, rad);
+            std::unordered_map<std::string, float> joint_pos = dofsToJoints(joint_name, rad, false);
             for (const auto &j : joint_pos)
             {
                 const auto &name = j.first;
@@ -438,7 +485,7 @@ void MainWindow::openDiagram()
     timer_->start(20);
 }
 
-std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value)
+std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value, bool is_hall)
 {
     // auto module_name = dofs_inverted_index.find(dof_name);
     // if (module_name == dofs_inverted_index.end())
@@ -451,11 +498,15 @@ std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::strin
         return {};
     auto ms = module_struct->second;
     std::vector<float> map;
+    float joint_rad = value;
     for (auto &j : ms)
     {
         if (j.name == dof_name)
         {
             map = j.joint_feedback_map;
+            if (is_hall)
+                joint_rad = value / (j.hall_route.second - j.hall_route.first) * 
+                            (j.route.second - j.route.first) / 180.0 * float(M_PI);
             break;
         }
     }
@@ -469,7 +520,7 @@ std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::strin
     int counter = 0;
     while (counter < map.size())
     {
-        result.emplace(ms[counter].name, value * map[counter]);
+        result.emplace(ms[counter].name, joint_rad * map[counter]);
         counter += 1;
     }
     return result;

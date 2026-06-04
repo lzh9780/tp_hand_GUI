@@ -50,6 +50,7 @@ private slots:
     void onActionPanelActionUpdate(const QString &msg);
     void onSidePanelAddAction(const QString &msg);
     void onJointPanelControlModeChange(const QString &module_name, const QString &control_mode);
+    void onSidePanelControlChanged(const QString &name, const QString &mode);
 
 private:
     void buildUI();
@@ -62,7 +63,7 @@ private:
     void onDeviceConnect();
     void onDeviceDisconnect();
     void openActionPanelTab();
-    std::unordered_map<std::string, float> dofsToJoints(std::string dof_name, float value);
+    std::unordered_map<std::string, float> dofsToJoints(std::string dof_name, float value, bool is_hall);
     std::unordered_map<std::string, float> jointsToDofs(std::string joint_name, float value);
 
 private:

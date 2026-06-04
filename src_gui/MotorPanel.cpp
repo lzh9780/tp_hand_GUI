@@ -3,7 +3,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QString>
 #include <QComboBox>
 #include <QDebug>
 #include <QSpacerItem>
@@ -44,14 +43,20 @@ void MotorPanel::load(grip::HandSettings hand)
                 for (auto p : hand.wrist_control)
                     mode_box->addItem(p.c_str());
             }
+
+            auto *single = new QCheckBox(QString("Standalone"));
             ctrlHl->addWidget(mode_lable);
             ctrlHl->addWidget(mode_box);
+            ctrlHl->addWidget(single);
             contentLyt->addLayout(ctrlHl);
 
             connect(mode_box, &QComboBox::currentTextChanged,
                 this, [=]()
-                { emit mode_change(mode_lable->text(), mode_box->currentText()); 
-                qDebug() << mode_box->currentText();});
+                { emit mode_change(mode_lable->text(), mode_box->currentText());});
+
+            names.append(QString(j.name.c_str()));
+            single_checkbox.append(single);
+            mode_selecters.append(mode_box);
         }
     }
 
@@ -60,6 +65,15 @@ void MotorPanel::load(grip::HandSettings hand)
     scroll_->setWidget(content);
     root->addWidget(scroll_);
     scroll_->setWidgetResizable(true);
+}
+
+bool MotorPanel::checkJointStandalone(QString joint_name)
+{
+    int index = names.indexOf(joint_name); 
+    if (index == -1)
+        return false;
+    else 
+        return single_checkbox[index]->checkState() == Qt::Checked;
 }
 
 void MotorPanel::removeAll()
@@ -83,5 +97,18 @@ void MotorPanel::removeAll()
         {
             delete item->widget();
         }
+    }
+}
+
+void MotorPanel::applyModeChange(QString name, QString mode)
+{
+    int i = names.indexOf(name); 
+    if (i == -1)
+        return;
+    else
+    {
+        int index = mode_selecters[i]->findText(mode);
+        if (index != -1)
+            mode_selecters[i]->setCurrentIndex(index);
     }
 }

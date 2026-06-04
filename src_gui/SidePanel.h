@@ -16,6 +16,7 @@ class QToolButton;
 class QLineEdit;
 class QImage;
 class QComboBox;
+class QLayoutItem;
 
 class ActionStore; // fwd
 
@@ -49,12 +50,14 @@ public:
     void updateJoints(const std::unordered_map<std::string, int> state);
     void loadActions();
     // void loadSliders(const QStringList &jointNames);
-    void loadHandControllor(grip::HandSettings hand_cfg);
+    void loadHandControllor(grip::HandSettings *hand_cfg);
     void loadActuatorControllor(grip::ActuatorSettings act_cfg);
     void updateStore(ActionStore *store);
     std::string get_control_mode();
     void removeAll();
     void applyActionNameToSliders(const QString &name);
+    void applyModeChange(grip::HandSettings *hand_cfg, QString name, QString mode);
+    QStringList getControlModes();
 
 signals:
     void valuesChanged();
@@ -62,6 +65,8 @@ signals:
     void notify(const QString& msg);   // status/log message
     void addAction(const QString& action);
     void actionStoreUpdate();
+    void controlChanged(const QString& name, const QString& mode);
+    void openAdvancePanel();
 
 private slots:
     void onAnySliderChanged();
@@ -88,6 +93,7 @@ private:
     void validate(QLineEdit* edit, QPushButton* btn);
     void onDeleteAction(QPushButton* btn);
     void loadSliderModule(QString name, float min, float max);
+    void deleteLayout(QLayoutItem *item);
 
 private:
     // Data
@@ -121,6 +127,7 @@ private:
     QList<QLabel*>  currValueLabels_;
     QList<QLabel*>  nameLabels_;
     QList<std::pair<QLabel*, QLabel*>> valueLbls;
+    QStringList control_modes;
 
     // UI: actuator
     QComboBox* mode_box;

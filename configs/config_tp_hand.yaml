@@ -8,7 +8,7 @@ hand_struct:
     joints:
       - pitch
       - yaw
-    ids: [1, 2]
+    ids: [2, 1]
     route: [{max: 80, min: -20}, {max: 20, min: -20}]
     hall_route: [{max: 3000, min: 0}, {max: 3000, min: 0}]
     joint_feedback: [true, true]
@@ -26,7 +26,7 @@ hand_struct:
     joints:
       - ring_mcp
       - ring_pip
-    ids: [6, -1]
+    ids: [8, -1]
     route: [{max: 90, min: 0}, {}]
     hall_route: [{max: 2000, min: 0}, {}]
     joint_feedback: [true, false]
@@ -44,7 +44,7 @@ hand_struct:
     joints:
       - index_mcp
       - index_pip
-    ids: [7, -1]
+    ids: [6, -1]
     route: [{max: 90, min: 0}, {}]
     hall_route: [{max: 2000, min: 0}, {}]
     joint_feedback: [true, false]
@@ -54,7 +54,7 @@ hand_struct:
       - thumb_rot
       - thumb_mcp
       - thumb_dip
-    ids: [5, 8, -1]
+    ids: [7, 5, -1]
     route: [{max: 80, min: 0}, {max: 60, min: 0}, {}]
     hall_route: [{max: 2000, min: 0}, {max: 2000, min: 0}, {}]
     joint_feedback: [true, true, false]

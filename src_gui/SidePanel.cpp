@@ -227,6 +227,7 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     auto *slider = new QSlider(Qt::Horizontal);
     slider->setRange((int)(min * 100.0), (int)(max * 100.0));
     slider->setValue(0);
+    slider->setEnabled(false);
     auto *sMax = new QLabel(QString::number(max));
     sl->addWidget(sMin);
     sl->addWidget(slider);
@@ -234,14 +235,57 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     sliders_.append(slider);
     sliderVBox_->addLayout(sl);
     valueLbls.append(std::pair(sMin, sMax));
+    control_modes.append("zero_torque");
 
     connect(slider, &QSlider::valueChanged, this, &SidePanel::onAnySliderChanged);
     connect(valEnter, &QLineEdit::editingFinished, this, &SidePanel::onValueEditChanged);
 }
 
-void SidePanel::loadHandControllor(grip::HandSettings hand_cfg)
+void SidePanel::loadHandControllor(grip::HandSettings *hand_cfg)
 {
-    for (auto s : hand_cfg.structs)
+    auto *h1 = new QHBoxLayout();
+    auto *v1 = new QVBoxLayout();
+    auto *titleLbl = new QLabel("Control Mode: ");
+    auto *advanceBtn = new QPushButton("Advance");
+    v1->addWidget(titleLbl);
+    v1->addWidget(advanceBtn);
+    h1->addLayout(v1);
+
+    auto *v2 = new QVBoxLayout();
+    auto *sh1 = new QHBoxLayout();
+    auto fingerLbl = new QLabel("Finger: ");
+    auto *modeBox = new QComboBox();
+    for (auto mode : hand_cfg->control_policies)
+        modeBox->addItem(mode.c_str());
+    sh1->addWidget(fingerLbl);
+    sh1->addWidget(modeBox);
+    v2->addLayout(sh1);
+
+    connect(modeBox, &QComboBox::currentTextChanged, this, [=]()
+        { emit controlChanged(QString("finger"), modeBox->currentText()); });
+
+    auto module_name = hand_cfg->structs.find("WRIST");
+    if (module_name != hand_cfg->structs.end())
+    {
+        auto *sh2 = new QHBoxLayout();
+        auto wristLbl = new QLabel("Wrist: ");
+        auto *wristModeBox = new QComboBox();
+        for (auto mode : hand_cfg->wrist_control)
+            wristModeBox->addItem(mode.c_str());
+        sh2->addWidget(wristLbl);
+        sh2->addWidget(wristModeBox);
+        v2->addLayout(sh2);
+        connect(wristModeBox, &QComboBox::currentTextChanged, this, [=]()
+            { emit controlChanged(QString("wrist"), wristModeBox->currentText()); });
+    }
+    h1->addLayout(v2);
+    h1->setContentsMargins(2, 2, 2, 15);
+    sliderVBox_->addLayout(h1);
+
+    connect(advanceBtn, &QPushButton::clicked, this, [=]()
+                { emit openAdvancePanel(); });
+    
+    for (auto s : hand_cfg->structs)
     {
         auto *mode_lable = new QLabel(s.first.c_str());
         sliderVBox_->addWidget(mode_lable);
@@ -284,6 +328,57 @@ void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg)
     connect(sliders_[1], &QSlider::valueChanged, this, &SidePanel::onMaxCurrentChanged);
 }
 
+void SidePanel::applyModeChange(grip::HandSettings *hand_cfg, QString joint_name, QString mode)
+{
+    size_t i = 0;
+    while (i < nameLabels_.size())
+    {
+        if (nameLabels_[i]->text() == joint_name)
+            break;
+        i++;
+    }
+    if (i >= nameLabels_.size())
+    {
+        return;
+    }
+
+    for (auto cfg : hand_cfg->structs)
+    {
+        for (auto joint_cfg : cfg.second)
+        {
+            if (joint_cfg.name == joint_name.toUtf8().constData())
+            {
+                if (mode == "hall_position")
+                {
+                    sliders_[i]->setRange(joint_cfg.hall_route.first, joint_cfg.hall_route.second);
+                    sliders_[i]->setEnabled(true);
+                    valueLbls[i].first->setText(QString::number(joint_cfg.hall_route.first));
+                    valueLbls[i].second->setText(QString::number(joint_cfg.hall_route.second));
+                    control_modes[i] = "hall_position";
+                    return;
+                }
+                else if (mode == "joint_position")
+                {
+                    sliders_[i]->setRange(joint_cfg.route.first * 100, joint_cfg.route.second * 100);
+                    sliders_[i]->setEnabled(true);
+                    valueLbls[i].first->setText(QString::number(joint_cfg.route.first));
+                    valueLbls[i].second->setText(QString::number(joint_cfg.route.second));
+                    control_modes[i] = "joint_position";
+                    return;
+                }
+                else if (mode == "zero_torque")
+                {
+                    sliders_[i]->setEnabled(false);
+                    control_modes[i] = "zero_torque";
+                    return;
+                }
+            }
+        }
+    }
+    
+    return;
+}
+
 // ============ slots ============
 
 QList<int> SidePanel::jointDegrees() const
@@ -301,7 +396,14 @@ void SidePanel::onAnySliderChanged()
 {
     // Update numeric labels and echo in Follow mode
     for (int i = 0; i < sliders_.size(); ++i)
-        valueLabels_[i]->setText(QString("%1").arg((float)sliders_[i]->value() / 100.0));
+    {
+        if (control_modes[i] == "joint_position")
+            valueLabels_[i]->setText(QString("%1").arg((float)sliders_[i]->value() / 100.0));
+        else if (control_modes[i] == "hall_position")
+            valueLabels_[i]->setText(QString("%1").arg((int)sliders_[i]->value()));
+        else if (control_modes[i] == "zero_torque")
+            valueLabels_[i]->setText(QString("0"));
+    }
     if (btnMode_->text() == "Mode: Follow")
         emit valuesChanged();
 }
@@ -309,7 +411,14 @@ void SidePanel::onAnySliderChanged()
 void SidePanel::onValueEditChanged()
 {
     for (int i = 0; i < valueLabels_.size(); ++i)
-        sliders_[i]->setValue((int)(atof(valueLabels_[i]->text().toUtf8().constData()) * 100.0));
+    {
+        if (control_modes[i] == "joint_position")
+            sliders_[i]->setValue((int)(atof(valueLabels_[i]->text().toUtf8().constData()) * 100.0));
+        else if (control_modes[i] == "hall_position")
+            sliders_[i]->setValue((int)(atoi(valueLabels_[i]->text().toUtf8().constData())));
+        else if (control_modes[i] == "zero_torque")
+            sliders_[i]->setValue(0);
+    }
 }
 
 void SidePanel::onMaxVelocityChanged()
@@ -780,48 +889,36 @@ void SidePanel::removeAll()
     QLayoutItem *item;
     while ((item = sliderVBox_->takeAt(0)) != nullptr)
     {
-        if (QLayout *rowLyt = item->layout())
-        {
-
-            QLayoutItem *child;
-            while ((child = rowLyt->takeAt(0)))
-            {
-                if (child->widget())
-                    delete child->widget();
-                delete child;
-            }
-            delete rowLyt;
-        }
-        else if (item->widget())
-        {
-            delete item->widget();
-        }
+        deleteLayout(item);
     }
 
     auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
     while ((item = layout->takeAt(0)) != nullptr)
     {
-        if (QLayout *rowLyt = item->layout())
-        {
-            QLayoutItem *child;
-            while ((child = rowLyt->takeAt(0)))
-            {
-                if (child->widget())
-                    delete child->widget();
-                delete child;
-            }
-            delete rowLyt;
-        }
-        else if (item->widget())
-        {
-            delete item->widget();
-        }
+        deleteLayout(item);
     }
     delete layout;
 
     if (!store_)
         return;
     delete store_;
+}
+
+void SidePanel::deleteLayout(QLayoutItem *item)
+{
+    if (QLayout *lyt = item->layout())
+    {
+        QLayoutItem *child;
+        while ((child = lyt->takeAt(0)))
+        {
+            deleteLayout(child);
+        }
+        delete lyt;
+    }
+    else if (item->widget())
+    {
+        delete item->widget();
+    }
 }
 
 void SidePanel::applyActionNameToSliders(const QString &name)
@@ -831,4 +928,9 @@ void SidePanel::applyActionNameToSliders(const QString &name)
     int idx = store_->findActionByName(name);
     if (idx >= 0)
         applyActionToSliders(idx);
+}
+
+QStringList SidePanel::getControlModes()
+{
+    return control_modes;
 }
