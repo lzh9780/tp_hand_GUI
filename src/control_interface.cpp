@@ -115,8 +115,8 @@ namespace grip
         while (!shutting_down_)
         {
             JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
-            TipTels *tip_data = (TipTels *)malloc((num_joint + 1) * sizeof(TipTels));
-            grip_status_t st = grip_receive_step(ctrl, data, tip_data, (num_joint + 1));
+            TipTels *tip_data = (TipTels *)malloc(5 * sizeof(TipTels));
+            grip_status_t st = grip_receive_step(ctrl, data, tip_data, num_joint);
             if (st != GRIP_OK)
                 std::cout << grip_get_last_error(ctrl);
 
@@ -128,14 +128,17 @@ namespace grip
 
                 DevState joint_state;
                 joint_state.position = data[id].joint_position;
-                joint_state.velocity = data[id].joint_speed;
+                // joint_state.velocity = data[id].joint_speed;
+                joint_state.velocity = 0;
                 joint_state.effort = 0;
                 // std::cout << id << " " << data[id].joint_position << "\n";
 
                 DevState motor_state;
                 motor_state.position = data[id].motor_position;
-                motor_state.velocity = data[id].motor_speed;
-                motor_state.effort = data[id].motor_torque;
+                // motor_state.velocity = data[id].motor_speed;
+                motor_state.velocity = 0;
+                // motor_state.effort = data[id].motor_torque;
+                motor_state.effort = 0;
 
                 TipTels ts;
                 ts.device = tip_data[id].device;

@@ -85,12 +85,12 @@ namespace grip
                         add("Hall route size does not match joint number");
                     if (counter >= m->second["joint_feedback_map"].size())
                         add("Map size does not match joint number");
-                    if (counter >= m->second["ids"].size())
+                    if (counter >= m->second["joint_ids"].size())
                         add("number of Ids does not match joint number");
                     if (counter >= m->second["joint_feedback"].size())
                         add("number of feedback states does not match joint number");
 
-                    if (auto dof_id = m->second["ids"][counter])
+                    if (auto dof_id = m->second["joint_ids"][counter])
                         j.id = dof_id.as<int>(j.id);
 
                     if (j.id >= 0) {

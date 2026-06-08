@@ -114,7 +114,7 @@ void MainWindow::buildUI()
                             dof_pos.emplace(name, buff.second);
                     }
                 }
-                side_->applyCameraData(dof_pos); 
+                side_->applyCameraData(dof_pos, &hand_cfg_); 
             });
     connect(camera_, &CameraWidget::controlSwitch, this, [this](const QString &msg)
             { side_->modeChange(msg); });
@@ -390,7 +390,7 @@ void MainWindow::onJointPanelControlModeChange(const QString &module_name, const
 void MainWindow::readJointAngles()
 {
     HandStateMap state = ctrl_->snapshot();
-    std::unordered_map<std::string, int> joints;
+    std::unordered_map<std::string, float> joints;
     std::unordered_map<std::string, float> joint_target;
     for (auto &[name, joint_group] : state)
     {
@@ -551,7 +551,7 @@ std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string join
             continue;
         if (idx >= j.joint_feedback_map.size())
             continue;
-        result.emplace(j.name, (j.joint_feedback_map[idx] == 0 ? 0 : 1) * value);
+        result.emplace(j.name, (j.joint_feedback_map[idx] == 0 ? 0 : j.joint_feedback_map[idx]) * value);
     }
     return result;
 }

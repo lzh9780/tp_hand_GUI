@@ -1,5 +1,12 @@
 {
     "action_sets": [
+        {
+            "actions": [
+                "test",
+                "zero"
+            ],
+            "name": "test_set"
+        }
     ],
     "actions": [
         {
@@ -14,6 +21,19 @@
                 3000
             ],
             "name": "test"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "name": "zero"
         }
     ]
 }

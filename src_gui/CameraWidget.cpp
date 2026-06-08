@@ -13,7 +13,7 @@
 
 static const std::vector<std::string> full_joints_list{
     "thumb_cmc_pull",
-    "thumb_cmc_rot",
+    "thumb_rot",
     "thumb_mcp",
     "thumb_ip",
     "index_mcp",

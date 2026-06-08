@@ -779,7 +779,7 @@ void SidePanel::modeChange(const QString &mode)
     }
 }
 
-void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data)
+void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data, grip::HandSettings *hand_cfg)
 {
     for (const auto &[name, value] : data)
     {
@@ -790,13 +790,29 @@ void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data)
                 float min = valueLbls[i].first->text().toFloat();
                 float max = valueLbls[i].second->text().toFloat();
                 float v = std::clamp(float(value), float(min), float(max));
+
+                if (control_modes[i] == "hall_position")
+                {
+                    for (auto [key, vec] : hand_cfg->structs)
+                    {
+                        for (auto joint : vec)
+                        {
+                            if (joint.name == name)
+                                v = v / (joint.route.second - joint.route.first) * 
+                                    (joint.hall_route.second - joint.hall_route.first) / 100;
+                        }
+                    }
+                }
+                else if (control_modes[i] == "zero_torque")
+                    continue;
+                
                 sliders_[i]->setValue(v * 100);
             }
         }
     }
 }
 
-void SidePanel::updateJoints(const std::unordered_map<std::string, int> state)
+void SidePanel::updateJoints(const std::unordered_map<std::string, float> state)
 {
     // for (auto l : currValueLabels_) {
     //     l->setText("  (%1)".arg(sliders_[i]->value()));
@@ -809,7 +825,7 @@ void SidePanel::updateJoints(const std::unordered_map<std::string, int> state)
         {
             if (sName->text().toUtf8().constData() == name)
             {
-                currValueLabels_[idx]->setText(QString("  (%1)").arg(float(float(val) / float(10)), 0, 'f', 2));
+                currValueLabels_[idx]->setText(QString("  (%1)").arg(float(val), 0, 'f', 2));
                 continue;
             }
             ++idx;
