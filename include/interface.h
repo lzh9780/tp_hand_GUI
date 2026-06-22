@@ -108,14 +108,17 @@ extern "C"
     {
         grip_device_t dev_id;
         grip_control_mode_t control_mode;
+        float curr_pos; /* hall-counts for hall mode / degree for joint mode */
+        float curr_vel;
+        int32_t curr_torque; /* normalization (value 0-1000) */
+        uint32_t timestamp_ms;
+    } grip_realtime_data_t;
+
+    typedef struct
+    {
+        grip_device_t dev_id;
         int32_t motor_position; /* hall-counts */
         float joint_position;   /* degree */
-        float curr_pos;      /* hall-counts/s */
-        float curr_vel;      /* degree/s */
-        int32_t curr_torque;   /* normalization (value 0-1000) */
-        // float tip_tactile;      /* N */
-        // int32_t temp_cC;        /* centi-C */
-        // uint8_t fault_code;
         uint32_t timestamp_ms;
     } grip_joint_sensor_t;
 
@@ -126,6 +129,16 @@ extern "C"
         int16_t tip_proximity_sense;
         uint32_t timestamp_ms;
     } grip_tip_sensor_t;
+
+    typedef struct
+    {
+        uint16_t bus_current;
+        uint16_t bus_voltage;
+        uint8_t temp1_cC;
+        uint8_t temp2_cC;
+        uint16_t fault_code;
+        uint32_t timestamp_ms;
+    } grip_bus_info_t;
 
     typedef struct
     {
@@ -159,8 +172,8 @@ extern "C"
     GRIP_C_API grip_status_t grip_control_close_bus(grip_control_t *ctl);
 
     GRIP_C_API grip_status_t grip_send_command(grip_control_t *ctl, grip_command_t *cmd, size_t len);
-    GRIP_C_API grip_status_t grip_receive_step(grip_control_t *ctl, grip_joint_sensor_t *tels,
-                                               grip_tip_sensor_t *tips, size_t joint_num);
+    GRIP_C_API grip_status_t grip_receive_step(grip_control_t *ctl, grip_realtime_data_t* realtime, grip_joint_sensor_t *tels, 
+                                               grip_tip_sensor_t *tips, grip_bus_info_t *bus_data, size_t joint_num);
     // GRIP_C_API grip_status_t grip_ota_update(grip_control_t *ctl, char* file_name);
 
     GRIP_C_API const char *grip_get_last_error(grip_control_t *ctl);

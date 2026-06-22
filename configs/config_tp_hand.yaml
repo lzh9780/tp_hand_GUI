@@ -59,7 +59,7 @@ hand_struct:
     route: [{max: 80, min: 0}, {max: 60, min: 0}, {}]
     hall_route: [{max: 2000, min: 0}, {max: 2000, min: 0}, {}]
     joint_feedback: [true, true, false]
-    joint_feedback_map: [[-1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
+    joint_feedback_map: [[1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
 
 control_policy: 
   - "zero_torque"

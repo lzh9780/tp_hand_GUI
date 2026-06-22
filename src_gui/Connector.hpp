@@ -5,6 +5,8 @@ class QWidget;
 class QPushButton;
 class QComboBox;
 class QCheckBox;
+class QRadioButton;
+class QButtonGroup;
 
 class Connector : public QFrame
 {
@@ -12,6 +14,7 @@ class Connector : public QFrame
 public:
     explicit Connector(QWidget *parent, std::vector<std::string> models);
     void onChange(bool on);
+    int getHandSide();
 
 signals:
     void deviceConnect(const QString& msg);
@@ -29,4 +32,9 @@ private:
     QPushButton* connectBtn;
     QComboBox* model_box;
     QCheckBox* deviceState;
+    QRadioButton* leftBtn;
+    QRadioButton* rightBtn;
+    QButtonGroup *optionGroup;
+
+    int is_left = 1;
 };

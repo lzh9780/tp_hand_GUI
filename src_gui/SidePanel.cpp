@@ -639,8 +639,8 @@ void SidePanel::applyActionToSliders(int actionIndex)
     auto vals = store_->actionJoints(actionIndex);
     for (int i = 0; i < sliders_.size() && i < vals.size(); ++i)
     {
-        float min = valueLbls[i].first->text().toFloat();
-        float max = valueLbls[i].second->text().toFloat();
+        float min = valueLbls[i].first->text().toFloat() * 100;
+        float max = valueLbls[i].second->text().toFloat() * 100;
         float v = std::clamp(float(vals[i]), min, max);
         sliders_[i]->setValue(v);
     }
@@ -918,6 +918,7 @@ void SidePanel::removeAll()
     if (!store_)
         return;
     delete store_;
+    control_modes.clear();
 }
 
 void SidePanel::deleteLayout(QLayoutItem *item)

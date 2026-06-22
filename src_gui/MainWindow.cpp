@@ -70,8 +70,8 @@ void MainWindow::buildUI()
 
     splitter->addWidget(side_);
     splitter->addWidget(mainLyt);
-    splitter->setStretchFactor(0, 1);
-    splitter->setStretchFactor(1, 1);
+    splitter->setStretchFactor(0, 2);
+    splitter->setStretchFactor(1, 3);
 
     rootLayout->addWidget(splitter);
 
@@ -289,7 +289,8 @@ void MainWindow::onDeviceConnect()
         ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
         if (withCan)
         {
-            ctrl_->start_bus();
+            int side = connect_->getHandSide();
+            ctrl_->start_bus(side);
             log_->append("Device Connected. ");
             ctrl_->start_control_loop();
             // log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
@@ -381,7 +382,6 @@ void MainWindow::onJointPanelControlModeChange(const QString &module_name, const
 {
     if (motor_->checkJointStandalone(module_name))
     {
-        qDebug() << "standalone change";
         side_->applyModeChange(&hand_cfg_, module_name, control_mode);
         ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
     }

@@ -50,10 +50,10 @@ namespace grip
         }
     }
 
-    void ControlInterface::start_bus()
+    void ControlInterface::start_bus(int is_left)
     {
         grip_can_device_settings_t *cfg = grip_device_setting_create(33, 0, 0);
-        ctrl = grip_control_create(0, 1);
+        ctrl = grip_control_create(0, is_left);
         if (grip_control_start_bus(ctrl, cfg) == GRIP_OK)
             std::cout << "Can device open successfully\n";
         else
@@ -114,9 +114,13 @@ namespace grip
     {
         while (!shutting_down_)
         {
-            JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
-            TipTels *tip_data = (TipTels *)malloc(5 * sizeof(TipTels));
-            grip_status_t st = grip_receive_step(ctrl, data, tip_data, num_joint);
+            std::vector<RealtimeData> realtime(num_joint + 1);
+            std::vector<JointTels> data(num_joint + 1);
+            // RealtimeData *realtime = (RealtimeData *)malloc((num_joint + 1) * sizeof(RealtimeData));
+            // JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
+            TipTels tip_data[5];
+            BusData bus_data;
+            grip_status_t st = grip_receive_step(ctrl, realtime.data(), data.data(), tip_data, &bus_data, num_joint);
             if (st != GRIP_OK)
                 std::cout << grip_get_last_error(ctrl);
 
@@ -140,28 +144,29 @@ namespace grip
                 // motor_state.effort = data[id].motor_torque;
                 motor_state.effort = 0;
 
-                TipTels ts;
-                ts.device = tip_data[id].device;
-                ts.timestamp_ms = tip_data[id].timestamp_ms;
-                ts.tip_tactile = tip_data[id].tip_tactile;
-                ts.tip_proximity_sense = tip_data[id].tip_proximity_sense;
+                // TipTels ts;
+                // ts.device = tip_data[id].device;
+                // ts.timestamp_ms = tip_data[id].timestamp_ms;
+                // ts.tip_tactile = tip_data[id].tip_tactile;
+                // ts.tip_proximity_sense = tip_data[id].tip_proximity_sense;
 
-                for (const auto & [key, val] : state_)
+                for (const auto &[key, val] : state_)
                 {
-                    if (joint_names_.find(id) != joint_names_.end() && 
+                    if (joint_names_.find(id) != joint_names_.end() &&
                         val.joints.find(joint_names_[id]) != val.joints.end())
                     {
                         std::lock_guard<std::mutex> lk(mtx_);
-                        state_[key].control_mode[joint_names_[id]] = data[id].control_mode;
+                        // state_[key].control_mode[joint_names_[id]] = realtime[id].control_mode;
                         state_[key].joints[joint_names_[id]] = joint_state;
                         state_[key].motors[joint_names_[id]] = motor_state;
-                        state_[key].tip_sensor = ts;
+                        // state_[key].tip_sensor = ts;
                         break;
                     }
                 }
             }
-            free(data);
-            free(tip_data);
+            // free(realtime);
+            // free(data);
+            // free(tip_data);
         }
     }
 
@@ -187,7 +192,7 @@ namespace grip
                     CmdStruct cs;
                     cs.dev_id = static_cast<grip_device_t>(id);
                     cs.control_mode = static_cast<grip_control_mode_t>(control_mode_[name]);
-                    cs.cmd_joint_angle = targets_rad_[name];
+                    cs.cmd_joint_angle = targets_rad_[name] / 100.0f;
                     cs.joint_vel_ref = 0;
                     cs.motor_torque_ref = 0;
                     cmds[cs.dev_id - 1] = cs;

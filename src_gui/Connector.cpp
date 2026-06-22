@@ -7,13 +7,15 @@
 #include <QComboBox>
 #include <QCheckBox>
 #include <QDebug>
+#include <QRadioButton>
+#include <QButtonGroup>
 
 Connector::Connector(QWidget *parent, std::vector<std::string> models)
     : QFrame(parent)
 {
     auto *root = new QVBoxLayout(this);
     auto *content = new QWidget();
-    content->setFixedHeight(30);
+    content->setFixedHeight(60);
     // content->setStyleSheet("background: #fff;");
     root->addWidget(content);
 
@@ -21,20 +23,45 @@ Connector::Connector(QWidget *parent, std::vector<std::string> models)
     model_box->addItem("- Select a model -");
     model_box->setItemData(0, 0, Qt::UserRole - 1);
     model_box->setCurrentIndex(0);
-    for (auto name : models) {
+    for (auto name : models)
+    {
         model_box->addItem(QString::fromUtf8(std::string(name).c_str()));
     }
 
-    auto *background = new QHBoxLayout(content);
+    auto *background = new QVBoxLayout(content);
+    auto *connectRoll = new QHBoxLayout();
     background->setContentsMargins(0, 0, 0, 0);
     connectBtn = new QPushButton("Connect");
-    background->addWidget(model_box);
-    background->addWidget(connectBtn);
+    connectRoll->addWidget(model_box);
+    connectRoll->addWidget(connectBtn);
     connect(connectBtn, &QPushButton::clicked, this, &Connector::onConnect);
     connect(model_box, &QComboBox::currentTextChanged, this, &Connector::onModelChange);
 
+    auto *optionRoll = new QHBoxLayout();
+    leftBtn = new QRadioButton("Left", this);
+    rightBtn = new QRadioButton("Right", this);
+    optionRoll->addWidget(leftBtn);
+    optionRoll->addWidget(rightBtn);
+    leftBtn->setChecked(true);
+
+    background->addLayout(connectRoll);
+    background->addLayout(optionRoll);
+
+    optionGroup = new QButtonGroup(this);
+    optionGroup->addButton(leftBtn, 0); // id = 0
+    optionGroup->addButton(rightBtn, 1);
+
+    connect(optionGroup, QOverload<int>::of(&QButtonGroup::idClicked),
+            this, [=](int id)
+            {
+                 switch (id) {
+                    case 0: is_left = 1; break;
+                    case 1: is_left = 0; break;
+                } });
+
     deviceState = new QCheckBox(QString("no device connect"));
-    connect(deviceState, &QCheckBox::clicked, this, [=]{emit stateCheck(deviceState->checkState());});
+    connect(deviceState, &QCheckBox::clicked, this, [=]
+            { emit stateCheck(deviceState->checkState()); });
     root->addWidget(deviceState);
 }
 
@@ -43,14 +70,18 @@ void Connector::onConnect()
     model_box->setEnabled(false);
     deviceState->setEnabled(false);
     connectBtn->setEnabled(false);
+    leftBtn->setEnabled(false);
+    rightBtn->setEnabled(false);
     emit deviceConnect(connectBtn->text());
 }
 
-void Connector::onModelChange() {
+void Connector::onModelChange()
+{
     emit modelChange(QString(model_box->currentText()));
 }
 
-void Connector::onChange(bool on) {
+void Connector::onChange(bool on)
+{
     connectBtn->blockSignals(true);
     connectBtn->setChecked(on);
     connectBtn->setText(on ? "Disconnect" : "Connect");
@@ -58,4 +89,11 @@ void Connector::onChange(bool on) {
     deviceState->setEnabled(!on);
     connectBtn->blockSignals(false);
     connectBtn->setEnabled(true);
+    leftBtn->setEnabled(!on);
+    rightBtn->setEnabled(!on);
+}
+
+int Connector::getHandSide()
+{
+    return is_left;
 }

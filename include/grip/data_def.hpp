@@ -8,6 +8,8 @@
 
 using JointTels = grip_joint_sensor_t;
 using TipTels = grip_tip_sensor_t;
+using BusData = grip_bus_info_t;
+using RealtimeData = grip_realtime_data_t;
 using CmdStruct = grip_command_t;
 
 struct DevState

@@ -98,6 +98,9 @@ void MotorPanel::removeAll()
             delete item->widget();
         }
     }
+    names.clear();
+    single_checkbox.clear();
+    mode_selecters.clear();
 }
 
 void MotorPanel::applyModeChange(QString name, QString mode)
