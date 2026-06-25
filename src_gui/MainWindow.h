@@ -9,6 +9,7 @@
 #include "OgreWidget.h"
 #include "MotorPanel.hpp"
 #include "PlotPanel.hpp"
+#include "TactileVisual.hpp"
 #include "grip/data_def.hpp"
 
 class SidePanel;
@@ -60,6 +61,7 @@ private:
     void openUrdfLoaderTab();
     void openMotorControlTab();
     void openDiagram();
+    void openTactileImage();
     void onDeviceConnect();
     void onDeviceDisconnect();
     void openActionPanelTab();
@@ -90,6 +92,7 @@ private:
     MotorPanel* motor_;
     ActionPanel* actionFlow_;
     Connector* connect_;
+    TactileVisual* tactile_;
     CameraWidget* camera_;
     // PlotPanel* plot_;
     std::string config_path_;

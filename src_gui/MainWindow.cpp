@@ -52,9 +52,11 @@ void MainWindow::buildUI()
     motor_ = new MotorPanel();
     camera_ = new CameraWidget();
     actionFlow_ = new ActionPanel();
+    tactile_ = new TactileVisual();
+    tactile_->setPalmImage(QPixmap("./images/white.jpeg"));
 
-    upperTabs = new DraggableTabWidget();
-    lowerTabs = new DraggableTabWidget();
+    upperTabs = new DraggableTabWidget(this);
+    lowerTabs = new DraggableTabWidget(this);
 
     upperTabs->setTabsClosable(true);
     lowerTabs->setTabsClosable(true);
@@ -136,11 +138,12 @@ void MainWindow::buildUI()
     auto *actHandDetect = tabsMenu->addAction("Hand Detect");
     auto *actJoint = tabsMenu->addAction("Joint Modes");
     auto *actLog = tabsMenu->addAction("Log");
+    auto *tacView = tabsMenu->addAction("Tactile");
     // auto* actInfo = tabsMenu->addAction("Robot Info");
-    auto *settingsMenu = menuBar()->addMenu("&Settings");
-    auto *TextMenu = settingsMenu->addMenu("Window Zoom");
-    auto *actShrink = TextMenu->addAction("Zoom Out -");
-    auto *actEnlarge = TextMenu->addAction("Zoom In +");
+    // auto *settingsMenu = menuBar()->addMenu("&Settings");
+    // auto *TextMenu = settingsMenu->addMenu("Window Zoom");
+    // auto *actShrink = TextMenu->addAction("Zoom Out -");
+    // auto *actEnlarge = TextMenu->addAction("Zoom In +");
 
     connect(actHandDetect, &QAction::triggered, this, &MainWindow::openCameraTab);
     connect(actConnect, &QAction::triggered, this, &MainWindow::openConnectorTab);
@@ -149,6 +152,7 @@ void MainWindow::buildUI()
     connect(actJoint, &QAction::triggered, this, &MainWindow::openMotorControlTab);
     connect(actActionFlow, &QAction::triggered, this, &MainWindow::openActionPanelTab);
     connect(actDiagram, &QAction::triggered, this, &MainWindow::openDiagram);
+    connect(tacView, &QAction::triggered, this, &MainWindow::openTactileImage);
 
     // log_->append("Current control mode: " + side_->modeText());
 }
@@ -392,6 +396,7 @@ void MainWindow::readJointAngles()
     HandStateMap state = ctrl_->snapshot();
     std::unordered_map<std::string, float> joints;
     std::unordered_map<std::string, float> joint_target;
+    TactileVisual::HandPressureData tips;
     for (auto &[name, joint_group] : state)
     {
         for (auto &[joint_name, data] : joint_group.joints)
@@ -412,10 +417,23 @@ void MainWindow::readJointAngles()
                     joint_target.emplace(name, j.second);
             }
         }
+        QVector<float> pressure;
+        pressure.append((float)joint_group.tip_sensor.tip_tactile / 100.0f);
+        if (name == "THUMB")
+            tips.thumb.values = pressure;
+        else if (name == "INDEX_FINGER")
+            tips.index.values = pressure;
+        else if (name == "MIDDLE_FINGER")
+            tips.middle.values = pressure;
+        else if (name == "RING_FINGER")
+            tips.ring.values = pressure;
+        else if (name == "PINKY")
+            tips.pinky.values = pressure;
     }
     for (auto &[key, value] : joint_target)
         ogre_->setJointPosition("cmd", key, value);
     side_->updateJoints(joints);
+    tactile_->setHandPressureData(tips);
 }
 
 void MainWindow::onConnectorModelChange(const QString &model_name)
@@ -483,6 +501,11 @@ void MainWindow::openDiagram()
 
     plot->setUpdateTimer(timer_);
     timer_->start(20);
+}
+
+void MainWindow::openTactileImage()
+{
+    upperTabs->addTab(tactile_, "Tactile");
 }
 
 std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value, bool is_hall)

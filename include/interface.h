@@ -124,7 +124,7 @@ extern "C"
 
     typedef struct
     {
-        const char *device;
+        char *device;
         int16_t tip_tactile;
         int16_t tip_proximity_sense;
         uint32_t timestamp_ms;

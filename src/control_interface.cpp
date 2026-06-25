@@ -122,7 +122,10 @@ namespace grip
             BusData bus_data;
             grip_status_t st = grip_receive_step(ctrl, realtime.data(), data.data(), tip_data, &bus_data, num_joint);
             if (st != GRIP_OK)
+            {
                 std::cout << grip_get_last_error(ctrl);
+                continue;
+            }
 
             for (int j = 0; j < num_joint + 1; j++)
             {
@@ -132,23 +135,13 @@ namespace grip
 
                 DevState joint_state;
                 joint_state.position = data[id].joint_position;
-                // joint_state.velocity = data[id].joint_speed;
                 joint_state.velocity = 0;
                 joint_state.effort = 0;
-                // std::cout << id << " " << data[id].joint_position << "\n";
 
                 DevState motor_state;
                 motor_state.position = data[id].motor_position;
-                // motor_state.velocity = data[id].motor_speed;
                 motor_state.velocity = 0;
-                // motor_state.effort = data[id].motor_torque;
                 motor_state.effort = 0;
-
-                // TipTels ts;
-                // ts.device = tip_data[id].device;
-                // ts.timestamp_ms = tip_data[id].timestamp_ms;
-                // ts.tip_tactile = tip_data[id].tip_tactile;
-                // ts.tip_proximity_sense = tip_data[id].tip_proximity_sense;
 
                 for (const auto &[key, val] : state_)
                 {
@@ -156,17 +149,31 @@ namespace grip
                         val.joints.find(joint_names_[id]) != val.joints.end())
                     {
                         std::lock_guard<std::mutex> lk(mtx_);
-                        // state_[key].control_mode[joint_names_[id]] = realtime[id].control_mode;
                         state_[key].joints[joint_names_[id]] = joint_state;
                         state_[key].motors[joint_names_[id]] = motor_state;
-                        // state_[key].tip_sensor = ts;
                         break;
                     }
                 }
             }
-            // free(realtime);
-            // free(data);
-            // free(tip_data);
+            for (size_t i = 0; i < 5; i++)
+            {
+                TipTels ts;
+                ts.device = tip_data[i].device;
+                ts.timestamp_ms = tip_data[i].timestamp_ms;
+                ts.tip_tactile = tip_data[i].tip_tactile;
+                ts.tip_proximity_sense = tip_data[i].tip_proximity_sense;
+
+                {
+                    std::lock_guard<std::mutex> lk(mtx_);
+                    std::string str;
+                    str = tip_data[i].device ? tip_data[i].device : "";
+                    auto buf = state_.find(str);
+                    if (buf == state_.end())
+                        continue;
+                    else
+                        buf->second.tip_sensor = ts;
+                }
+            }
         }
     }
 

@@ -97,6 +97,29 @@
                 "10"
             ],
             "name": "numbers"
+        },
+        {
+            "actions": [
+                "thumb_mcp",
+                "zero",
+                "thumb_rot",
+                "zero",
+                "index_mcp",
+                "zero",
+                "middle_mcp",
+                "zero",
+                "ring_mcp",
+                "zero",
+                "pinky_mcp",
+                "zero",
+                "pitch_pos",
+                "pitch_nag",
+                "zero",
+                "yaw_pos",
+                "yaw_nag",
+                "zero"
+            ],
+            "name": "all_dof"
         }
     ],
     "actions": [
@@ -372,6 +395,162 @@
                 0
             ],
             "name": "9"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                6000,
+                0,
+                0,
+                0,
+                0
+            ],
+            "name": "thumb_mcp"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                8000,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "name": "thumb_rot"
+        },
+        {
+            "joints": [
+                9000,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "name": "index_mcp"
+        },
+        {
+            "joints": [
+                0,
+                9000,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0
+            ],
+            "name": "middle_mcp"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                9000,
+                0,
+                0,
+                0
+            ],
+            "name": "ring_mcp"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                9000,
+                0,
+                0
+            ],
+            "name": "pinky_mcp"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -2000,
+                0
+            ],
+            "name": "pitch_nag"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2000
+            ],
+            "name": "yaw_pos"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -2000
+            ],
+            "name": "yaw_nag"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                2000,
+                0
+            ],
+            "name": "pitch_pos"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                789
+            ],
+            "name": "reset_zero"
+        },
+        {
+            "joints": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                726,
+                0
+            ],
+            "name": "pitch_reset_zero"
         }
     ]
 }

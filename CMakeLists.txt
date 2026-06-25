@@ -109,6 +109,7 @@ if (BUILD_GUI)
     src_gui/ActionPanel.cpp
     src_gui/DiagramWidget.cpp
     src_gui/PlotPanel.cpp
+    src_gui/TactileVisual.cpp
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})
