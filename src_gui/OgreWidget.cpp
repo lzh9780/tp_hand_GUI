@@ -207,10 +207,11 @@ void OgreWidget::selectAndInitRenderSystem()
 #else
     // Linux paths fallback if OGRE_PLUGIN_DIR env isn’t set
     plugins = {
-        "RenderSystem_GL3Plus", "RenderSystem_GL", "Plugin_RTSS",
+        // "RenderSystem_GL3Plus", "RenderSystem_GL", "Plugin_RTSS",
         "/usr/lib/x86_64-linux-gnu/OGRE/RenderSystem_GL3Plus",
-        "/usr/lib/x86_64-linux-gnu/OGRE/RenderSystem_GL",
-        "/usr/lib/x86_64-linux-gnu/OGRE/Plugin_RTSS"};
+        // "/usr/lib/x86_64-linux-gnu/OGRE/RenderSystem_GL",
+        // "/usr/lib/x86_64-linux-gnu/OGRE/Plugin_RTSS"};
+    };
 #endif
     bool any = false;
     for (auto &p : plugins)

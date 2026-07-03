@@ -277,14 +277,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/base_link.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/base_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/base_link.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -298,14 +298,14 @@
     <visual>
       <origin xyz="0.029733 -0.041922 -0.254391" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0.029733 -0.041922 -0.254391" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -319,14 +319,14 @@
     <visual>
       <origin xyz="-0.054885 -0.009336 -0.34846" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/pinky_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/pinky_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.054885 -0.009336 -0.34846" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/pinky_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/pinky_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -340,14 +340,14 @@
     <visual>
       <origin xyz="-0.038485 -0.010621 -0.357537" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/ring_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/ring_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.038485 -0.010621 -0.357537" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/ring_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/ring_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -361,14 +361,14 @@
     <visual>
       <origin xyz="-0.022085 -0.011034 -0.362344" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/middle_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/middle_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.022085 -0.011034 -0.362344" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/middle_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/middle_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -382,14 +382,14 @@
     <visual>
       <origin xyz="-0.005685 -0.012621 -0.356537" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/index_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/index_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.005685 -0.012621 -0.356537" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/index_tip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/index_tip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -403,14 +403,14 @@
     <visual>
       <origin xyz="-0.008422 0.01446 -0.2128" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/hand_shell.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/hand_shell.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.008422 0.01446 -0.2128" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/hand_shell.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/hand_shell.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -424,14 +424,14 @@
     <visual>
       <origin xyz="-0.024468 -0.011593 -0.190185" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/yaw_pitch_rotor.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/yaw_pitch_rotor.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.024468 -0.011593 -0.190185" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/yaw_pitch_rotor.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/yaw_pitch_rotor.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -445,14 +445,14 @@
     <visual>
       <origin xyz="-0.043018 0.0006 -0.190583" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/hand_skeleton.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/hand_skeleton.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.043018 0.0006 -0.190583" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/hand_skeleton.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/hand_skeleton.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -466,14 +466,14 @@
     <visual>
       <origin xyz="-0.010952 -0.002404 -0.246361" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_root.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_root.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.010952 -0.002404 -0.246361" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_root.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_root.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -487,14 +487,14 @@
     <visual>
       <origin xyz="-0.002756 -0.014432 -0.241105" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.002756 -0.014432 -0.241105" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -508,14 +508,14 @@
     <visual>
       <origin xyz="0.024768 -0.037589 -0.252541" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0.024768 -0.037589 -0.252541" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/thumb_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/thumb_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -529,14 +529,14 @@
     <visual>
       <origin xyz="-0.0546 0.003 -0.2953" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/pinky_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/pinky_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.0546 0.003 -0.2953" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/pinky_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/pinky_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -550,14 +550,14 @@
     <visual>
       <origin xyz="-0.0382 0.005 -0.2973" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/ring_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/ring_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.0382 0.005 -0.2973" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/ring_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/ring_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -571,14 +571,14 @@
     <visual>
       <origin xyz="-0.0218 0.005 -0.3003" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/middle_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/middle_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.0218 0.005 -0.3003" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/middle_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/middle_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -592,14 +592,14 @@
     <visual>
       <origin xyz="-0.0054 0.003 -0.2963" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/index_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/index_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.0054 0.003 -0.2963" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/index_pip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/index_pip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -613,14 +613,14 @@
     <visual>
       <origin xyz="-0.055199 -0.001798 -0.3258" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/pinky_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/pinky_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.055199 -0.001798 -0.3258" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/pinky_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/pinky_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -634,14 +634,14 @@
     <visual>
       <origin xyz="-0.038799 -0.001521 -0.335458" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/ring_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/ring_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.038799 -0.001521 -0.335458" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/ring_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/ring_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -655,14 +655,14 @@
     <visual>
       <origin xyz="-0.022399 -0.001934 -0.340265" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/middle_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/middle_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.022399 -0.001934 -0.340265" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/middle_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/middle_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -676,14 +676,14 @@
     <visual>
       <origin xyz="-0.005999 -0.003521 -0.334458" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/index_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/index_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.005999 -0.003521 -0.334458" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/index_dip.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/index_dip.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>
@@ -697,14 +697,14 @@
     <visual>
       <origin xyz="-0.024468 0.009597 -0.007179" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/forearm_shell.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/forearm_shell.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.024468 0.009597 -0.007179" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="./meshes/forearm_shell.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="./meshes/forearm_shell.fbx" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
   </link>

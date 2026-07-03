@@ -4,6 +4,7 @@
 #include <QStringList>
 #include <QJsonArray>
 #include "grip/settings.hpp"
+#include "LedIndicator.hpp"
 
 class QSlider;
 class QLabel;
@@ -48,6 +49,7 @@ public:
     void modeChange(const QString& mode);
     void applyCameraData(std::unordered_map<std::string, float>& data, grip::HandSettings *hand_cfg);
     void updateJoints(const std::unordered_map<std::string, float> state);
+    void updateStates(const std::unordered_map<std::string, int> state);
     void loadActions();
     // void loadSliders(const QStringList &jointNames);
     void loadHandControllor(grip::HandSettings *hand_cfg);
@@ -126,6 +128,7 @@ private:
     QList<QLineEdit*>  valueLabels_{};  // number next to each slider
     QList<QLabel*>  currValueLabels_;
     QList<QLabel*>  nameLabels_;
+    QList<LedIndicator*> leds_;
     QList<std::pair<QLabel*, QLabel*>> valueLbls;
     QStringList control_modes;
 

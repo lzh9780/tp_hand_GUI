@@ -5,6 +5,7 @@ option(BUILD_GUI "Build Qt GUI target" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # set(CMAKE_AUTOMOC ON)
 
@@ -37,37 +38,35 @@ find_package(pybind11 CONFIG REQUIRED)
 
 if (BUILD_GUI)
   set(QT_REQUIRED_COMPONENTS Widgets)
-  find_package(Qt6 COMPONENTS ${QT_REQUIRED_COMPONENTS} QUIET)
-  if (Qt6_FOUND)
-    find_package(Qt6 COMPONENTS Widgets Charts REQUIRED)
-    set(QT_PACKAGE Qt6)
-  else()
-    find_package(Qt5 COMPONENTS ${QT_REQUIRED_COMPONENTS} REQUIRED)
-    find_package(Qt5Charts REQUIRED)
-    set(QT_PACKAGE Qt5)
-  endif()
+  # find_package(Qt6 COMPONENTS ${QT_REQUIRED_COMPONENTS} QUIET)
+  # if (Qt6_FOUND)
+  #   find_package(Qt6 COMPONENTS Widgets Charts REQUIRED)
+  #   set(QT_PACKAGE Qt6)
+  # else()
+  find_package(Qt5 COMPONENTS ${QT_REQUIRED_COMPONENTS} REQUIRED)
+  find_package(Qt5Charts REQUIRED)
+  set(QT_PACKAGE Qt5)
+  # endif()
 endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/vendor)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/HandDriver)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/HandDriver/include/json)
+
+add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/HandDriver/include)
+set(HANDDRIVER_LIB_DIR "${CMAKE_SOURCE_DIR}/third_party/HandDriver/lib")
+
+find_library(HANDDRIVER_JSONCPP_LIBRARY
+  NAMES jsoncpp
+  PATHS "${HANDDRIVER_LIB_DIR}"
+  NO_DEFAULT_PATH
+  REQUIRED
+)
 
 # Vendor library
-# if (WIN32)
-#   set(ZLG_DLL "${CMAKE_SOURCE_DIR}/vendor/usbcanfd.dll")
-#   set(ZLG_LIB "${CMAKE_SOURCE_DIR}/vendor/usbcanfd.lib")
-#   add_library(zlgcanfd SHARED IMPORTED GLOBAL)
-#   set_target_properties(zlgcanfd PROPERTIES
-#     IMPORTED_LOCATION "${ZLG_DLL}"
-#     IMPORTED_IMPLIB   "${ZLG_LIB}")
-# elseif(APPLE)
-#   set(ZLG_DYLIB "${CMAKE_SOURCE_DIR}/vendor/libusbcanfd.dylib")
-#   add_library(zlgcanfd SHARED IMPORTED GLOBAL)
-#   set_target_properties(zlgcanfd PROPERTIES IMPORTED_LOCATION "${ZLG_DYLIB}")
-# else()
 set(TPHAND_SO "${CMAKE_SOURCE_DIR}/lib/libtphandapi.so")
 add_library(tphandapi SHARED IMPORTED GLOBAL)
 set_target_properties(tphandapi PROPERTIES IMPORTED_LOCATION "${TPHAND_SO}")
-# endif()
 
 # Core
 add_library(grip_core STATIC
@@ -79,15 +78,15 @@ set_target_properties(grip_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(grip_core PRIVATE include)
 
 # CLI binary (non-GUI)
-add_executable(grip_cli src/main.cpp)
-target_link_libraries(grip_cli PRIVATE grip_core)
+# add_executable(grip_cli src/main.cpp)
+# target_link_libraries(grip_cli PRIVATE grip_core)
 
-if (APPLE)
-  set(_rpath "@loader_path")
-else()
-  set(_rpath "$ORIGIN")
-endif()
-set_target_properties(grip_cli PROPERTIES BUILD_RPATH "${_rpath}" INSTALL_RPATH "${_rpath}")
+# if (APPLE)
+#   set(_rpath "@loader_path")
+# else()
+set(_rpath "$ORIGIN")
+# endif()
+# set_target_properties(grip_cli PROPERTIES BUILD_RPATH "${_rpath}" INSTALL_RPATH "${_rpath}")
 
 # GUI binary (optional; uses same control threads)
 if (BUILD_GUI)
@@ -110,6 +109,9 @@ if (BUILD_GUI)
     src_gui/DiagramWidget.cpp
     src_gui/PlotPanel.cpp
     src_gui/TactileVisual.cpp
+    src_gui/LedIndicator.cpp
+    src_gui/TeleOperation.cpp
+    third_party/HandDriver/UDEServer.cxx
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})
@@ -125,14 +127,18 @@ if (BUILD_GUI)
     assimp::assimp
     tinyxml2
     ${QT_PACKAGE}::Charts
+    ${HANDDRIVER_JSONCPP_LIBRARY}
   )
   target_include_directories(grip_gui PRIVATE include)
   
   # target_link_libraries(grip_gui PRIVATE grip_core ${QT_PACKAGE}::Widgets)
-  set_target_properties(grip_gui PROPERTIES BUILD_RPATH "${_rpath}" INSTALL_RPATH "${_rpath}")
+  set_target_properties(grip_gui PROPERTIES
+    BUILD_RPATH "${_rpath};${HANDDRIVER_LIB_DIR}"
+    INSTALL_RPATH "${_rpath};${HANDDRIVER_LIB_DIR}"
+  )
 endif()
 
-install(TARGETS grip_cli RUNTIME DESTINATION bin)
+# install(TARGETS grip_cli RUNTIME DESTINATION bin)
 if (BUILD_GUI)
   install(TARGETS grip_gui RUNTIME DESTINATION bin)
 endif()

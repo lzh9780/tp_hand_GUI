@@ -396,6 +396,7 @@ void MainWindow::readJointAngles()
     HandStateMap state = ctrl_->snapshot();
     std::unordered_map<std::string, float> joints;
     std::unordered_map<std::string, float> joint_target;
+    std::unordered_map<std::string, int> controlStates;
     TactileVisual::HandPressureData tips;
     for (auto &[name, joint_group] : state)
     {
@@ -429,10 +430,15 @@ void MainWindow::readJointAngles()
             tips.ring.values = pressure;
         else if (name == "PINKY")
             tips.pinky.values = pressure;
+        for (auto &[joint_name, data] : joint_group.control_mode)
+        {
+            controlStates.emplace(joint_name, data);
+        }
     }
     for (auto &[key, value] : joint_target)
         ogre_->setJointPosition("cmd", key, value);
     side_->updateJoints(joints);
+    side_->updateStates(controlStates);
     tactile_->setHandPressureData(tips);
 }
 
@@ -573,6 +579,8 @@ std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string join
         if (j.id <= 0)
             continue;
         if (idx >= j.joint_feedback_map.size())
+            continue;
+        if (j.name != joint_name)
             continue;
         result.emplace(j.name, (j.joint_feedback_map[idx] == 0 ? 0 : j.joint_feedback_map[idx]) * value);
     }

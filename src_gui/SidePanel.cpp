@@ -210,12 +210,18 @@ void SidePanel::loadSliderModule(QString name, float min, float max)
     hl->setContentsMargins(6, 2, 6, 2);
     auto *nameLbl = new QLabel(name);
     nameLabels_.append(nameLbl);
+    auto *led = new LedIndicator();
+    led->setFixedSize(20, 20);
+    leds_.append(led);
     auto *valEnter = new QLineEdit("0.00");
+    valEnter->setFixedWidth(75);
+    valEnter->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     valueLabels_.append(valEnter);
     auto *currValueLbl = new QLabel("  (0.00)");
     currValueLabels_.append(currValueLbl);
     hl->addWidget(nameLbl);
     hl->addStretch(1);
+    hl->addWidget(led);
     hl->addWidget(valEnter);
     hl->addWidget(currValueLbl);
     sliderVBox_->addLayout(hl);
@@ -833,6 +839,23 @@ void SidePanel::updateJoints(const std::unordered_map<std::string, float> state)
     }
 }
 
+void SidePanel::updateStates(const std::unordered_map<std::string, int> state)
+{
+    for (auto &[name, val]: state)
+    {
+        int idx = 0;
+        for (auto sName : nameLabels_)
+        {
+            if (sName->text().toUtf8().constData() == name)
+            {
+                leds_[idx]->setGreen((val & 0x01) == 1);
+                continue;
+            }
+            ++idx;
+        }
+    }
+}
+
 void SidePanel::onControlChanged()
 {
     auto curr_mode = mode_box->currentText();
@@ -901,6 +924,7 @@ void SidePanel::removeAll()
     currValueLabels_.clear();
     nameLabels_.clear();
     valueLbls.clear();
+    leds_.clear();
 
     QLayoutItem *item;
     while ((item = sliderVBox_->takeAt(0)) != nullptr)

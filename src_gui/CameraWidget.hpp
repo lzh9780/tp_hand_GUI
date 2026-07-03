@@ -8,7 +8,9 @@ class QImage;
 class QLabel;
 class QResizeEvent;
 class PyCamWorker;
+class TeleOperation;
 class QThread;
+class QComboBox;
 
 class CameraWidget : public QFrame
 {
@@ -36,12 +38,17 @@ private slots:
     void dataProcess(const QVector<double> &joints);
 
 private:
+    void stopThread();
     void updatePixmap();
+    void startCamera();
+    void startTeleopration();
 
 private:
+    QComboBox* selectBox = nullptr;
     QPushButton *switchBtn;
     QLabel *img_label_{nullptr};
     PyCamWorker* worker_ = nullptr;
+    TeleOperation* UDEworker_ = nullptr;
     QThread* workerThread_ = nullptr;
 
     QImage last_frame_;

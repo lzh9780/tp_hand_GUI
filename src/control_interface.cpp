@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cmath>
 #include <stdexcept>
+#include <cstring>
 
 namespace grip
 {
@@ -114,24 +115,21 @@ namespace grip
     {
         while (!shutting_down_)
         {
-            std::vector<RealtimeData> realtime(num_joint + 1);
-            std::vector<JointTels> data(num_joint + 1);
-            // RealtimeData *realtime = (RealtimeData *)malloc((num_joint + 1) * sizeof(RealtimeData));
-            // JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
+            RealtimeData *realtime = (RealtimeData *)malloc((num_joint + 1) * sizeof(RealtimeData));
+            JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
             TipTels tip_data[5];
             BusData bus_data;
-            grip_status_t st = grip_receive_step(ctrl, realtime.data(), data.data(), tip_data, &bus_data, num_joint);
+            grip_status_t st = grip_receive_step(ctrl, realtime, data, tip_data, &bus_data, num_joint);
             if (st != GRIP_OK)
             {
                 std::cout << grip_get_last_error(ctrl);
                 continue;
             }
 
-            for (int j = 0; j < num_joint + 1; j++)
+            for (int j = 1; j < num_joint + 1; j++)
             {
                 grip_device_t id = (grip_device_t)data[j].dev_id;
-                if (id == 0 || id != j)
-                    continue;
+                grip_device_t realtime_id = (grip_device_t)realtime[j].dev_id;
 
                 DevState joint_state;
                 joint_state.position = data[id].joint_position;
@@ -149,8 +147,15 @@ namespace grip
                         val.joints.find(joint_names_[id]) != val.joints.end())
                     {
                         std::lock_guard<std::mutex> lk(mtx_);
-                        state_[key].joints[joint_names_[id]] = joint_state;
-                        state_[key].motors[joint_names_[id]] = motor_state;
+                        if (id == j)
+                        {
+                            state_[key].joints[joint_names_[id]] = joint_state;
+                            state_[key].motors[joint_names_[id]] = motor_state;
+                        }
+                        if (realtime_id == j)
+                        {
+                            state_[key].control_mode[joint_names_[id]] = (grip_control_mode_t)realtime[j].control_mode;
+                        }
                         break;
                     }
                 }
@@ -174,6 +179,8 @@ namespace grip
                         buf->second.tip_sensor = ts;
                 }
             }
+            free(realtime);
+            free(data);
         }
     }
 

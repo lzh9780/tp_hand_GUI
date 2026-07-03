@@ -1,4 +1,5 @@
 #include "CameraWidget.hpp"
+#include "TeleOperation.hpp"
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -9,6 +10,7 @@
 #include <QResizeEvent>
 #include <QThread>
 #include <QStatusBar>
+#include <QComboBox>
 #include "PyCamWorker.h"
 
 static const std::vector<std::string> full_joints_list{
@@ -43,7 +45,11 @@ CameraWidget::CameraWidget(QWidget *parent)
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
 
-    switchBtn = new QPushButton("Start Camera");
+    selectBox = new QComboBox();
+    selectBox->addItem("Camera");
+    selectBox->addItem("UDE Glove");
+    selectBox->setCurrentIndex(0);
+    switchBtn = new QPushButton("Start");
     auto calibBtn = new QPushButton("Calibrate");
     img_label_ = new QLabel();
 
@@ -52,20 +58,34 @@ CameraWidget::CameraWidget(QWidget *parent)
     img_label_->setAlignment(Qt::AlignCenter);
 
     auto hb = new QHBoxLayout();
+    hb->addWidget(selectBox);
     hb->addWidget(switchBtn);
     hb->addWidget(calibBtn);
     root->addLayout(hb);
     root->addWidget(img_label_, 1);
     connect(switchBtn, &QPushButton::clicked, this, &CameraWidget::onSwitch);
     connect(calibBtn, &QPushButton::clicked, this, &CameraWidget::record);
+}
 
-    // Worker thread
+void CameraWidget::stopThread()
+{
+    if (workerThread_)
+    {
+        while (workerThread_->isRunning())
+        {
+            workerThread_->quit();
+            if (!workerThread_->wait(3000)) { 
+                continue;    
+            }
+        }
+    }
+}
+
+void CameraWidget::startCamera()
+{
     workerThread_ = new QThread(this);
     worker_ = new PyCamWorker();
     worker_->moveToThread(workerThread_);
-
-    // Start worker when thread starts
-    connect(this, &QObject::destroyed, workerThread_, &QThread::quit);
 
     // Display frames
     connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage &img)
@@ -78,6 +98,25 @@ CameraWidget::CameraWidget(QWidget *parent)
             { emit error(e); });
 
     connect(worker_, &PyCamWorker::runningChanged, this, [this](bool r)
+            { onChange(r); });
+
+    workerThread_->start();
+}
+
+void CameraWidget::startTeleopration()
+{
+    workerThread_ = new QThread(this);
+    UDEworker_ = new TeleOperation();
+    UDEworker_->moveToThread(workerThread_);
+
+    // Display frames
+    connect(UDEworker_, &TeleOperation::newJoint, this, &CameraWidget::dataProcess);
+    connect(UDEworker_, &TeleOperation::status, this, [this](const QString &s)
+            { emit status(s); });
+    connect(UDEworker_, &TeleOperation::error, this, [this](const QString &e)
+            { emit error(e); });
+
+    connect(UDEworker_, &TeleOperation::runningChanged, this, [this](bool r)
             { onChange(r); });
 
     workerThread_->start();
@@ -103,7 +142,7 @@ void CameraWidget::onChange(bool on)
 {
     switchBtn->blockSignals(true);
     switchBtn->setChecked(on);
-    switchBtn->setText(on ? "Stop Camera" : "Start Camera");
+    switchBtn->setText(on ? "Stop" : "Start");
     switchBtn->blockSignals(false);
     switchBtn->setEnabled(true);
 }
@@ -111,10 +150,27 @@ void CameraWidget::onChange(bool on)
 void CameraWidget::onControlSwitch(const QString &msg)
 {
     emit controlSwitch(msg);
-    if (msg == "Start Camera")
-        QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
+    if (msg == "Start")
+    {
+        if (selectBox->currentText() == "Camera")
+        {
+            startCamera();
+            QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
+        }
+        else if (selectBox->currentText() == "UDE Glove")
+        {
+            startTeleopration();
+            QMetaObject::invokeMethod(UDEworker_, "start", Qt::QueuedConnection);
+        }
+    }
     else
-        QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
+    {
+        if (selectBox->currentText() == "Camera")
+            QMetaObject::invokeMethod(worker_, "stop", Qt::QueuedConnection);
+        else if (selectBox->currentText() == "UDE Glove")
+            QMetaObject::invokeMethod(UDEworker_, "stop", Qt::QueuedConnection);
+        stopAll();
+    }
 }
 
 void CameraWidget::setFrame(const QImage &img)
@@ -170,13 +226,22 @@ std::vector<std::string> CameraWidget::getFullList()
 void CameraWidget::stopAll()
 {
     if (worker_)
-    {
         QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
-        worker_->deleteLater();
-    }
-    if (workerThread_)
+    if (UDEworker_)
+        QMetaObject::invokeMethod(UDEworker_, "stop", Qt::BlockingQueuedConnection);
+    if (workerThread_ && workerThread_->isRunning())
+        stopThread();
+    
+    if (worker_)
     {
-        workerThread_->quit();
-        workerThread_->wait();
+        worker_->deleteLater();
+        worker_ = nullptr;
     }
+    if (UDEworker_)
+    {
+        UDEworker_->deleteLater();
+        UDEworker_ = nullptr;
+    }
+    delete(workerThread_);
+    workerThread_ = nullptr;
 }

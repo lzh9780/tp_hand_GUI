@@ -45,3 +45,18 @@ cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -D BUILD_GUI=ON
 cmake --build build --config Release
 ./build/grip_gui ./config.yaml
 ```
+
+# CanFD add permanent permissions
+```bash
+sudo vim /etc/udev/rules.d/50-usbcanfd.rules
+```
+
+then add below content
+
+```txt
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="04cc", ATTRS{idProduct}=="1240", GROUP="users", MODE="0666"
+```
+
+```bash
+udevadm control --reload
+```
