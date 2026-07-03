@@ -11,7 +11,8 @@
 #include <QThread>
 #include <QStatusBar>
 #include <QComboBox>
-#include "PyCamWorker.h"
+#include <QDebug>
+// #include "PyCamWorker.h"
 
 static const std::vector<std::string> full_joints_list{
     "thumb_cmc_pull",
@@ -74,52 +75,33 @@ void CameraWidget::stopThread()
         while (workerThread_->isRunning())
         {
             workerThread_->quit();
-            if (!workerThread_->wait(3000)) { 
-                continue;    
-            }
+            if (!workerThread_->wait(3000))
+                continue;
         }
     }
 }
 
-void CameraWidget::startCamera()
+void CameraWidget::start()
 {
     workerThread_ = new QThread(this);
-    worker_ = new PyCamWorker();
-    worker_->moveToThread(workerThread_);
+    // control = new TeleopBase();
+    control->moveToThread(workerThread_);
 
     // Display frames
-    connect(worker_, &PyCamWorker::newFrame, this, [this](const QImage &img)
+    connect(control, &TeleopBase::newJoint, this, &CameraWidget::dataProcess);
+    connect(control, &TeleopBase::status, this, [this](const QString &s)
+            { emit status(s); });
+    connect(control, &TeleopBase::error, this, [this](const QString &e)
+            { emit error(e); });
+
+    connect(control, &TeleopBase::runningChanged, this, [this](bool r)
+            { onChange(r); });
+
+    connect(control, &TeleopBase::newFrame, this, [this](const QImage &img)
             { setFrame(img); });
 
-    connect(worker_, &PyCamWorker::newJoint, this, &CameraWidget::dataProcess);
-    connect(worker_, &PyCamWorker::status, this, [this](const QString &s)
-            { emit status(s); });
-    connect(worker_, &PyCamWorker::error, this, [this](const QString &e)
-            { emit error(e); });
-
-    connect(worker_, &PyCamWorker::runningChanged, this, [this](bool r)
-            { onChange(r); });
-
     workerThread_->start();
-}
-
-void CameraWidget::startTeleopration()
-{
-    workerThread_ = new QThread(this);
-    UDEworker_ = new TeleOperation();
-    UDEworker_->moveToThread(workerThread_);
-
-    // Display frames
-    connect(UDEworker_, &TeleOperation::newJoint, this, &CameraWidget::dataProcess);
-    connect(UDEworker_, &TeleOperation::status, this, [this](const QString &s)
-            { emit status(s); });
-    connect(UDEworker_, &TeleOperation::error, this, [this](const QString &e)
-            { emit error(e); });
-
-    connect(UDEworker_, &TeleOperation::runningChanged, this, [this](bool r)
-            { onChange(r); });
-
-    workerThread_->start();
+    QMetaObject::invokeMethod(control, "start", Qt::QueuedConnection);
 }
 
 void CameraWidget::onSwitch()
@@ -152,23 +134,15 @@ void CameraWidget::onControlSwitch(const QString &msg)
     emit controlSwitch(msg);
     if (msg == "Start")
     {
+        // control = new TeleopBase();
         if (selectBox->currentText() == "Camera")
-        {
-            startCamera();
-            QMetaObject::invokeMethod(worker_, "start", Qt::QueuedConnection);
-        }
+            control = new PyCamWorker();
         else if (selectBox->currentText() == "UDE Glove")
-        {
-            startTeleopration();
-            QMetaObject::invokeMethod(UDEworker_, "start", Qt::QueuedConnection);
-        }
+            control = new UDETeleop();
+        start();
     }
     else
     {
-        if (selectBox->currentText() == "Camera")
-            QMetaObject::invokeMethod(worker_, "stop", Qt::QueuedConnection);
-        else if (selectBox->currentText() == "UDE Glove")
-            QMetaObject::invokeMethod(UDEworker_, "stop", Qt::QueuedConnection);
         stopAll();
     }
 }
@@ -225,23 +199,17 @@ std::vector<std::string> CameraWidget::getFullList()
 
 void CameraWidget::stopAll()
 {
-    if (worker_)
-        QMetaObject::invokeMethod(worker_, "stop", Qt::BlockingQueuedConnection);
-    if (UDEworker_)
-        QMetaObject::invokeMethod(UDEworker_, "stop", Qt::BlockingQueuedConnection);
+    if (control)
+    {
+        QMetaObject::invokeMethod(control, "stop", Qt::QueuedConnection);
+        control->deleteLater();
+        control = nullptr;
+    }
     if (workerThread_ && workerThread_->isRunning())
         stopThread();
-    
-    if (worker_)
-    {
-        worker_->deleteLater();
-        worker_ = nullptr;
-    }
-    if (UDEworker_)
-    {
-        UDEworker_->deleteLater();
-        UDEworker_ = nullptr;
-    }
-    delete(workerThread_);
+
+    // if (control)
+    //     control.reset();
+    delete (workerThread_);
     workerThread_ = nullptr;
 }

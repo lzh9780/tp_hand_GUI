@@ -96,8 +96,6 @@ if (BUILD_GUI)
     src_gui/MainWindow.cpp
     src_gui/SidePanel.cpp
     src_gui/ActionStore.cpp
-    src_gui/PyCamWorker.h
-    src_gui/PyCamWorker.cpp
     src_gui/OgreWidget.cpp
     src_gui/UrdfLoader.cpp
     src_gui/MotorPanel.cpp

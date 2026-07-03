@@ -1,14 +1,14 @@
 #pragma once
 #include <QFrame>
 #include <QVector>
+#include <memory>
 
 class QWidget;
 class QPushButton;
 class QImage;
 class QLabel;
 class QResizeEvent;
-class PyCamWorker;
-class TeleOperation;
+class TeleopBase;
 class QThread;
 class QComboBox;
 
@@ -40,15 +40,13 @@ private slots:
 private:
     void stopThread();
     void updatePixmap();
-    void startCamera();
-    void startTeleopration();
+    void start();
 
 private:
     QComboBox* selectBox = nullptr;
     QPushButton *switchBtn;
     QLabel *img_label_{nullptr};
-    PyCamWorker* worker_ = nullptr;
-    TeleOperation* UDEworker_ = nullptr;
+    TeleopBase* control = nullptr;
     QThread* workerThread_ = nullptr;
 
     QImage last_frame_;
