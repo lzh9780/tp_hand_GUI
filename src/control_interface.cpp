@@ -54,11 +54,15 @@ namespace grip
     void ControlInterface::start_bus(int is_left)
     {
         grip_can_device_settings_t *cfg = grip_device_setting_create(33, 0, 0);
-        ctrl = grip_control_create(0, is_left);
+        ctrl = grip_control_create();
         if (grip_control_start_bus(ctrl, cfg) == GRIP_OK)
             std::cout << "Can device open successfully\n";
         else
-            throw std::runtime_error("Can device fail to open");
+        {
+            const char* error = grip_get_last_error(ctrl);
+            grip_control_close_bus(ctrl);
+            throw std::runtime_error(error);
+        }
         rx_thread_ = std::thread([this]
                                  { receiver_loop(); });
     }

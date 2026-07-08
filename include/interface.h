@@ -65,8 +65,8 @@ extern "C"
 
     typedef enum
     {
-        GRIP_HAND_LEFT = 0x01,
-        GRIP_HAND_RIGHT = 0x02
+        GRIP_HAND_LEFT = 0,
+        GRIP_HAND_RIGHT = 1
     } grip_hand_side_t;
 
     typedef enum
@@ -84,6 +84,14 @@ extern "C"
         CANFD_CMD_SDOT = 0x0B,  //
         CANFD_CMD_SDOR = 0x0C,  //
     } grip_direction_t;
+
+    typedef enum
+    {
+        WORK_MODE = 0x1007,
+        HARDWARE_VERSION = 0x1009,
+        SOFTWARE_VERSION = 0x100A,
+        HAND_SIDE = 0x1018,
+    } grip_sdo_index;
 
     typedef enum
     {
@@ -124,7 +132,7 @@ extern "C"
 
     typedef struct
     {
-        char *device;
+        const char *device;
         int16_t tip_tactile;
         int16_t tip_proximity_sense;
         uint32_t timestamp_ms;
@@ -159,6 +167,7 @@ extern "C"
     typedef struct grip_can_device_settings grip_can_device_settings_t;
     typedef struct grip_can_bus grip_can_bus_t;
     typedef struct grip_control grip_control_t;
+    typedef struct grip_sdo_data grip_sdo_data_t;
     typedef struct grip_can_frame grip_can_frame_t;
     typedef struct grip_telemetry grip_telemetry_t;
     typedef struct grip_sensor_telemetry grip_sensor_telemetry_t;
@@ -167,16 +176,19 @@ extern "C"
     GRIP_C_API grip_can_device_settings_t *grip_device_setting_create(uint32_t device_type,
                                                                       uint32_t device_index,
                                                                       uint32_t channel_index);
-    GRIP_C_API grip_control_t *grip_control_create(int hand_id, int is_left);
+    GRIP_C_API grip_control_t *grip_control_create();
     GRIP_C_API grip_status_t grip_control_start_bus(grip_control_t *ctl, grip_can_device_settings_t *cfg);
     GRIP_C_API grip_status_t grip_control_close_bus(grip_control_t *ctl);
 
     GRIP_C_API grip_status_t grip_send_command(grip_control_t *ctl, grip_command_t *cmd, size_t len);
-    GRIP_C_API grip_status_t grip_receive_step(grip_control_t *ctl, grip_realtime_data_t* realtime, grip_joint_sensor_t *tels, 
+    GRIP_C_API grip_status_t grip_receive_step(grip_control_t *ctl, grip_realtime_data_t *realtime, grip_joint_sensor_t *tels,
                                                grip_tip_sensor_t *tips, grip_bus_info_t *bus_data, size_t joint_num);
     // GRIP_C_API grip_status_t grip_ota_update(grip_control_t *ctl, char* file_name);
 
     GRIP_C_API const char *grip_get_last_error(grip_control_t *ctl);
+
+    GRIP_C_API const char *grip_get_hand_side(grip_control_t *ctl);
+    GRIP_C_API const int grip_get_hand_id(grip_control_t *ctl);
 
 #ifdef __cplusplus
 }
