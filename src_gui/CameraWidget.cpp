@@ -49,6 +49,7 @@ CameraWidget::CameraWidget(QWidget *parent)
     selectBox = new QComboBox();
     selectBox->addItem("Camera");
     selectBox->addItem("UDE Glove");
+    selectBox->addItem("Manus Glove");
     selectBox->setCurrentIndex(0);
     switchBtn = new QPushButton("Start");
     auto calibBtn = new QPushButton("Calibrate");
@@ -139,6 +140,8 @@ void CameraWidget::onControlSwitch(const QString &msg)
             control = new PyCamWorker();
         else if (selectBox->currentText() == "UDE Glove")
             control = new UDETeleop();
+        else if (selectBox->currentText() == "Manus Glove")
+            control = new ManusTeleop();
         start();
     }
     else

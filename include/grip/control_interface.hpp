@@ -24,7 +24,7 @@ public:
     ~ControlInterface();
 
     // bring-up
-    void start_bus(int is_left);
+    void start_bus();
     void stop_all();
 
     // loops

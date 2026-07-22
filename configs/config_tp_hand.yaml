@@ -10,7 +10,7 @@ hand_struct:
       - pitch
       - yaw
     joint_ids: [2, 1] # The id follows the communication protocol. 
-    route: [{max: 80, min: -20}, {max: 20, min: -20}]
+    route: [{max: 80, min: -10}, {max: 15, min: -15}]
     hall_route: [{max: 3000, min: 0}, {max: 3000, min: 0}]
     joint_feedback: [true, true]
     joint_feedback_map: [[1, 0], [0, 1]]

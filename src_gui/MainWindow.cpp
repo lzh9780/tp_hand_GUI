@@ -293,8 +293,7 @@ void MainWindow::onDeviceConnect()
         ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
         if (withCan)
         {
-            int side = connect_->getHandSide();
-            ctrl_->start_bus(side);
+            ctrl_->start_bus();
             log_->append("Device Connected. ");
             ctrl_->start_control_loop();
             // log_->append("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");

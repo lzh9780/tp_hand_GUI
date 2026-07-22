@@ -51,7 +51,7 @@ namespace grip
         }
     }
 
-    void ControlInterface::start_bus(int is_left)
+    void ControlInterface::start_bus()
     {
         grip_can_device_settings_t *cfg = grip_device_setting_create(33, 0, 0);
         ctrl = grip_control_create();

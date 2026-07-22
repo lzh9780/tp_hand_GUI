@@ -52,6 +52,7 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${CMAKE_SOURCE_DIR}/third_party/HandDriver)
 include_directories(${CMAKE_SOURCE_DIR}/third_party/HandDriver/include/json)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/SDKClient_Linux)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/HandDriver/include)
 set(HANDDRIVER_LIB_DIR "${CMAKE_SOURCE_DIR}/third_party/HandDriver/lib")
@@ -62,6 +63,18 @@ find_library(HANDDRIVER_JSONCPP_LIBRARY
   NO_DEFAULT_PATH
   REQUIRED
 )
+
+set(HANDDRIVER_LIB_DIR "${CMAKE_SOURCE_DIR}/third_party/SDKClient_Linux/ManusSDK/lib")
+
+find_library(MANUS_LIBRARY
+  NAMES ManusSDK_Intergrated
+  PATHS "${HANDDRIVER_LIB_DIR}"
+  NO_DEFAULT_PATH
+  REQUIRED
+)
+
+find_package(Curses REQUIRED)
+include_directories(${CURSES_INCLUDE_DIR})
 
 # Vendor library
 set(TPHAND_SO "${CMAKE_SOURCE_DIR}/lib/libtphandapi.so")
@@ -110,6 +123,7 @@ if (BUILD_GUI)
     src_gui/LedIndicator.cpp
     src_gui/TeleOperation.cpp
     third_party/HandDriver/UDEServer.cxx
+    third_party/SDKClient_Linux/ClientPlatformSpecific.cpp
   )
   target_include_directories(grip_gui PRIVATE ${OpenCV_INCLUDE_DIRS})
   target_include_directories(grip_gui PRIVATE ${OGRE_INCLUDE_DIRS})
@@ -126,6 +140,8 @@ if (BUILD_GUI)
     tinyxml2
     ${QT_PACKAGE}::Charts
     ${HANDDRIVER_JSONCPP_LIBRARY}
+    ${MANUS_LIBRARY}
+    ${CURSES_LIBRARIES}
   )
   target_include_directories(grip_gui PRIVATE include)
   

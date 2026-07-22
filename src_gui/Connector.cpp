@@ -37,27 +37,7 @@ Connector::Connector(QWidget *parent, std::vector<std::string> models)
     connect(connectBtn, &QPushButton::clicked, this, &Connector::onConnect);
     connect(model_box, &QComboBox::currentTextChanged, this, &Connector::onModelChange);
 
-    auto *optionRoll = new QHBoxLayout();
-    leftBtn = new QRadioButton("Left", this);
-    rightBtn = new QRadioButton("Right", this);
-    optionRoll->addWidget(leftBtn);
-    optionRoll->addWidget(rightBtn);
-    leftBtn->setChecked(true);
-
     background->addLayout(connectRoll);
-    background->addLayout(optionRoll);
-
-    optionGroup = new QButtonGroup(this);
-    optionGroup->addButton(leftBtn, 0); // id = 0
-    optionGroup->addButton(rightBtn, 1);
-
-    connect(optionGroup, QOverload<int>::of(&QButtonGroup::idClicked),
-            this, [=](int id)
-            {
-                 switch (id) {
-                    case 0: is_left = 1; break;
-                    case 1: is_left = 0; break;
-                } });
 
     deviceState = new QCheckBox(QString("no device connect"));
     connect(deviceState, &QCheckBox::clicked, this, [=]
@@ -70,8 +50,6 @@ void Connector::onConnect()
     model_box->setEnabled(false);
     deviceState->setEnabled(false);
     connectBtn->setEnabled(false);
-    leftBtn->setEnabled(false);
-    rightBtn->setEnabled(false);
     emit deviceConnect(connectBtn->text());
 }
 
@@ -89,11 +67,4 @@ void Connector::onChange(bool on)
     deviceState->setEnabled(!on);
     connectBtn->blockSignals(false);
     connectBtn->setEnabled(true);
-    leftBtn->setEnabled(!on);
-    rightBtn->setEnabled(!on);
-}
-
-int Connector::getHandSide()
-{
-    return is_left;
 }
