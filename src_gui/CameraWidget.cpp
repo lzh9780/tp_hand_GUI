@@ -12,7 +12,15 @@
 #include <QStatusBar>
 #include <QComboBox>
 #include <QDebug>
-// #include "PyCamWorker.h"
+#include "CameraHandDetect.hpp"
+
+#ifdef USE_UDE_TELEOP
+#include "UDETeleop.hpp"
+#endif
+
+#ifdef USE_MANUS_TELEOP
+#include "ManusTeleop.hpp"
+#endif
 
 static const std::vector<std::string> full_joints_list{
     "thumb_cmc_pull",
@@ -48,8 +56,12 @@ CameraWidget::CameraWidget(QWidget *parent)
 
     selectBox = new QComboBox();
     selectBox->addItem("Camera");
+#ifdef USE_UDE_TELEOP
     selectBox->addItem("UDE Glove");
+#endif
+#ifdef USE_MANUS_TELEOP
     selectBox->addItem("Manus Glove");
+#endif
     selectBox->setCurrentIndex(0);
     switchBtn = new QPushButton("Start");
     auto calibBtn = new QPushButton("Calibrate");
@@ -139,9 +151,17 @@ void CameraWidget::onControlSwitch(const QString &msg)
         if (selectBox->currentText() == "Camera")
             control = new PyCamWorker();
         else if (selectBox->currentText() == "UDE Glove")
+        {
+#ifdef USE_UDE_TELEOP
             control = new UDETeleop();
+#endif
+        }
         else if (selectBox->currentText() == "Manus Glove")
+        {
+#ifdef USE_MANUS_TELEOP
             control = new ManusTeleop();
+#endif
+        }
         start();
     }
     else

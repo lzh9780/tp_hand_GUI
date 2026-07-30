@@ -34,16 +34,16 @@ grip_ctrl/
 
 # Build & run
 ```bash
-# CLI only (no GUI)
+# Only GUI (same policy/threads underneath)
 cmake -S . -B build -D CMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 cp vendor/libusbcanfd.so build/ 2>/dev/null || true
-./build/grip_cli ./config.yaml
+./build/grip_gui
 
-# GUI (same policy/threads underneath)
-cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -D BUILD_GUI=ON
+# GUI + Manus + UDE (same policy/threads underneath)
+cmake -S . -B build -D CMAKE_BUILD_TYPE=Release -D BUILD_UDE_GLOVE=ON -D BUILD_MANUS_GLOVE=ON
 cmake --build build --config Release
-./build/grip_gui ./config.yaml
+./build/grip_gui
 ```
 
 # CanFD add permanent permissions
