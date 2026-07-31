@@ -71,9 +71,9 @@ void MotorPanel::load(grip::HandSettings hand)
             torqueHl->addWidget(new QLabel("Torque Ref:   "));
             torqueHl->addWidget(new QLabel("0"));
             auto *torqueSlider = new QSlider(Qt::Horizontal);
-            torqueSlider->setRange(0, 500);
+            torqueSlider->setRange(0, 300);
             torqueHl->addWidget(torqueSlider);
-            torqueHl->addWidget(new QLabel("500"));
+            torqueHl->addWidget(new QLabel("300"));
             auto *torqueEdit = new QLineEdit("0");
             torqueEdit->setFixedWidth(75);
             torqueEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
