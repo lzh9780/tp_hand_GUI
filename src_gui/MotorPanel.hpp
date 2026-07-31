@@ -21,6 +21,8 @@ public:
 
 signals:
     void mode_change(const QString& module, const QString& control_mode);
+    void vel_ref_change(const QString& module, const int vel_ref);
+    void torque_ref_change(const QString& module, const int torque_ref);
     // void single_control(const QString& name, const bool single);
 
 private:

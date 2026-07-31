@@ -51,6 +51,8 @@ private slots:
     void onActionPanelActionUpdate(const QString &msg);
     void onSidePanelAddAction(const QString &msg);
     void onJointPanelControlModeChange(const QString &module_name, const QString &control_mode);
+    void onJointPanelVelRefModeChange(const QString &module_name, const int vel_ref);
+    void onJointPanelTorqueRefModeChange(const QString &module_name, const int torque_ref);
     void onSidePanelControlChanged(const QString &name, const QString &mode);
 
 private:

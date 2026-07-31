@@ -32,6 +32,8 @@ public:
 
     // target API (GUI or any producer can call this): radians!
     void submit_target(std::string ctrl_joint, float radians);
+    void submit_vel_ref(std::string ctrl_joint, int vel);
+    void submit_torque_ref(std::string ctrl_joint, int torque);
     void submit_control_mode(std::string ctrl_joint, std::string mode);
 
     // state
@@ -58,6 +60,8 @@ private:
     int device_type = 0;
     HandStateMap state_;
     std::unordered_map<std::string, float> targets_rad_;
+    std::unordered_map<std::string, int> targets_vel_;
+    std::unordered_map<std::string, int> targets_torque_;
     std::unordered_map<std::string, int> control_mode_;
     int board_state_;
     std::string mode_{"Position"};
@@ -74,6 +78,8 @@ private:
     // target inbox
     std::mutex inbox_mtx_;
     std::deque<std::pair<std::string,float>> inbox_;
+    std::deque<std::pair<std::string,int>> vel_inbox_;
+    std::deque<std::pair<std::string,int>> torque_inbox_;
     std::deque<std::pair<std::string,std::string>> mode_inbox_;
 };
 

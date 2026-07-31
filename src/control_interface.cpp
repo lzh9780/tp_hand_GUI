@@ -95,6 +95,18 @@ namespace grip
         mode_inbox_.emplace_back(ctrl_joint, mode);
     }
 
+    void ControlInterface::submit_vel_ref(std::string ctrl_joint, int vel)
+    {
+        std::lock_guard<std::mutex> ql(inbox_mtx_);
+        vel_inbox_.emplace_back(ctrl_joint, vel);
+    }
+
+    void ControlInterface::submit_torque_ref(std::string ctrl_joint, int torque)
+    {
+        std::lock_guard<std::mutex> ql(inbox_mtx_);
+        torque_inbox_.emplace_back(ctrl_joint, torque);
+    }
+
     void ControlInterface::drain_pending_targets_locked()
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
@@ -112,6 +124,18 @@ namespace grip
             if (mode_id == 0xff)
                 continue;
             control_mode_[d] = mode_id;
+        }
+        while (!vel_inbox_.empty())
+        {
+            auto [d, r] = vel_inbox_.front();
+            vel_inbox_.pop_front();
+            targets_vel_[d] = r;
+        }
+        while (!torque_inbox_.empty())
+        {
+            auto [d, r] = torque_inbox_.front();
+            torque_inbox_.pop_front();
+            targets_torque_[d] = r;
         }
     }
 
@@ -132,8 +156,8 @@ namespace grip
 
             for (int j = 1; j < num_joint + 1; j++)
             {
-                grip_device_t id = (grip_device_t)data[j].dev_id;
-                grip_device_t realtime_id = (grip_device_t)realtime[j].dev_id;
+                size_t id = (size_t)data[j].dev_id;
+                size_t realtime_id = (size_t)realtime[j].dev_id;
 
                 DevState joint_state;
                 joint_state.position = data[id].joint_position;
@@ -208,13 +232,16 @@ namespace grip
                 for (auto &[id, name] : joint_names_)
                 {
                     CmdStruct cs;
-                    cs.dev_id = static_cast<grip_device_t>(id);
+                    cs.dev_id = static_cast<size_t>(id);
                     cs.control_mode = static_cast<grip_control_mode_t>(control_mode_[name]);
                     cs.cmd_joint_angle = targets_rad_[name] / 100.0f;
-                    cs.joint_vel_ref = 0;
-                    cs.motor_torque_ref = 0;
+                    cs.joint_vel_ref = targets_vel_[name] / 100.0f;
+                    cs.motor_torque_ref = targets_torque_[name];
                     cmds[cs.dev_id - 1] = cs;
+                    // std::cout << "dev_id=" << cs.dev_id << ", control_mode=" << cs.control_mode << ", joint_pos=" << cs.cmd_joint_angle
+                    //           << ", vel_ref=" << cs.joint_vel_ref << ", motor_torque=" << cs.motor_torque_ref << std::endl;
                 }
+                // std::cout << std::endl;
             }
             grip_send_command(ctrl, cmds, num_joint);
             free(cmds);

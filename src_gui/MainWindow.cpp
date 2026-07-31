@@ -88,6 +88,8 @@ void MainWindow::buildUI()
     connect(side_, &SidePanel::controlChanged, this, &MainWindow::onSidePanelControlChanged);
     connect(side_, &SidePanel::openAdvancePanel, this, &MainWindow::openMotorControlTab);
     connect(motor_, &MotorPanel::mode_change, this, &MainWindow::onJointPanelControlModeChange);
+    connect(motor_, &MotorPanel::vel_ref_change, this, &MainWindow::onJointPanelVelRefModeChange);
+    connect(motor_, &MotorPanel::torque_ref_change, this, &MainWindow::onJointPanelTorqueRefModeChange);
     connect(connect_, &Connector::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
     // connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
     connect(connect_, &Connector::modelChange, this, &MainWindow::onConnectorModelChange);
@@ -388,6 +390,16 @@ void MainWindow::onJointPanelControlModeChange(const QString &module_name, const
         side_->applyModeChange(&hand_cfg_, module_name, control_mode);
         ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
     }
+}
+
+void MainWindow::onJointPanelVelRefModeChange(const QString &module_name, const int vel_ref)
+{
+    ctrl_->submit_vel_ref(module_name.toUtf8().constData(), vel_ref);
+}
+
+void MainWindow::onJointPanelTorqueRefModeChange(const QString &module_name, const int torque_ref)
+{
+    ctrl_->submit_torque_ref(module_name.toUtf8().constData(), torque_ref);
 }
 
 void MainWindow::readJointAngles()

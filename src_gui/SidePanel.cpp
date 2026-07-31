@@ -363,7 +363,7 @@ void SidePanel::applyModeChange(grip::HandSettings *hand_cfg, QString joint_name
                     control_modes[i] = "hall_position";
                     return;
                 }
-                else if (mode == "joint_position")
+                else if (mode == "joint_position" || mode == "MIT_torque")
                 {
                     sliders_[i]->setRange(joint_cfg.route.first * 100, joint_cfg.route.second * 100);
                     sliders_[i]->setEnabled(true);

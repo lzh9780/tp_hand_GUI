@@ -39,21 +39,6 @@ extern "C"
     /* ---------- Protocol / telemetry defs ---------- */
     typedef enum
     {
-        GRIP_INVAILD_DEVICE = 0x00,
-        GRIP_WRIST_JOINT_YAW = 0x01,
-        GRIP_WRIST_JOINT_PITCH = 0x02,
-        GRIP_FINGER_JOINT_THUMB_MCP = 0x03,
-        GRIP_FINGER_JOINT_THUMB_ROT = 0x04,
-        GRIP_FINGER_JOINT_INDEX = 0x05,
-        GRIP_FINGER_JOINT_MIDDLE = 0x06,
-        GRIP_FINGER_JOINT_RING = 0x07,
-        GRIP_FINGER_JOINT_PINKY = 0x08,
-    } grip_device_t;
-    GRIP_C_API const char *grip_device_str(grip_device_t d);
-    GRIP_C_API const char *grip_finger_str(grip_device_t d);
-
-    typedef enum
-    {
         GRIP_DEV_WRIST = 0x00,
         GRIP_DEV_THUMB = 0x01,
         GRIP_DEV_INDEX = 0x02,
@@ -114,7 +99,7 @@ extern "C"
 
     typedef struct
     {
-        grip_device_t dev_id;
+        size_t dev_id;
         grip_control_mode_t control_mode;
         float curr_pos; /* hall-counts for hall mode / degree for joint mode */
         float curr_vel;
@@ -124,7 +109,7 @@ extern "C"
 
     typedef struct
     {
-        grip_device_t dev_id;
+        size_t dev_id;
         int32_t motor_position; /* hall-counts */
         float joint_position;   /* degree */
         uint32_t timestamp_ms;
@@ -141,7 +126,7 @@ extern "C"
     typedef struct
     {
         uint16_t bus_current;
-        uint16_t bus_voltage;
+        float bus_voltage;
         uint8_t temp1_cC;
         uint8_t temp2_cC;
         uint16_t fault_code;
@@ -150,7 +135,7 @@ extern "C"
 
     typedef struct
     {
-        grip_device_t dev_id;
+        size_t dev_id;
         grip_control_mode_t control_mode;
         float cmd_joint_angle;    /* degree(joint mode) hall-counts(hall mode) */
         float joint_vel_ref;      /* degree/s */

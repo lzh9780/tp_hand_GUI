@@ -66,10 +66,10 @@ control_policy:
   # - "current"
   - "hall_position"
   - "joint_position"
+  - "MIT_torque"
   # - "impedance"
 wrist_control_policy: 
   - "zero_torque"
-  - "hall_position"
   - "joint_position"
 
 urdf_file: "robots/model3_description_2/model3_urdf.urdf"
