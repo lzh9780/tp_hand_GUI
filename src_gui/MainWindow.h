@@ -1,11 +1,15 @@
 #pragma once
 #include <mutex>
 #include <QMainWindow>
+#include <QString>
+#include <QStringList>
+#include <QTimer>
 #include <vector>
 #include "grip/settings.hpp"
 #include "grip/control_interface.hpp"
 #include "ActionStore.hpp"
 
+#include "DraggableTabWidget.hpp"
 #include "OgreWidget.h"
 #include "MotorPanel.hpp"
 #include "PlotPanel.hpp"
@@ -17,7 +21,9 @@ class Connector;
 class QTextEdit;
 class QThread;
 class QString;
-class QTabWidget;
+class QWidget;
+class QToolBar;
+class QAction;
 class CameraWidget;
 class ActionPanel;
 
@@ -32,15 +38,8 @@ public:
                QWidget* parent=nullptr);
     ~MainWindow() override;
 
-protected:
-    void resizeEvent(QResizeEvent *event) override;
-
-signals:
-    // void requestStop();
-
 private slots:
     void onUpperTabCloseRequested(int idx);
-    void onLowerTabCloseRequested(int idx);
     void onSidePanelValuesChanged();   // Follow mode → immediate send
     void onSidePanelCommitted();       // Setup mode → Execute
     void onSidePanelNotify(const QString& msg);
@@ -49,7 +48,6 @@ private slots:
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
     void onActionPanelActionUpdate(const QString &msg);
-    void onSidePanelAddAction(const QString &msg);
     void onJointPanelControlModeChange(const QString &module_name, const QString &control_mode);
     void onJointPanelVelRefModeChange(const QString &module_name, const int vel_ref);
     void onJointPanelTorqueRefModeChange(const QString &module_name, const int torque_ref);
@@ -57,16 +55,27 @@ private slots:
 
 private:
     void buildUI();
+    void buildToolBar();
+    void buildLogPanel();
+
+    // Panel shortcuts. Every helper reuses an existing tab instead of
+    // appending a duplicate one (see addOrShowTab).
     void openCameraTab();
     void openConnectorTab();
-    void openLogTab();
     void openUrdfLoaderTab();
     void openMotorControlTab();
+    void openActionPanelTab();
     void openDiagram();
     void openTactileImage();
+    void toggleLogPanel();
+
     void onDeviceConnect();
     void onDeviceDisconnect();
-    void openActionPanelTab();
+
+    void addOrShowTab(QWidget* widget, const QString& title);
+    void appendLog(const QString& msg);
+    void setConnectedStatus(bool connected);
+
     std::unordered_map<std::string, float> dofsToJoints(std::string dof_name, float value, bool is_hall);
     std::unordered_map<std::string, float> jointsToDofs(std::string joint_name, float value);
 
@@ -86,25 +95,35 @@ private:
     bool withCan = true;
 
     // widgets
-    QWidget* mainContent;
-    QWidget* central;
+    QWidget* central{nullptr};
     SidePanel* side_{nullptr};
     QTextEdit* log_{nullptr};
-    OgreWidget* ogre_;
-    MotorPanel* motor_;
-    ActionPanel* actionFlow_;
-    Connector* connect_;
-    TactileVisual* tactile_;
-    CameraWidget* camera_;
-    // PlotPanel* plot_;
+    QWidget* logPanel_{nullptr};
+    OgreWidget* ogre_{nullptr};
+    MotorPanel* motor_{nullptr};
+    ActionPanel* actionFlow_{nullptr};
+    Connector* connect_{nullptr};
+    TactileVisual* tactile_{nullptr};
+    CameraWidget* camera_{nullptr};
+
+    QToolBar* toolBar_{nullptr};
+    QAction* actConnector_{nullptr};
+    QAction* actModel3D_{nullptr};
+    QAction* actActionSets_{nullptr};
+    QAction* actJointModes_{nullptr};
+    QAction* actDiagram_{nullptr};
+    QAction* actHandDetect_{nullptr};
+    QAction* actTactile_{nullptr};
+    QAction* actLog_{nullptr};
+
+    DraggableTabWidget* upperTabs{nullptr};
+
     std::string config_path_;
     std::string action_path_;
     std::string urdf_path_;
+    QString selectedModel_;
     QStringList dof_names;
     QTimer* read_timer_ = nullptr;
-
-    QTabWidget* upperTabs;
-    QTabWidget* lowerTabs;
 
     std::mutex mtx_;
 };

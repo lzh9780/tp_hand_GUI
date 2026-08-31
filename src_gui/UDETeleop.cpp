@@ -11,9 +11,12 @@ void UDETeleop::start()
     if (running_)
         return;
 
-    timer_ = new QTimer();
+    timer_ = new QTimer(this);
     connect(timer_, &QTimer::timeout, this, &UDETeleop::onTick);
     timer_->start(1000 / 120);
+
+    // A dropped acknowledgement must never stall the pipeline.
+    resetDelivery();
 
     sdk->StartListening();
     cout << "Server Start Listening.." << endl;
@@ -25,27 +28,37 @@ void UDETeleop::start()
 
 void UDETeleop::stop()
 {
-    if (!running_)
-        return;
-    running_ = false;
+    // Clean up unconditionally: the destructor calls stop() even when the
+    // worker was never started, and the early return used to leak the SDK.
     if (timer_)
     {
         timer_->stop();
-        timer_->deleteLater();
+        // deleteLater() is posted to the worker thread, which is stopped
+        // before this object is destroyed - it would never be processed.
+        delete timer_;
         timer_ = nullptr;
     }
-    try
+
+    if (sdk)
     {
-        if (sdk->GetStatus() != ServerStatus::END)
-            sdk->EndListening();
+        try
+        {
+            if (sdk->GetStatus() != ServerStatus::END)
+                sdk->EndListening();
+        }
+        catch (const std::exception &e)
+        {
+            // report but continue shutdown
+            emit error(QString::fromUtf8(e.what()));
+        }
         delete sdk;
         sdk = nullptr;
     }
-    catch (const std::exception &e)
-    {
-        // report but continue shutdown
-        emit error(QString::fromUtf8(e.what()));
-    }
+
+    if (!running_)
+        return;
+
+    running_ = false;
     emit status("Glove receive loop stopped.");
     emit runningChanged(running_);
 }
@@ -92,7 +105,9 @@ void UDETeleop::onTick()
             l.append(0);
             l.append(0);
 
-            emit newJoint(l);
+            // Drop the sample if the GUI has not consumed the previous one yet.
+            if (requestJointDelivery())
+                emit newJoint(l);
 
             list.clear();
         }

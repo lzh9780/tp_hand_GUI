@@ -1,9 +1,12 @@
 #pragma once
 #include <QFrame>
 #include <QList>
+#include <QHash>
 #include <QStringList>
 #include <QJsonArray>
+#include <QElapsedTimer>
 #include "grip/settings.hpp"
+#include "grip/data_def.hpp"
 #include "LedIndicator.hpp"
 
 class QSlider;
@@ -18,22 +21,24 @@ class QLineEdit;
 class QImage;
 class QComboBox;
 class QLayoutItem;
-
-class ActionStore; // fwd
+class QTableWidget;
+class QTableWidgetItem;
 
 /**
  * SidePanel (GUI)
  * ---------------
- * Matches your original views:
- * - Top control row with mode toggle ("Mode: Follow"/"Mode: Setup") and "Execute"
- * - Collapsible Actions and Action Sets section (with name edit, save, delete)
- * - Slider area: one row per joint name, labels + numeric readout + min/max ticks
+ * - Top:    Feedback section - live joint / motor telemetry in one table.
+ * - Bottom: Slider area - one row per joint, labels + numeric readout + min/max.
  *
- * Data (actions/sets) comes from ActionStore.
+ * The action library lives in ActionPanel; this panel only renders feedback and
+ * exposes the joint targets.
+ *
  * Emits:
  *  - valuesChanged(): slider moved (send immediately in Follow mode)
  *  - committed(): Execute clicked (send batch in Setup mode)
  *  - notify(text): status lines for MainWindow logging
+ *  - controlChanged(name, mode): global finger / wrist control mode changed
+ *  - openAdvancePanel(): user asked for the per-joint motor panel
  */
 class SidePanel : public QFrame {
     Q_OBJECT
@@ -45,28 +50,26 @@ public:
 
     // Mode string exactly as UI shows it ("Mode: Follow"/"Mode: Setup")
     QString modeText() const;
-    // void setFrame(const QImage img);
-    void modeChange(const QString& mode);
+    void modeChange(bool teleopActive);
     void applyCameraData(std::unordered_map<std::string, float>& data, grip::HandSettings *hand_cfg);
-    void updateJoints(const std::unordered_map<std::string, float> state);
-    void updateStates(const std::unordered_map<std::string, int> state);
-    void loadActions();
-    // void loadSliders(const QStringList &jointNames);
     void loadHandControllor(grip::HandSettings *hand_cfg);
     void loadActuatorControllor(grip::ActuatorSettings act_cfg);
-    void updateStore(ActionStore *store);
     std::string get_control_mode();
     void removeAll();
-    void applyActionNameToSliders(const QString &name);
+    void applyActionValues(const QVector<double> &values);
     void applyModeChange(grip::HandSettings *hand_cfg, QString name, QString mode);
     QStringList getControlModes();
+
+    // --- feedback ---
+    // Rebuild the feedback table for the connected hand.
+    void loadFeedbackTable(grip::HandSettings *hand_cfg);
+    // Push one telemetry snapshot into the table and the slider readouts.
+    void updateFeedback(const HandStateMap &state);
 
 signals:
     void valuesChanged();
     void committed();                  // Execute in Setup mode
     void notify(const QString& msg);   // status/log message
-    void addAction(const QString& action);
-    void actionStoreUpdate();
     void controlChanged(const QString& name, const QString& mode);
     void openAdvancePanel();
 
@@ -75,9 +78,6 @@ private slots:
     void onToggleMode();
     void onExecute();
     void onReset();
-    void onSaveAction();               // begin/cancel inline add
-    void onActionNameClicked();        // apply saved action to sliders
-    void onFocusChanged(QWidget* old, QWidget* now);
     void onControlChanged();
     void onValueEditChanged();
     void onMaxVelocityChanged();
@@ -85,44 +85,49 @@ private slots:
 
 private:
     // Build sections
-    void buildActionsPanel();
+    void buildFeedbackPanel();
     void buildSliderPanel();
 
     // Helpers
-    void applyActionToSliders(int actionIndex);
-    void persistStore();
-    bool validateNewActionName(const QString& n, const QString& o) const;
-    void validate(QLineEdit* edit, QPushButton* btn);
-    void onDeleteAction(QPushButton* btn);
     void loadSliderModule(QString name, float min, float max);
-    void deleteLayout(QLayoutItem *item);
+    void rebuildSliderHost();
+
+    // Feedback table helpers
+    struct FeedbackRow
+    {
+        QTableWidgetItem *pos{nullptr};
+        QTableWidgetItem *vel{nullptr};
+        QTableWidgetItem *trq{nullptr};
+        LedIndicator *led{nullptr};
+    };
+    void addFeedbackSection(const QString &title);
+    FeedbackRow addFeedbackRow(const QString &name, const QString &kind, bool withLed);
+    void clearFeedbackTable();
 
 private:
-    // Data
-    ActionStore* store_{nullptr};
-    int addingRowIndex_{-1}; // index for inline "Save"/"Cancel" row
-
     // UI: control row
     QPushButton* btnMode_{nullptr};
     QPushButton* btnExecute_{nullptr};
-    QPushButton* btnSave_{nullptr};
-    QPushButton* btnDelete_{nullptr};
-    QPushButton* btnEditName_{nullptr}; // rename current focused action
 
-    // UI: collapsible actions
-    QWidget* actionsPanel_{nullptr};
-    QWidget* actionListWidget_{nullptr};
-    QWidget* actionSetPanel_{nullptr};
-    QToolButton* btnCollapseActions_{nullptr};
-    QToolButton* btnCollapseSets_{nullptr};
+    // UI: feedback
+    QWidget* feedbackPanel_{nullptr};
+    QTableWidget* feedbackTable_{nullptr};
+    QElapsedTimer feedbackClock_;
+    // joint name -> table row cells (joint telemetry, no data for the wrist)
+    QHash<QString, FeedbackRow> jointRows_;
+    // joint name -> table row cells (motor telemetry)
+    QHash<QString, FeedbackRow> motorRows_;
+    // joint name -> index into sliders_/currValueLabels_/leds_
+    QHash<QString, int> sliderIndex_;
+    // joint name -> hall-position scale factor, computed once per session
+    std::unordered_map<std::string, float> hallScales_;
 
-    // UI: Image 
+    // UI: Image
     QLabel* img_label_{nullptr};
 
     // UI: sliders
     QWidget* sliderPanel_{nullptr};
     QScrollArea* sliderScroll_{nullptr};
-    QScrollArea* actionScroll_{nullptr};
     QVBoxLayout* sliderVBox_{nullptr};
     QList<QSlider*> sliders_{};
     QList<QLineEdit*>  valueLabels_{};  // number next to each slider
@@ -133,7 +138,7 @@ private:
     QStringList control_modes;
 
     // UI: actuator
-    QComboBox* mode_box;
+    QComboBox* mode_box{nullptr};
     grip::ActuatorSettings act_cfg_;
 
     // cache joint count

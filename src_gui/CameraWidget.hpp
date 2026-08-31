@@ -44,7 +44,7 @@ private:
 
 private:
     QComboBox* selectBox = nullptr;
-    QPushButton *switchBtn;
+    QPushButton *switchBtn{nullptr};
     QLabel *img_label_{nullptr};
     TeleopBase* control = nullptr;
     QThread* workerThread_ = nullptr;

@@ -1,6 +1,31 @@
 #include "ManusTeleop.hpp"
 
+#include <algorithm>
+
 ManusTeleop *ManusTeleop::s_Instance = nullptr;
+
+namespace
+{
+// RAII bookkeeping for the SDK callback threads. Keeps the in-flight count
+// raised for the whole callback, including early returns, so that
+// ~ManusTeleop can safely wait for callbacks that already captured the
+// instance pointer before it was cleared.
+class CallbackGuard
+{
+public:
+    explicit CallbackGuard(std::atomic<int> &p_Counter) : m_Counter(p_Counter)
+    {
+        m_Counter.fetch_add(1, std::memory_order_acq_rel);
+    }
+    ~CallbackGuard() { m_Counter.fetch_sub(1, std::memory_order_release); }
+
+    CallbackGuard(const CallbackGuard &) = delete;
+    CallbackGuard &operator=(const CallbackGuard &) = delete;
+
+private:
+    std::atomic<int> &m_Counter;
+};
+} // namespace
 
 ManusTeleop::ManusTeleop(QObject *parent) : TeleopBase(parent)
 {
@@ -28,6 +53,9 @@ void ManusTeleop::start()
     {
         // ClientLog::error("Failed to initialize the SDK. Are you sure the correct ManusSDKLibary is used?");
         emit error("Failed to initialize the SDK. Are you sure the correct ManusSDKLibary is used?");
+        // stop() short-circuits while running_ is false, so release the SDK
+        // here - otherwise every retry would initialise it again.
+        CoreSdk_ShutDown();
         return; // ClientReturnCode::ClientReturnCode_FailedToInitialize;
     }
 
@@ -42,7 +70,8 @@ void ManusTeleop::start()
     }
     if (t_ConnectResult != SDKReturnCode::SDKReturnCode_Success)
     {
-        emit error(QString("Failed to connect to Core. The error given was {}.").arg((int32_t)t_ConnectResult));
+        emit error(QString("Failed to connect to Core. The error given was %1.").arg((int32_t)t_ConnectResult));
+        CoreSdk_ShutDown();
         return; // ClientReturnCode::ClientReturnCode_FailedToConnect;
     }
 
@@ -51,9 +80,12 @@ void ManusTeleop::start()
     //     UpdateBeforeDisplayingData();
     // }
 
-    timer_ = new QTimer();
+    timer_ = new QTimer(this);
     connect(timer_, &QTimer::timeout, this, &ManusTeleop::onTick);
     timer_->start(1000 / 120);
+
+    // A dropped acknowledgement must never stall the pipeline.
+    resetDelivery();
 
     running_ = true;
     emit runningChanged(running_);
@@ -137,27 +169,37 @@ ClientReturnCode ManusTeleop::InitializeSDK()
 
 void ManusTeleop::OnErgonomicsCallback(const ErgonomicsStream *const p_Ergo)
 {
-    if (s_Instance)
+    // Runs on the SDK's own thread.
+    ManusTeleop *t_Instance = s_Instance;
+    if (t_Instance != nullptr)
     {
+        // Keeps this callback visible to ~ManusTeleop until we return.
+        CallbackGuard t_Guard(t_Instance->m_CallbacksInFlight);
+
+        // The destructor may have cleared s_Instance between the two reads.
+        if (t_Instance->m_ShuttingDown)
+            return;
+
         for (uint32_t i = 0; i < p_Ergo->dataCount; i++)
         {
             if (p_Ergo->data[i].isUserID)
                 continue;
 
             ErgonomicsData *t_Ergo = nullptr;
-            if (p_Ergo->data[i].id == s_Instance->m_FirstLeftGloveID)
+            if (p_Ergo->data[i].id == t_Instance->m_FirstLeftGloveID)
             {
-                t_Ergo = &s_Instance->m_LeftGloveErgoData;
+                t_Ergo = &t_Instance->m_LeftGloveErgoData;
             }
-            if (p_Ergo->data[i].id == s_Instance->m_FirstRightGloveID)
+            if (p_Ergo->data[i].id == t_Instance->m_FirstRightGloveID)
             {
-                t_Ergo = &s_Instance->m_RightGloveErgoData;
+                t_Ergo = &t_Instance->m_RightGloveErgoData;
             }
             if (t_Ergo == nullptr)
                 continue;
-            CoreSdk_GetTimestampInfo(p_Ergo->publishTime, &s_Instance->m_ErgoTimestampInfo);
+            CoreSdk_GetTimestampInfo(p_Ergo->publishTime, &t_Instance->m_ErgoTimestampInfo);
             t_Ergo->id = p_Ergo->data[i].id;
             t_Ergo->isUserID = p_Ergo->data[i].isUserID;
+
             for (int j = 0; j < ErgonomicsDataType::ErgonomicsDataType_MAX_SIZE; j++)
             {
                 t_Ergo->data[j] = p_Ergo->data[i].data[j];
@@ -168,18 +210,20 @@ void ManusTeleop::OnErgonomicsCallback(const ErgonomicsStream *const p_Ergo)
 
 ClientReturnCode ManusTeleop::UpdateBeforeDisplayingData()
 {
-    m_LandscapeMutex.lock();
-    if (m_NewLandscape != nullptr)
     {
-        if (m_Landscape != nullptr)
+        // RAII: the manual lock/unlock above leaked the mutex if a swap threw.
+        std::lock_guard<std::mutex> t_Lock(m_LandscapeMutex);
+        if (m_NewLandscape != nullptr)
         {
-            delete m_Landscape;
+            if (m_Landscape != nullptr)
+            {
+                delete m_Landscape;
+            }
+            m_Landscape = m_NewLandscape;
+            m_NewLandscape = nullptr;
+            m_GestureLandscapeData.swap(m_NewGestureLandscapeData);
         }
-        m_Landscape = m_NewLandscape;
-        m_NewLandscape = nullptr;
-        m_GestureLandscapeData.swap(m_NewGestureLandscapeData);
     }
-    m_LandscapeMutex.unlock();
 
     m_FirstLeftGloveID = 0;
     m_FirstRightGloveID = 0;
@@ -216,15 +260,18 @@ float ManusTeleop::RoundFloatValue(float p_Value, int p_NumDecimalsToKeep)
 
 void ManusTeleop::stop()
 {
-    if (!running_)
-        return;
-    running_ = false;
     if (timer_)
     {
         timer_->stop();
-        timer_->deleteLater();
+        // deleteLater() is posted to this (worker) thread, which is stopped
+        // before the object is destroyed - it would never be processed.
+        delete timer_;
         timer_ = nullptr;
     }
+
+    if (!running_)
+        return;
+    running_ = false;
     try
     {
         // 关闭连接，停止内部线程，释放资源
@@ -261,33 +308,61 @@ void ManusTeleop::onTick()
     {
         UpdateBeforeDisplayingData();
 
+        // onTick() indexes fixed slots up to 19. Bound every read by the
+        // SDK's own element count so a version mismatch returns 0.0f instead
+        // of reading past the end of the array.
+        constexpr int kErgoSlots =
+            static_cast<int>(ErgonomicsDataType::ErgonomicsDataType_MAX_SIZE);
+        auto ergoAt = [this](int p_Index) -> float
+        {
+            return (p_Index >= 0 && p_Index < kErgoSlots)
+                       ? m_LeftGloveErgoData.data[p_Index]
+                       : 0.0f;
+        };
+
         QVector<double> l;
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[1], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[0], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[3], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[2], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[5], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[6], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[7], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[4], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[9], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[10], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[11], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[8], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[13], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[14], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[15], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[12], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[17], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[18], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[19], 2));
-        l.append(RoundFloatValue(m_LeftGloveErgoData.data[16], 2));
+        l.append(RoundFloatValue(ergoAt(1), 2));
+        l.append(RoundFloatValue(ergoAt(0), 2));
+        l.append(RoundFloatValue(ergoAt(3), 2));
+        l.append(RoundFloatValue(ergoAt(2), 2));
+        l.append(RoundFloatValue(ergoAt(5), 2));
+        l.append(RoundFloatValue(ergoAt(6), 2));
+        l.append(RoundFloatValue(ergoAt(7), 2));
+        l.append(RoundFloatValue(ergoAt(4), 2));
+        l.append(RoundFloatValue(ergoAt(9), 2));
+        l.append(RoundFloatValue(ergoAt(10), 2));
+        l.append(RoundFloatValue(ergoAt(11), 2));
+        l.append(RoundFloatValue(ergoAt(8), 2));
+        l.append(RoundFloatValue(ergoAt(13), 2));
+        l.append(RoundFloatValue(ergoAt(14), 2));
+        l.append(RoundFloatValue(ergoAt(15), 2));
+        l.append(RoundFloatValue(ergoAt(12), 2));
+        l.append(RoundFloatValue(ergoAt(17), 2));
+        l.append(RoundFloatValue(ergoAt(18), 2));
+        l.append(RoundFloatValue(ergoAt(19), 2));
+        l.append(RoundFloatValue(ergoAt(16), 2));
         l.append(0);
         l.append(0);
         l.append(0);
         l.append(0);
 
-        emit newJoint(l);
+        // Drop the sample if the GUI has not consumed the previous one yet.
+        // Without this the worker keeps posting faster than the GUI can drain
+        // and the event queue grows until the process dies.
+        if (requestJointDelivery())
+        {
+            if (l == m_LastEmitted)
+            {
+                // Idle glove: nothing new to show. Release the slot, nobody
+                // will acknowledge a sample that was never delivered.
+                acknowledgeJoints();
+            }
+            else
+            {
+                m_LastEmitted = l;
+                emit newJoint(l);
+            }
+        }
     }
     catch (const std::exception &e)
     {
@@ -300,15 +375,40 @@ void ManusTeleop::onTick()
 /// @param p_Landscape contains the new landscape from core.
 void ManusTeleop::OnLandscapeCallback(const Landscape *const p_Landscape)
 {
-    if (s_Instance == nullptr)
+    // Runs on the SDK's own thread.
+    ManusTeleop *t_Instance = s_Instance;
+    if (t_Instance == nullptr)
+        return;
+
+    // Keeps this callback visible to ~ManusTeleop until we return.
+    CallbackGuard t_Guard(t_Instance->m_CallbacksInFlight);
+
+    // The destructor may have cleared s_Instance between the two reads above.
+    if (t_Instance->m_ShuttingDown)
         return;
 
     Landscape *t_Landscape = new Landscape(*p_Landscape);
-    s_Instance->m_LandscapeMutex.lock();
-    if (s_Instance->m_NewLandscape != nullptr)
-        delete s_Instance->m_NewLandscape;
-    s_Instance->m_NewLandscape = t_Landscape;
-    s_Instance->m_NewGestureLandscapeData.resize(t_Landscape->gestureCount);
-    CoreSdk_GetGestureLandscapeData(s_Instance->m_NewGestureLandscapeData.data(), (uint32_t)s_Instance->m_NewGestureLandscapeData.size());
-    s_Instance->m_LandscapeMutex.unlock();
+
+    // Query the SDK before taking our lock: CoreSdk_* calls may acquire
+    // internal SDK locks, and calling them while holding m_LandscapeMutex
+    // invites a deadlock with the SDK's own threads.
+    std::vector<GestureLandscapeData> t_Gestures;
+    t_Gestures.resize(t_Landscape->gestureCount);
+    if (!t_Gestures.empty())
+        CoreSdk_GetGestureLandscapeData(t_Gestures.data(), (uint32_t)t_Gestures.size());
+
+    std::lock_guard<std::mutex> t_Lock(t_Instance->m_LandscapeMutex);
+
+    // The object may be tearing down on another thread; re-check under the
+    // mutex so we never touch freed buffers.
+    if (t_Instance->m_ShuttingDown)
+    {
+        delete t_Landscape;
+        return;
+    }
+
+    if (t_Instance->m_NewLandscape != nullptr)
+        delete t_Instance->m_NewLandscape;
+    t_Instance->m_NewLandscape = t_Landscape;
+    t_Instance->m_NewGestureLandscapeData.swap(t_Gestures);
 }

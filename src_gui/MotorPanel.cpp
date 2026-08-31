@@ -2,84 +2,122 @@
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QScrollArea>
 #include <QLabel>
 #include <QComboBox>
-#include <QDebug>
-#include <QSpacerItem>
-#include <QScrollArea>
+#include <QCheckBox>
 #include <QSlider>
 #include <QLineEdit>
+#include <QSpacerItem>
+#include <QDebug>
 
 MotorPanel::MotorPanel(QWidget *parent)
     : QFrame(parent)
 {
     root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
+    root->setContentsMargins(6, 6, 6, 6);
+    root->setSpacing(6);
+
+    auto *hint = new QLabel("Velocity / torque references only apply while a joint runs in MIT mode.\n"
+                            "Tick \"Standalone\" to exempt a joint from the global control mode.");
+    hint->setWordWrap(true);
+    hint->setStyleSheet("color: #666;");
+    root->addWidget(hint);
 }
 
 void MotorPanel::load(grip::HandSettings hand)
 {
-    auto *scroll_ = new QScrollArea();
+    auto *scroll = new QScrollArea();
     auto *content = new QWidget();
     auto *contentLyt = new QVBoxLayout(content);
+    contentLyt->setContentsMargins(6, 6, 6, 6);
+    contentLyt->setSpacing(8);
 
     for (auto s : hand.structs)
     {
-        auto *nameLbl = new QLabel(s.first.c_str());
-        contentLyt->addWidget(nameLbl);
+        // Skip modules that only contain passive (non-actuated) joints.
+        bool moduleHasJoint = false;
+        for (auto j : s.second)
+        {
+            if (j.id != -1)
+            {
+                moduleHasJoint = true;
+                break;
+            }
+        }
+        if (!moduleHasJoint)
+            continue;
+
+        // One group box per anatomical module keeps the list scannable.
+        auto *moduleBox = new QGroupBox(QString::fromStdString(s.first));
+        auto *moduleLyt = new QVBoxLayout(moduleBox);
+        moduleLyt->setSpacing(6);
 
         for (auto j : s.second)
         {
             if (j.id == -1)
                 continue;
-            auto *ctrlHl = new QHBoxLayout();
-            auto *mode_lable = new QLabel(QString(j.name.c_str()));
+
+            auto *jointBox = new QGroupBox(QString::fromStdString(j.name));
+            auto *form = new QFormLayout(jointBox);
+            form->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            form->setContentsMargins(10, 8, 10, 8);
+            form->setSpacing(6);
+
+            auto *mode_label = new QLabel(QString::fromStdString(j.name));
             auto *mode_box = new QComboBox();
 
             if (s.first != "WRIST")
             {
                 for (auto p : hand.control_policies)
-                    mode_box->addItem(p.c_str());
+                    mode_box->addItem(QString::fromStdString(p));
             }
             else
             {
                 for (auto p : hand.wrist_control)
-                    mode_box->addItem(p.c_str());
+                    mode_box->addItem(QString::fromStdString(p));
             }
 
-            auto *single = new QCheckBox(QString("Standalone"));
-            ctrlHl->addWidget(mode_lable);
-            ctrlHl->addWidget(mode_box);
-            ctrlHl->addWidget(single);
-            contentLyt->addLayout(ctrlHl);
+            auto *standaloneRow = new QHBoxLayout();
+            auto *single = new QCheckBox("Standalone");
+            single->setToolTip("Keep this joint on its own control mode instead of\n"
+                               "following the global finger / wrist mode.");
+            standaloneRow->addWidget(mode_box, 1);
+            standaloneRow->addWidget(single);
+            form->addRow("Mode:", standaloneRow);
 
-            auto *velHl = new QHBoxLayout();
-            velHl->addWidget(new QLabel("Velocity Ref: "));
-            velHl->addWidget(new QLabel("0"));
+            // --- velocity reference ---
             auto *velSlider = new QSlider(Qt::Horizontal);
             velSlider->setRange(0, 2000);
-            velHl->addWidget(velSlider);
-            velHl->addWidget(new QLabel("20"));
             auto *velEdit = new QLineEdit("0.00");
-            velEdit->setFixedWidth(75);
+            velEdit->setFixedWidth(70);
             velEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            velHl->addWidget(velEdit);
-            velHl->addWidget(new QLabel("rad/s"));
-            contentLyt->addLayout(velHl);
 
-            auto *torqueHl = new QHBoxLayout();
-            torqueHl->addWidget(new QLabel("Torque Ref:   "));
-            torqueHl->addWidget(new QLabel("0"));
+            auto *velRow = new QHBoxLayout();
+            velRow->setSpacing(6);
+            velRow->addWidget(new QLabel("0"));
+            velRow->addWidget(velSlider, 1);
+            velRow->addWidget(new QLabel("20 rad/s"));
+            velRow->addWidget(velEdit);
+            form->addRow("Velocity:", velRow);
+
+            // --- torque reference ---
             auto *torqueSlider = new QSlider(Qt::Horizontal);
             torqueSlider->setRange(0, 300);
-            torqueHl->addWidget(torqueSlider);
-            torqueHl->addWidget(new QLabel("300"));
             auto *torqueEdit = new QLineEdit("0");
-            torqueEdit->setFixedWidth(75);
+            torqueEdit->setFixedWidth(70);
             torqueEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            torqueHl->addWidget(torqueEdit);
-            torqueHl->addWidget(new QLabel("mA"));
-            contentLyt->addLayout(torqueHl);
+
+            auto *torqueRow = new QHBoxLayout();
+            torqueRow->setSpacing(6);
+            torqueRow->addWidget(new QLabel("0"));
+            torqueRow->addWidget(torqueSlider, 1);
+            torqueRow->addWidget(new QLabel("300 mA"));
+            torqueRow->addWidget(torqueEdit);
+            form->addRow("Torque:", torqueRow);
 
             velSlider->setEnabled(false);
             velEdit->setEnabled(false);
@@ -90,53 +128,50 @@ void MotorPanel::load(grip::HandSettings hand)
 
             connect(mode_box, &QComboBox::currentTextChanged,
                     this, [=]()
-                    { emit mode_change(mode_lable->text(), mode_box->currentText()); 
-                      if (mode_box->currentText() == "MIT_torque")
+                    { emit mode_change(mode_label->text(), mode_box->currentText());
+                      const bool mit = (mode_box->currentText() == "MIT_torque");
+                      velSlider->setEnabled(mit);
+                      velEdit->setEnabled(mit);
+                      torqueSlider->setEnabled(mit);
+                      torqueEdit->setEnabled(mit);
+                      if (!mit)
                       {
-                          velSlider->setEnabled(true);
-                          velEdit->setEnabled(true);
-                          torqueSlider->setEnabled(true);
-                          torqueEdit->setEnabled(true);
-                      } 
-                      else 
-                      {
-                          velSlider->setEnabled(false);
-                          velEdit->setEnabled(false);
-                          torqueSlider->setEnabled(false);
-                          torqueEdit->setEnabled(false);
                           velSlider->setValue(0);
                           torqueSlider->setValue(0);
                       } });
 
             connect(velSlider, &QSlider::valueChanged,
                     this, [=]()
-                    { velEdit->setText(QString("%1").arg((float)velSlider->value() / 100.0)); 
-                      emit vel_ref_change(mode_lable->text(), velSlider->value());
+                    { velEdit->setText(QString("%1").arg((float)velSlider->value() / 100.0));
+                      emit vel_ref_change(mode_label->text(), velSlider->value());
                     });
             connect(velEdit, &QLineEdit::editingFinished,
                     this, [=]()
-                    { velSlider->setValue((int)(atof(velEdit->text().toUtf8().constData()) * 100.0)); });
+                    { velSlider->setValue((int)(velEdit->text().toDouble() * 100.0)); });
 
             connect(torqueSlider, &QSlider::valueChanged,
                     this, [=]()
-                    { torqueEdit->setText(QString("%1").arg(torqueSlider->value())); 
-                      emit torque_ref_change(mode_lable->text(), torqueSlider->value());
+                    { torqueEdit->setText(QString("%1").arg(torqueSlider->value()));
+                      emit torque_ref_change(mode_label->text(), torqueSlider->value());
                     });
             connect(torqueEdit, &QLineEdit::editingFinished,
                     this, [=]()
-                    { torqueSlider->setValue((int)(atof(torqueEdit->text().toUtf8().constData()))); });
+                    { torqueSlider->setValue(torqueEdit->text().toInt()); });
 
-            names.append(QString(j.name.c_str()));
+            moduleLyt->addWidget(jointBox);
+
+            names.append(QString::fromStdString(j.name));
             single_checkbox.append(single);
             mode_selecters.append(mode_box);
         }
+
+        contentLyt->addWidget(moduleBox);
     }
 
-    auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);
-    contentLyt->addItem(spacer);
-    scroll_->setWidget(content);
-    root->addWidget(scroll_);
-    scroll_->setWidgetResizable(true);
+    contentLyt->addStretch(1);
+    scroll->setWidget(content);
+    scroll->setWidgetResizable(true);
+    root->addWidget(scroll, 1);
 }
 
 bool MotorPanel::checkJointStandalone(QString joint_name)
@@ -150,13 +185,16 @@ bool MotorPanel::checkJointStandalone(QString joint_name)
 
 void MotorPanel::removeAll()
 {
-    QLayoutItem *item;
-    while ((item = root->takeAt(0)) != nullptr)
+    // The hint label sits at index 0 and belongs to the persistent layout.
+    while (root->count() > 1)
     {
+        QLayoutItem *item = root->takeAt(root->count() - 1);
+        if (!item)
+            break;
         if (QLayout *rowLyt = item->layout())
         {
-            QLayoutItem *child;
-            while ((child = rowLyt->takeAt(0)))
+            QLayoutItem *child = nullptr;
+            while ((child = rowLyt->takeAt(0)) != nullptr)
             {
                 if (child->widget())
                     delete child->widget();
@@ -168,7 +206,9 @@ void MotorPanel::removeAll()
         {
             delete item->widget();
         }
+        delete item;
     }
+
     names.clear();
     single_checkbox.clear();
     mode_selecters.clear();

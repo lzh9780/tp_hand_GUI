@@ -2,451 +2,800 @@
 #include <QWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QFormLayout>
+#include <QGroupBox>
+#include <QSplitter>
 #include <QLabel>
 #include <QString>
 #include <QComboBox>
 #include <QDebug>
-#include <QSpacerItem>
+#include <QListWidget>
 #include <QScrollArea>
 #include <QPushButton>
 #include <QCheckBox>
 #include <QLineEdit>
 #include <QTimer>
 #include <QToolButton>
-#include <QApplication>
+#include <QInputDialog>
 #include <QMessageBox>
 
 #include "ActionStore.hpp"
 
+namespace
+{
+// Placeholder entry meaning "no action set loaded yet".
+const QString kNewFlow = QStringLiteral("New flow...");
+}
+
 ActionPanel::ActionPanel(QWidget *parent)
     : QFrame(parent)
 {
-    root = new QVBoxLayout(this);
-    root->setContentsMargins(5, 5, 5, 5);
     buildUI();
-}
-
-void ActionPanel::buildUI()
-{
-    auto* controlRow = new QHBoxLayout();
-    playBtn = new QPushButton("Play");
-    auto* cyclePlay = new QCheckBox(QString("Cycle"));
-    saveBtn = new QPushButton("Save");
-    saveBtn->setEnabled(false);
-    saveAsBtn = new QPushButton("Save as");
-    saveAsBtn->setEnabled(false);
-    deleteBtn = new QPushButton("Delete");
-    deleteBtn->setEnabled(false);
-    selectBox = new QComboBox();
-    selectBox->addItem("New flow...");
-    selectBox->setCurrentIndex(0);
-    nameEdit = new QLineEdit();
-    nameEdit->hide();
-    auto* speedLbl = new QLabel("  Play\nSpeed: ");
-    speedSlider = new QSlider(Qt::Horizontal);
-    speedSlider->setRange((int)1, (int)5);
-    speedSlider->setValue(3);
-    speedSlider->setMinimumWidth(60);
-
-    auto* playCol = new QVBoxLayout();
-    auto* selectCol = new QVBoxLayout();
-    auto* selectBtnRow = new QHBoxLayout();
-    auto* valueRow = new QHBoxLayout();
-
-    playCol->addWidget(playBtn);
-    playCol->addWidget(cyclePlay);
-    selectBtnRow->addWidget(saveBtn);
-    selectBtnRow->addWidget(saveAsBtn);
-    selectBtnRow->addWidget(deleteBtn);
-    selectCol->addWidget(selectBox);
-    selectCol->addWidget(nameEdit);
-    selectCol->addLayout(selectBtnRow);
-    valueRow->addWidget(new QLabel("1"));
-    valueRow->addWidget(speedSlider);
-    valueRow->addWidget(new QLabel("5"));
-    
-    controlRow->addLayout(playCol);
-    controlRow->addLayout(selectCol);
-    controlRow->addWidget(speedLbl);
-    controlRow->addLayout(valueRow);
-
-    root->addLayout(controlRow);
-
-    // Action List table
-    auto* table = new QScrollArea();
-    auto* tableContent = new QWidget();
-    tableLyt = new QVBoxLayout(tableContent);
-    tableLyt->setSpacing(5);
-
-    table->setWidget(tableContent);
-    table->setWidgetResizable(true);
-    root->addWidget(table);
-
-    connect(cyclePlay, &QCheckBox::clicked, this, [=]{cycle = (cyclePlay->checkState() == Qt::Checked);});
-    connect(playBtn, &QPushButton::clicked, this, &ActionPanel::play);
-    connect(selectBox, &QComboBox::currentTextChanged, this, &ActionPanel::load);
-    connect(speedSlider, &QSlider::valueChanged, this, &ActionPanel::changeSpeed);
-    connect(deleteBtn, &QPushButton::clicked, this, &ActionPanel::deleteCurrentActionSet);
-    connect(saveBtn, &QPushButton::clicked, this, &ActionPanel::saveActionSet);
-    connect(saveAsBtn, &QPushButton::clicked, this, &ActionPanel::actionSetSaveAs);
-
-    connect(qApp, &QApplication::focusChanged, this,
-            [=](QWidget *old, QWidget *now)
-            {
-                if (old == nameEdit && now != nameEdit)
-                    validate(nameEdit);
-            });
-
-    connect(nameEdit, &QLineEdit::editingFinished,
-            this, [=]()
-            { validate(nameEdit); });
 
     timer_ = new QTimer(this);
     connect(timer_, &QTimer::timeout, this, &ActionPanel::loopAction);
 }
 
-void ActionPanel::addAction(QString name)
+ActionPanel::~ActionPanel()
 {
-    QLayoutItem *item;
-    if (item = tableLyt->takeAt(tableLines.size()))
-        delete item->widget();
-    
-    addActionToTable(name);
-
-    tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
-    buttonModeChange();
+    delete store_;
+    store_ = nullptr;
 }
 
-void ActionPanel::addActionToTable(QString name)
+void ActionPanel::buildUI()
 {
-    auto* actionRow = new QWidget();
-    auto* actionLyt = new QHBoxLayout(actionRow);
-    auto* nameLbl = new QLabel(name);
-    auto* removeBtn = new QPushButton("-");
-    removeBtn->setFixedSize(25, 25);
-    auto* moveUpBtn = new QToolButton;
-    moveUpBtn->setArrowType(Qt::UpArrow);
-    moveUpBtn->setFixedSize(25, 25);
-    auto* moveDownBtn = new QToolButton;
-    moveDownBtn->setArrowType(Qt::DownArrow);
-    moveDownBtn->setFixedSize(25, 25);
-    auto* spacer = new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed);
+    auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(6, 6, 6, 6);
+    root->setSpacing(6);
 
-    actionLyt->addWidget(nameLbl);
-    actionLyt->addItem(spacer);
-    actionLyt->addWidget(moveUpBtn);
-    actionLyt->addWidget(moveDownBtn);
-    actionLyt->addWidget(removeBtn);
-    actionLyt->setContentsMargins(0, 0, 0, 0);
+    auto *splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->addWidget(buildLibraryPane());
+    splitter->addWidget(buildFlowPane());
+    splitter->setStretchFactor(0, 2);
+    splitter->setStretchFactor(1, 3);
+    splitter->setChildrenCollapsible(false);
 
-    tableLyt->addWidget(actionRow);
-    tableLines.append(nameLbl);
-
-    int idx = tableLines.size() - 1;
-    connect(moveUpBtn, &QToolButton::clicked, this, [=]() {
-        actionMoveUp(idx);
-    });
-    connect(moveDownBtn, &QToolButton::clicked, this, [=]() {
-        actionMoveDown(idx);
-    });
-    connect(removeBtn, &QPushButton::clicked, this, [=]() {
-        removeActionByIndex(idx);
-    });
+    root->addWidget(splitter, 1);
 }
 
-void ActionPanel::removeActionByIndex(int idx)
+QWidget *ActionPanel::buildLibraryPane()
 {
-    while (idx != tableLines.size() - 1) {
-        actionMoveDown(idx);
-        idx += 1;
-    }
-    
-    QLayoutItem *item;
-    item = tableLyt->takeAt(tableLines.size() - 1);
-    if (item->widget())
+    auto *box = new QGroupBox(QStringLiteral("Actions"));
+    auto *lyt = new QVBoxLayout(box);
+    lyt->setContentsMargins(8, 10, 8, 8);
+    lyt->setSpacing(4);
+
+    actionList_ = new QListWidget();
+    actionList_->setToolTip("Double-click an action to apply it to the joints.");
+
+    newBtn_ = new QPushButton(QStringLiteral("New"));
+    newBtn_->setToolTip("Capture the current joint pose as a new action");
+    renameBtn_ = new QPushButton(QStringLiteral("Rename"));
+    renameBtn_->setToolTip("Rename the selected action");
+    deleteBtn_ = new QPushButton(QStringLiteral("Delete"));
+    deleteBtn_->setToolTip("Delete the selected action");
+    addToSetBtn_ = new QPushButton(QStringLiteral("Add to set »"));
+    addToSetBtn_->setToolTip("Append the selected action to the current action set");
+
+    auto *btnRow = new QHBoxLayout();
+    btnRow->setSpacing(4);
+    btnRow->addWidget(newBtn_);
+    btnRow->addWidget(renameBtn_);
+    btnRow->addWidget(deleteBtn_);
+    btnRow->addStretch(1);
+
+    nameEdit_ = new QLineEdit();
+    nameEdit_->setPlaceholderText("Action name, then press Enter");
+    nameEdit_->hide();
+
+    lyt->addLayout(btnRow);
+    lyt->addWidget(actionList_, 1);
+    lyt->addWidget(nameEdit_);
+    lyt->addWidget(addToSetBtn_);
+
+    connect(newBtn_, &QPushButton::clicked, this, &ActionPanel::onNewAction);
+    connect(renameBtn_, &QPushButton::clicked, this, &ActionPanel::onRenameAction);
+    connect(deleteBtn_, &QPushButton::clicked, this, &ActionPanel::onDeleteAction);
+    connect(addToSetBtn_, &QPushButton::clicked, this, &ActionPanel::onAddToSet);
+    connect(actionList_, &QListWidget::itemActivated, this, &ActionPanel::onActionActivated);
+    connect(actionList_, &QListWidget::itemSelectionChanged,
+            this, &ActionPanel::onLibrarySelectionChanged);
+    connect(nameEdit_, &QLineEdit::returnPressed, this, &ActionPanel::commitNameEdit);
+    connect(nameEdit_, &QLineEdit::editingFinished, this, &ActionPanel::commitNameEdit);
+
+    return box;
+}
+
+QWidget *ActionPanel::buildFlowPane()
+{
+    auto *box = new QGroupBox(QStringLiteral("Action Set"));
+    auto *lyt = new QVBoxLayout(box);
+    lyt->setContentsMargins(8, 10, 8, 8);
+    lyt->setSpacing(4);
+
+    // --- flow selector row ---
+    selectBox = new QComboBox();
+    selectBox->addItem(kNewFlow);
+    selectBox->setCurrentIndex(0);
+
+    saveBtn = new QPushButton(QStringLiteral("Save"));
+    saveBtn->setToolTip("Store the steps under the selected action set");
+    saveAsBtn = new QPushButton(QStringLiteral("Save as"));
+    saveAsBtn->setToolTip("Store the steps under a new action set");
+    deleteFlowBtn_ = new QPushButton(QStringLiteral("Delete"));
+    deleteFlowBtn_->setToolTip("Delete the selected action set");
+
+    auto *selectRow = new QHBoxLayout();
+    selectRow->setSpacing(4);
+    selectRow->addWidget(selectBox, 1);
+    selectRow->addWidget(saveBtn);
+    selectRow->addWidget(saveAsBtn);
+    selectRow->addWidget(deleteFlowBtn_);
+
+    // --- playback row ---
+    playBtn = new QPushButton(QStringLiteral("Play"));
+    auto *cyclePlay = new QCheckBox(QStringLiteral("Cycle"));
+    cyclePlay->setToolTip("Restart from the top when the last step finished");
+    speedSlider = new QSlider(Qt::Horizontal);
+    speedSlider->setRange(1, 5);
+    speedSlider->setValue(3);
+    speedSlider->setMinimumWidth(60);
+
+    auto *playRow = new QHBoxLayout();
+    playRow->setSpacing(4);
+    playRow->addWidget(playBtn);
+    playRow->addWidget(cyclePlay);
+    playRow->addStretch(1);
+    playRow->addWidget(new QLabel(QStringLiteral("Speed:")));
+    playRow->addWidget(new QLabel(QStringLiteral("1")));
+    playRow->addWidget(speedSlider);
+    playRow->addWidget(new QLabel(QStringLiteral("5")));
+
+    // --- steps ---
+    flowList_ = new QListWidget();
+    flowList_->setToolTip("Ordered steps executed by Play");
+
+    upBtn_ = new QToolButton();
+    upBtn_->setArrowType(Qt::UpArrow);
+    upBtn_->setFixedSize(26, 26);
+    upBtn_->setToolTip("Move the selected step up");
+    downBtn_ = new QToolButton();
+    downBtn_->setArrowType(Qt::DownArrow);
+    downBtn_->setFixedSize(26, 26);
+    downBtn_->setToolTip("Move the selected step down");
+    removeStepBtn_ = new QPushButton(QStringLiteral("Remove"));
+    removeStepBtn_->setToolTip("Remove the selected step");
+
+    auto *stepRow = new QHBoxLayout();
+    stepRow->setSpacing(4);
+    stepRow->addWidget(upBtn_);
+    stepRow->addWidget(downBtn_);
+    stepRow->addStretch(1);
+    stepRow->addWidget(removeStepBtn_);
+
+    lyt->addLayout(selectRow);
+    lyt->addLayout(playRow);
+    lyt->addWidget(flowList_, 1);
+    lyt->addLayout(stepRow);
+
+    connect(cyclePlay, &QCheckBox::clicked, this,
+            [this, cyclePlay]() { cycle = (cyclePlay->checkState() == Qt::Checked); });
+    connect(playBtn, &QPushButton::clicked, this, &ActionPanel::play);
+    connect(speedSlider, &QSlider::valueChanged, this, &ActionPanel::changeSpeed);
+    connect(selectBox, &QComboBox::currentTextChanged, this, &ActionPanel::loadFlow);
+    connect(saveBtn, &QPushButton::clicked, this, &ActionPanel::saveFlow);
+    connect(saveAsBtn, &QPushButton::clicked, this, &ActionPanel::saveFlowAs);
+    connect(deleteFlowBtn_, &QPushButton::clicked, this, &ActionPanel::deleteFlow);
+    connect(upBtn_, &QToolButton::clicked, this, &ActionPanel::onStepUp);
+    connect(downBtn_, &QToolButton::clicked, this, &ActionPanel::onStepDown);
+    connect(removeStepBtn_, &QPushButton::clicked, this, &ActionPanel::onStepRemove);
+    connect(flowList_, &QListWidget::itemSelectionChanged,
+            this, &ActionPanel::onFlowSelectionChanged);
+
+    changeSpeed();
+    updateFlowButtons();
+    updateLibraryButtons();
+
+    return box;
+}
+
+// ============ store ============
+
+void ActionPanel::setStore(ActionStore *store)
+{
+    if (store_ == store)
+        return;
+
+    stopPlayback();
+    endNameEdit();
+
+    // This panel owns the store: drop the previous one before adopting the new.
+    delete store_;
+    store_ = store;
+
+    clearFlowSteps();
+    reloadLibrary();
+    reloadFlowList();
+    loadFlow();
+}
+
+void ActionPanel::setPoseProvider(std::function<QVector<double>()> provider)
+{
+    poseProvider_ = std::move(provider);
+}
+
+QVector<double> ActionPanel::actionValues(const QString &name) const
+{
+    if (!store_)
+        return {};
+    const int idx = store_->findActionByName(name);
+    if (idx < 0)
+        return {};
+    return store_->actionJoints(idx);
+}
+
+void ActionPanel::persist() const
+{
+    if (store_)
+        store_->save();
+}
+
+// ============ library ============
+
+void ActionPanel::reloadLibrary()
+{
+    actionList_->clear();
+    // Refresh the buttons on the empty-store path too, otherwise "New" and
+    // friends stay enabled after a disconnect.
+    if (!store_)
     {
-        delete item->widget();
+        updateLibraryButtons();
+        return;
     }
-    tableLines.remove(tableLines.size() - 1);
-    buttonModeChange();
+    for (int i = 0; i < store_->actionCount(); ++i)
+        actionList_->addItem(store_->actionName(i));
+    updateLibraryButtons();
 }
 
-void ActionPanel::buttonModeChange()
+void ActionPanel::onLibrarySelectionChanged()
 {
-    if (tableLines.size() <= 0) 
+    updateLibraryButtons();
+}
+
+void ActionPanel::updateLibraryButtons()
+{
+    const bool hasStore = (store_ != nullptr);
+    const bool hasSelection = (actionList_->currentItem() != nullptr);
+
+    newBtn_->setEnabled(hasStore);
+    renameBtn_->setEnabled(hasStore && hasSelection);
+    deleteBtn_->setEnabled(hasStore && hasSelection);
+    addToSetBtn_->setEnabled(hasStore && hasSelection);
+}
+
+void ActionPanel::onActionActivated(QListWidgetItem *item)
+{
+    if (!item)
+        return;
+    emit actionUpdate(item->text());
+}
+
+void ActionPanel::onAddToSet()
+{
+    auto *item = actionList_->currentItem();
+    if (!item)
+        return;
+    addFlowStep(item->text());
+}
+
+void ActionPanel::beginNameEdit(bool rename)
+{
+    if (!store_)
+        return;
+
+    if (rename)
     {
-        saveBtn->setEnabled(false);
-        saveAsBtn->setEnabled(false);
-    } else if (selectBox->currentText() == "New flow...") {
-        saveBtn->setEnabled(true);
-        saveAsBtn->setEnabled(false);
-    } else {
-        int idx = store_->findActionSetByName(selectBox->currentText());
-        auto currSet = store_->actionSetList(idx);
-        
-        if (tableLines.size() != currSet.size())
+        auto *item = actionList_->currentItem();
+        if (!item)
+            return;
+        nameMode_ = NameMode::Rename;
+        nameEdit_->setText(item->text());
+    }
+    else
+    {
+        nameMode_ = NameMode::Create;
+        nameEdit_->clear();
+    }
+
+    nameEdit_->show();
+    nameEdit_->setFocus();
+    nameEdit_->selectAll();
+}
+
+void ActionPanel::endNameEdit()
+{
+    nameMode_ = NameMode::None;
+    nameEdit_->blockSignals(true);
+    nameEdit_->clear();
+    nameEdit_->hide();
+    nameEdit_->blockSignals(false);
+}
+
+void ActionPanel::onNewAction()
+{
+    beginNameEdit(false);
+}
+
+void ActionPanel::onRenameAction()
+{
+    beginNameEdit(true);
+}
+
+void ActionPanel::cancelNameEdit()
+{
+    endNameEdit();
+}
+
+void ActionPanel::commitNameEdit()
+{
+    if (nameMode_ == NameMode::None)
+        return;
+
+    const NameMode mode = nameMode_;
+    const QString name = nameEdit_->text().trimmed();
+
+    if (name.isEmpty())
+    {
+        endNameEdit();
+        return;
+    }
+
+    if (store_->findActionByName(name) != -1)
+    {
+        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
+        nameEdit_->setFocus();
+        nameEdit_->selectAll();
+        return;
+    }
+
+    if (mode == NameMode::Create)
+    {
+        QVector<double> pose;
+        if (poseProvider_)
+            pose = poseProvider_();
+        store_->addAction(name, pose);
+    }
+    else
+    {
+        auto *item = actionList_->currentItem();
+        if (!item)
         {
-            saveBtn->setEnabled(true);
-            saveAsBtn->setEnabled(true);
-        } else {
-            bool same = true;
-            int i = 0;
-            while (i < tableLines.size()) {
-                if (tableLines[i]->text() != currSet[i]) 
-                {
-                    same = false;
-                    break;
-                }
-                i += 1;
-            }
-            saveBtn->setEnabled(!same);
-            saveAsBtn->setEnabled(true);
+            endNameEdit();
+            return;
         }
+
+        const QString old = item->text();
+        if (name == old)
+        {
+            endNameEdit();
+            return;
+        }
+
+        const auto sets = store_->findActionInSet(old);
+        if (!sets.isEmpty())
+        {
+            QMessageBox msgBox;
+            msgBox.setTextFormat(Qt::MarkdownText);
+            msgBox.setWindowTitle("Rename Action");
+            msgBox.setText(QString("#### Are you sure to rename action %1 to %2?").arg(old, name));
+            msgBox.setInformativeText("The action is referenced by one or more action sets.");
+            msgBox.setIcon(QMessageBox::Warning);
+            auto *renameBtn = msgBox.addButton(QMessageBox::Ok);
+            msgBox.addButton(QMessageBox::Cancel);
+            auto *removeBtn = msgBox.addButton("Delete All", QMessageBox::ActionRole);
+
+            QString detail;
+            for (const auto &s : sets)
+                detail.append(QString("  - %1\n").arg(s));
+            msgBox.setDetailedText(detail);
+            msgBox.exec();
+
+            if (msgBox.clickedButton() == removeBtn)
+                store_->removeActionFromSet(old);
+            else if (msgBox.clickedButton() != renameBtn)
+            {
+                endNameEdit();
+                return;
+            }
+            else
+                store_->renameActionInSet(old, name);
+        }
+
+        const int idx = store_->findActionByName(old);
+        if (idx >= 0)
+            store_->setActionName(idx, name);
+
+        // Steps shown on the right track the rename so the set stays playable.
+        renameSteps(old, name);
+    }
+
+    endNameEdit();
+    reloadLibrary();
+
+    // Reselect the entry that was just created or renamed.
+    auto found = actionList_->findItems(name, Qt::MatchExactly);
+    if (!found.isEmpty())
+        actionList_->setCurrentItem(found.first());
+
+    dirty_ = true;
+    persist();
+    updateLibraryButtons();
+    updateFlowButtons();
+}
+
+void ActionPanel::onDeleteAction()
+{
+    if (!store_)
+        return;
+    auto *item = actionList_->currentItem();
+    if (!item)
+        return;
+
+    const QString name = item->text();
+    const auto sets = store_->findActionInSet(name);
+
+    QMessageBox msgBox;
+    msgBox.setTextFormat(Qt::MarkdownText);
+    msgBox.setWindowTitle("Delete Action");
+    msgBox.setText(QString("#### Are you sure to delete action %1?").arg(name));
+    msgBox.setInformativeText("This action will also be removed from any action set that uses it.");
+    msgBox.setIcon(QMessageBox::Warning);
+    auto *confirmBtn = msgBox.addButton(QMessageBox::Ok);
+    msgBox.addButton(QMessageBox::Cancel);
+
+    QString detail;
+    if (sets.isEmpty())
+        detail = QString("No action set contains action %1").arg(name);
+    else
+        for (const auto &s : sets)
+            detail.append(QString("  - %1\n").arg(s));
+    msgBox.setDetailedText(detail);
+    msgBox.exec();
+
+    if (msgBox.clickedButton() != confirmBtn)
+        return;
+
+    const int idx = store_->findActionByName(name);
+    if (idx >= 0)
+        store_->removeAction(idx);
+    if (!sets.isEmpty())
+        store_->removeActionFromSet(name);
+
+    dropSteps(name);
+    endNameEdit();
+    reloadLibrary();
+
+    dirty_ = true;
+    persist();
+    updateLibraryButtons();
+    updateFlowButtons();
+}
+
+// ============ action set ============
+
+void ActionPanel::reloadFlowList()
+{
+    if (!selectBox)
+        return;
+
+    const QString previous = selectBox->currentText();
+    selectBox->blockSignals(true);
+    selectBox->clear();
+    selectBox->addItem(kNewFlow);
+    if (store_)
+        for (int i = 0; i < store_->actionSetCount(); ++i)
+            selectBox->addItem(store_->actionSetName(i));
+    const int idx = selectBox->findText(previous);
+    selectBox->setCurrentIndex(idx >= 0 ? idx : 0);
+    selectBox->blockSignals(false);
+}
+
+QVector<QString> ActionPanel::currentSteps() const
+{
+    QVector<QString> steps;
+    if (!flowList_)
+        return steps;
+    steps.reserve(flowList_->count());
+    for (int i = 0; i < flowList_->count(); ++i)
+        steps.append(flowList_->item(i)->text());
+    return steps;
+}
+
+void ActionPanel::clearFlowSteps()
+{
+    if (flowList_)
+        flowList_->clear();
+    highlightStep(-1);
+}
+
+void ActionPanel::addFlowStep(const QString &name)
+{
+    if (!flowList_)
+        return;
+    flowList_->addItem(name);
+    dirty_ = true;
+    updateFlowButtons();
+}
+
+void ActionPanel::removeFlowStep(int row)
+{
+    if (!flowList_ || row < 0 || row >= flowList_->count())
+        return;
+    delete flowList_->takeItem(row);
+    dirty_ = true;
+    updateFlowButtons();
+}
+
+void ActionPanel::moveFlowStep(int row, int delta)
+{
+    if (!flowList_)
+        return;
+    const int target = row + delta;
+    if (row < 0 || row >= flowList_->count() || target < 0 || target >= flowList_->count())
+        return;
+
+    QListWidgetItem *item = flowList_->takeItem(row);
+    flowList_->insertItem(target, item);
+    flowList_->setCurrentItem(item);
+    dirty_ = true;
+    updateFlowButtons();
+}
+
+void ActionPanel::renameSteps(const QString &from, const QString &to)
+{
+    if (!flowList_)
+        return;
+    for (int i = 0; i < flowList_->count(); ++i)
+        if (flowList_->item(i)->text() == from)
+            flowList_->item(i)->setText(to);
+}
+
+void ActionPanel::dropSteps(const QString &name)
+{
+    if (!flowList_)
+        return;
+    for (int i = flowList_->count() - 1; i >= 0; --i)
+        if (flowList_->item(i)->text() == name)
+            delete flowList_->takeItem(i);
+}
+
+void ActionPanel::loadFlow()
+{
+    stopPlayback();
+    clearFlowSteps();
+
+    if (!store_ || selectBox->currentText() == kNewFlow)
+    {
+        dirty_ = false;
+        updateFlowButtons();
+        return;
+    }
+
+    const int idx = store_->findActionSetByName(selectBox->currentText());
+    if (idx == -1)
+    {
+        // The selected set disappeared from the store: rebuild the list and
+        // fall back to the placeholder.
+        reloadFlowList();
+        loadFlow();
+        return;
+    }
+
+    for (const auto &s : store_->actionSetList(idx))
+    {
+        if (store_->findActionByName(s) == -1)
+        {
+            QMessageBox::warning(this, "Action Not Found",
+                QString("The action %1 hasn't been found. Please check the storage file.").arg(s));
+            continue;
+        }
+        addFlowStep(s);
+    }
+
+    dirty_ = false;
+    updateFlowButtons();
+}
+
+void ActionPanel::updateFlowButtons()
+{
+    const bool hasStore = (store_ != nullptr);
+    const int steps = flowList_ ? flowList_->count() : 0;
+    const bool isNew = selectBox->currentText() == kNewFlow;
+    const int row = flowList_ ? flowList_->currentRow() : -1;
+
+    saveBtn->setEnabled(hasStore && steps > 0 && (isNew || dirty_));
+    saveAsBtn->setEnabled(hasStore && steps > 0);
+    deleteFlowBtn_->setEnabled(hasStore && !isNew);
+    playBtn->setEnabled(steps > 0);
+    speedSlider->setEnabled(steps > 0);
+
+    upBtn_->setEnabled(row > 0);
+    downBtn_->setEnabled(row >= 0 && row < steps - 1);
+    removeStepBtn_->setEnabled(row >= 0);
+}
+
+void ActionPanel::onStepUp()
+{
+    moveFlowStep(flowList_->currentRow(), -1);
+}
+
+void ActionPanel::onStepDown()
+{
+    moveFlowStep(flowList_->currentRow(), +1);
+}
+
+void ActionPanel::onStepRemove()
+{
+    removeFlowStep(flowList_->currentRow());
+}
+
+void ActionPanel::onFlowSelectionChanged()
+{
+    updateFlowButtons();
+}
+
+void ActionPanel::saveFlow()
+{
+    if (!store_ || flowList_->count() == 0)
+        return;
+
+    // "New flow..." has no name yet, so saving always goes through "Save as".
+    if (selectBox->currentText() == kNewFlow)
+    {
+        saveFlowAs();
+        return;
+    }
+
+    const int idx = store_->findActionSetByName(selectBox->currentText());
+    if (idx == -1)
+    {
+        reloadFlowList();
+        loadFlow();
+        return;
+    }
+
+    store_->setActionSetValues(idx, currentSteps());
+    persist();
+    dirty_ = false;
+    updateFlowButtons();
+}
+
+void ActionPanel::saveFlowAs()
+{
+    if (!store_ || flowList_->count() == 0)
+        return;
+
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, "Save Action Set", "Action set name:",
+                                               QLineEdit::Normal, QString(), &ok).trimmed();
+    if (!ok || name.isEmpty())
+        return;
+
+    if (store_->findActionSetByName(name) != -1)
+    {
+        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
+        return;
+    }
+
+    store_->addActionSet(name, currentSteps());
+    persist();
+    dirty_ = false;
+
+    reloadFlowList();
+    selectBox->setCurrentText(name); // triggers loadFlow(), which re-adds steps
+}
+
+void ActionPanel::deleteFlow()
+{
+    if (!store_)
+        return;
+
+    const QString name = selectBox->currentText();
+    const int idx = store_->findActionSetByName(name);
+    if (idx == -1)
+        return;
+
+    QMessageBox msgBox;
+    msgBox.setTextFormat(Qt::MarkdownText);
+    msgBox.setWindowTitle("Delete Action Set");
+    msgBox.setText(QString("#### Are you sure to delete action set %1?").arg(name));
+    msgBox.setIcon(QMessageBox::Warning);
+    auto *confirmBtn = msgBox.addButton(QMessageBox::Ok);
+    msgBox.addButton(QMessageBox::Cancel);
+    msgBox.exec();
+
+    if (msgBox.clickedButton() != confirmBtn)
+        return;
+
+    stopPlayback();
+    store_->removeActionSet(idx);
+    persist();
+    reloadFlowList();
+    loadFlow();
+}
+
+// ============ playback ============
+
+void ActionPanel::highlightStep(int row)
+{
+    if (!flowList_)
+        return;
+    for (int i = 0; i < flowList_->count(); ++i)
+    {
+        auto *item = flowList_->item(i);
+        const bool active = (i == row);
+        item->setBackground(active ? QColor("#3a3df8") : QColor("#ffffff"));
+        item->setForeground(active ? QColor("#ffffff") : QColor("#000000"));
+    }
+}
+
+void ActionPanel::stopPlayback()
+{
+    if (timer_)
+        timer_->stop();
+    currStep_ = 0;
+    if (playBtn)
+        playBtn->setText("Play");
+    highlightStep(-1);
+}
+
+void ActionPanel::play()
+{
+    if (!playBtn || !timer_ || flowList_->count() == 0)
+        return;
+
+    if (playBtn->text() == "Play")
+    {
+        playBtn->setText("Stop");
+        currStep_ = 0;
+        loopAction();
+        timer_->start(currStopTime);
+    }
+    else
+    {
+        stopPlayback();
     }
 }
 
 void ActionPanel::loopAction()
 {
-    int prev_idx = curr_idx - 1;
-    if (prev_idx < 0) prev_idx = tableLines.size() - 1;
-    tableLines[prev_idx]->setStyleSheet(
-            "QLabel { background: #f0f0f0;}");
-    
-    if (curr_idx == tableLines.size())
+    if (flowList_->count() == 0)
     {
-        if (cycle) 
-            curr_idx = 0;
+        stopPlayback();
+        return;
+    }
+
+    if (currStep_ >= flowList_->count())
+    {
+        if (cycle)
+            currStep_ = 0;
         else
         {
-            play();
+            stopPlayback();
             return;
         }
     }
 
-    tableLines[curr_idx]->setStyleSheet(
-                "QLabel { background: #3a3df8; color: #ffffff}");
-    emit actionUpdate(tableLines[curr_idx]->text());
-    
-    curr_idx += 1;
-}
-
-void ActionPanel::play()
-{
-    if (!playBtn) return;
-    if (tableLines.size() == 0) return;
-
-    if (playBtn->text() == "Play") 
-    {
-        playBtn->setText("Stop");
-        loopAction();
-        timer_->start(currStopTime);
-    } else if (playBtn->text() == "Stop") 
-    {
-        playBtn->setText("Play");
-        timer_->stop();
-        int prev_idx = curr_idx - 1;
-        if (prev_idx < 0) prev_idx = 0;
-        tableLines[prev_idx]->setStyleSheet(
-                "QLabel { background: #f0f0f0;}");
-        curr_idx = 0;
-    }
-}
-
-void ActionPanel::loadFlowList()
-{
-    for (int i = 0; i < store_->actionSetCount(); ++i)
-    {
-        selectBox->addItem(store_->actionSetName(i));
-    }
+    highlightStep(currStep_);
+    emit actionUpdate(flowList_->item(currStep_)->text());
+    currStep_ += 1;
 }
 
 void ActionPanel::changeSpeed()
 {
-    currStopTime = stopTime[speedSlider->value() - 1];
+    const int level = qBound(1, speedSlider->value(), 5);
+    currStopTime = stopTime[level - 1];
+    // Apply the new interval immediately instead of waiting for a restart.
+    if (timer_ && timer_->isActive())
+        timer_->start(currStopTime);
 }
-
-void ActionPanel::load()
-{
-    clearActionList();
-    if (selectBox->currentText() == "New flow...") 
-    {
-        deleteBtn->setEnabled(false);
-        saveAsBtn->setEnabled(false);
-        return;
-    }
-
-    int idx = store_->findActionSetByName(selectBox->currentText());
-    if (idx == -1)
-    {
-        selectBox->setCurrentIndex(0);
-        while (selectBox->count() > 1)
-            selectBox->removeItem(1);
-        loadFlowList();
-        load();
-        return;
-    }
-    for (const auto &s : store_->actionSetList(idx))
-    {
-        if (store_->findActionByName(s) == -1)
-        {
-            int ret = QMessageBox::warning(this, "Action Not Found", QString("The action %1 haven't been found. "
-                "Please Check the storage file. ").arg(s));
-            continue;
-        }
-        
-        addActionToTable(s);
-    }
-    tableLyt->addItem(new QSpacerItem(10, 10, QSizePolicy::Fixed, QSizePolicy::Expanding));
-    deleteBtn->setEnabled(true);
-    saveAsBtn->setEnabled(true);
-}
-
-void ActionPanel::actionMoveUp(int idx)
-{
-    if (idx == 0) return;
-    auto buffer = tableLines[idx - 1]->text();
-    tableLines[idx - 1]->setText(tableLines[idx]->text());
-    tableLines[idx]->setText(QString(buffer));
-    buttonModeChange();
-}
-
-void ActionPanel::actionMoveDown(int idx)
-{
-    if (idx == tableLines.size() - 1) return;
-    auto buffer = tableLines[idx + 1]->text();
-    tableLines[idx + 1]->setText(tableLines[idx]->text());
-    tableLines[idx]->setText(QString(buffer));
-    buttonModeChange();
-}
-
-void ActionPanel::updateStore(ActionStore *store)
-{
-    store_ = store;
-}
-
-void ActionPanel::saveActionSet()
-{
-    if (tableLines.size() == 0) return;
-    if (selectBox->currentText() != "New flow...") {
-        QVector<QString> actions;
-        for (const auto* a : tableLines)
-        {    
-            // qDebug() << a->text();
-            actions.append(a->text());
-        }
-
-        int idx = store_->findActionSetByName(selectBox->currentText());
-        // qDebug() << idx;
-        store_->setActionSetValues(idx, actions);
-        store_->save();
-        saveBtn->setEnabled(false);
-    } else {
-        nameEdit->show();
-        selectBox->hide();
-        nameEdit->setFocus();
-    }
-}
-
-void ActionPanel::actionSetSaveAs()
-{
-    if (tableLines.size() == 0) return;
-    nameEdit->show();
-    selectBox->hide();
-    nameEdit->setFocus();
-}
-
-void ActionPanel::deleteCurrentActionSet()
-{
-    QMessageBox msgBox;
-    msgBox.setTextFormat(Qt::MarkdownText);
-    msgBox.setWindowTitle("Delete Action Set");
-    msgBox.setText(QString("#### Are you sure to delete action set %1?").arg(selectBox->currentText()));
-    msgBox.setIcon(QMessageBox::Warning);
-    auto *confirmBtn = msgBox.addButton(QMessageBox::Ok);
-    auto *cancelBtn = msgBox.addButton(QMessageBox::Cancel);
-    msgBox.exec();
-
-    if (msgBox.clickedButton() == confirmBtn)
-    {
-        int idx = store_->findActionSetByName(selectBox->currentText());
-        store_->removeActionSet(idx);
-        store_->save();
-        selectBox->removeItem(idx + 1);
-        selectBox->setCurrentIndex(0);
-    }
-}
-
-void ActionPanel::validate(QLineEdit* edit)
-{
-    if (edit->property("validating").toBool())
-        return;
-    edit->setProperty("validating", true);
-
-    bool pass = false;
-    if (edit->text().trimmed().isEmpty())
-        pass = false;
-    else { 
-        int i = store_->findActionSetByName(edit->text());
-        if (i == -1) pass = true;
-    }
-
-    if (pass) {
-        QVector<QString> actions;
-        for (const auto* a : tableLines)
-            actions.append(a->text());
-        store_->addActionSet(edit->text(), actions);
-        store_->save();
-        selectBox->addItem(edit->text());
-        selectBox->show();
-        selectBox->setCurrentIndex(selectBox->count() - 1);
-        edit->hide();
-        edit->setText("");        
-    }
-    else
-    {
-        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
-        edit->setFocus();
-        edit->selectAll();
-    }
-
-    QTimer::singleShot(0, edit, [edit]
-                       { edit->setProperty("validating", false); });
-}
-
-void ActionPanel::clearActionList()
-{
-    tableLines.clear();
-    QLayoutItem *item;
-    while ((item = tableLyt->takeAt(0)) != nullptr)
-    {   
-        // qDebug() << "Deleting";
-        if (QLayout *rowLyt = item->layout())
-        {
-            QLayoutItem *child;
-            while ((child = rowLyt->takeAt(0)))
-            {
-                if (child->widget())
-                    delete child->widget();
-                delete child;
-            }
-            delete rowLyt;
-        }
-        else if (item->widget())
-        {
-            delete item->widget();
-        }
-    }
-}
-
-void ActionPanel::clearAll()
-{
-    clearActionList();
-    selectBox->setCurrentIndex(0);
-    while (selectBox->count() > 1)
-        selectBox->removeItem(1);
-    saveBtn->setEnabled(false);
-    saveAsBtn->setEnabled(false);
-    deleteBtn->setEnabled(false);
-}
-
-void ActionPanel::reload() { load(); }

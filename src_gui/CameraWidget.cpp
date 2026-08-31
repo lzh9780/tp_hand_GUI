@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QStatusBar>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QDebug>
 #include "CameraHandDetect.hpp"
 
@@ -83,19 +84,27 @@ CameraWidget::CameraWidget(QWidget *parent)
 
 void CameraWidget::stopThread()
 {
-    if (workerThread_)
+    if (!workerThread_)
+        return;
+
+    workerThread_->quit();
+    if (!workerThread_->wait(3000))
     {
-        while (workerThread_->isRunning())
-        {
-            workerThread_->quit();
-            if (!workerThread_->wait(3000))
-                continue;
-        }
+        // The worker did not react to quit(); never spin forever in the UI.
+        workerThread_->terminate();
+        workerThread_->wait(3000);
     }
 }
 
 void CameraWidget::start()
 {
+    if (!control)
+    {
+        emit error("No tele-operation source available for the selected device.");
+        onChange(false);
+        return;
+    }
+
     workerThread_ = new QThread(this);
     // control = new TeleopBase();
     control->moveToThread(workerThread_);
@@ -111,7 +120,12 @@ void CameraWidget::start()
             { onChange(r); });
 
     connect(control, &TeleopBase::newFrame, this, [this](const QImage &img)
-            { setFrame(img); });
+            {
+                // Acknowledge first so an early return cannot stall the producer.
+                if (control)
+                    QMetaObject::invokeMethod(control, "acknowledgeFrame", Qt::QueuedConnection);
+                setFrame(img);
+            });
 
     workerThread_->start();
     QMetaObject::invokeMethod(control, "start", Qt::QueuedConnection);
@@ -125,7 +139,7 @@ void CameraWidget::onSwitch()
 
 void CameraWidget::record()
 {
-    if (last_data.size() != full_joints_list.size())
+    if (last_data.size() != (int)full_joints_list.size())
     {
         emit error("Invaild data. Calibration failed");
         return;
@@ -145,29 +159,37 @@ void CameraWidget::onChange(bool on)
 void CameraWidget::onControlSwitch(const QString &msg)
 {
     emit controlSwitch(msg);
-    if (msg == "Start")
-    {
-        // control = new TeleopBase();
-        if (selectBox->currentText() == "Camera")
-            control = new PyCamWorker();
-        else if (selectBox->currentText() == "UDE Glove")
-        {
-#ifdef USE_UDE_TELEOP
-            control = new UDETeleop();
-#endif
-        }
-        else if (selectBox->currentText() == "Manus Glove")
-        {
-#ifdef USE_MANUS_TELEOP
-            control = new ManusTeleop();
-#endif
-        }
-        start();
-    }
-    else
+
+    if (msg != "Start")
     {
         stopAll();
+        return;
     }
+
+    // Never run two sources at the same time.
+    if (control)
+        stopAll();
+
+    const QString source = selectBox->currentText();
+    if (source == "Camera")
+        control = new PyCamWorker();
+#ifdef USE_UDE_TELEOP
+    else if (source == "UDE Glove")
+        control = new UDETeleop();
+#endif
+#ifdef USE_MANUS_TELEOP
+    else if (source == "Manus Glove")
+        control = new ManusTeleop();
+#endif
+
+    if (!control)
+    {
+        emit error(QString("Tele-operation source '%1' is not available in this build.").arg(source));
+        onChange(false);
+        return;
+    }
+
+    start();
 }
 
 void CameraWidget::setFrame(const QImage &img)
@@ -199,10 +221,15 @@ void CameraWidget::updatePixmap()
 
 void CameraWidget::dataProcess(const QVector<double> &joints)
 {
-    if (joints.size() != full_joints_list.size())
+    // Acknowledge first so an early return cannot stall the producer: the
+    // worker only posts a new sample once this one has been consumed.
+    if (control)
+        QMetaObject::invokeMethod(control, "acknowledgeJoints", Qt::QueuedConnection);
+
+    if (joints.size() != (int)full_joints_list.size())
         return;
     last_data = joints;
-    if (calibrate_data.size() != full_joints_list.size())
+    if (calibrate_data.size() != (int)full_joints_list.size())
     {
         emit dataUpdate(joints);
         return;
@@ -224,15 +251,28 @@ void CameraWidget::stopAll()
 {
     if (control)
     {
+        // Ask the worker to stop, then let its thread finish so that no
+        // further signal can be emitted while the object is torn down.
         QMetaObject::invokeMethod(control, "stop", Qt::QueuedConnection);
-        control->deleteLater();
-        control = nullptr;
     }
+
     if (workerThread_ && workerThread_->isRunning())
         stopThread();
 
-    // if (control)
-    //     control.reset();
-    delete (workerThread_);
+    if (control)
+    {
+        // deleteLater() would be posted to the (now stopped) worker thread and
+        // never processed, so drop the connections and delete directly.
+        control->disconnect();
+        QCoreApplication::removePostedEvents(this, QEvent::MetaCall);
+        delete control;
+        control = nullptr;
+    }
+
+    delete workerThread_;
     workerThread_ = nullptr;
+
+    // Make sure the button returns to "Start" even if the worker never
+    // reported a running-state change.
+    onChange(false);
 }

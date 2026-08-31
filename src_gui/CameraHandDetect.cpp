@@ -31,9 +31,12 @@ void PyCamWorker::start()
         }
 
         // Poll ~60 FPS (adjust as needed)
-        timer_ = new QTimer();
+        timer_ = new QTimer(this);
         connect(timer_, &QTimer::timeout, this, &PyCamWorker::onTick);
         timer_->start(1000 / 120);
+
+        // A dropped acknowledgement must never stall the pipeline.
+        resetDelivery();
 
         running_ = true;
         emit status("Python camera loop started.");
@@ -135,7 +138,10 @@ void PyCamWorker::onTick()
         l.append(wd["pitch"].cast<float>());
         l.append(wd["yaw"].cast<float>());
 
-        emit newJoint(l);
+        // Drop the sample if the GUI has not consumed the previous one yet;
+        // a fresher one is produced on the very next tick.
+        if (requestJointDelivery())
+            emit newJoint(l);
 
         py::buffer_info info = arr.request();
 
@@ -161,7 +167,11 @@ void PyCamWorker::onTick()
                           info.ptr, srcStride, rows, rowBytes);
 
             // 4) Emit to GUI (no pixmap conversion; viewer draws QImage)
-            emit newFrame(frameBGR_);
+            //    Frames are by far the largest payload we push across threads,
+            //    so they must be coalesced too: an unconsumed frame would
+            //    otherwise pin its own image buffer in the event queue.
+            if (requestFrameDelivery())
+                emit newFrame(frameBGR_);
         }
     }
     catch (const py::error_already_set &e)

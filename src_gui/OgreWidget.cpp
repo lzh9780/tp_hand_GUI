@@ -83,37 +83,137 @@ OgreWidget::OgreWidget(QWidget *parent) : QWidget(parent)
     setAttribute(Qt::WA_NoSystemBackground, true);
     setUpdatesEnabled(false);
     connect(&mTimer, &QTimer::timeout, this, &OgreWidget::onFrame);
-    if (!mOgreInited)
+    ensureOgre();
+}
+
+void OgreWidget::failOgre(const QString &message)
+{
+    shutdownOgre();
+    mOgreFailed = true;
+
+    qWarning() << "OGRE initialisation failed:" << message;
+    emit initFailed(message);
+}
+
+bool OgreWidget::ensureOgre()
+{
+    if (mOgreInited)
+        return true;
+    if (mOgreFailed)
+        return false;
+
+    QString errorMsg;
+    bool failed = false;
+    try
     {
         initOgre();
         mOgreInited = true;
-        resetView();
-        mTimer.start(16);
     }
+    catch (const Ogre::Exception &e)
+    {
+        errorMsg = QString::fromUtf8(e.getFullDescription().c_str());
+        failed = true;
+    }
+    catch (const std::exception &e)
+    {
+        errorMsg = QString::fromUtf8(e.what());
+        failed = true;
+    }
+    catch (...)
+    {
+        errorMsg = QStringLiteral("Unknown error while initialising OGRE.");
+        failed = true;
+    }
+
+    // Only tear OGRE down once the catch blocks have been left: destroying the
+    // root unloads the render-system plugin, which would invalidate type info
+    // that the still-live exception object needs in order to unwind.
+    if (failed)
+    {
+        failOgre(errorMsg);
+        return false;
+    }
+
+    resetView();
+    mTimer.start(16);
+    return true;
 }
 OgreWidget::~OgreWidget()
 {
+    shutdownOgre();
+}
+
+void OgreWidget::shutdownOgre()
+{
+    if (!mOgreInited && !mRoot)
+    {
+        // Nothing was brought up (or it already failed and was torn down);
+        // just make sure the timer can't tick into freed state.
+        mTimer.stop();
+        return;
+    }
+
+    // 1) Stop rendering and drop the frame timer first: onFrame() must never
+    //    run while we tear the scene/root down.
+    mTimer.stop();
+
+    // 2) Detach the RTSS technique resolver BEFORE the ShaderGenerator
+    //    singleton is destroyed. Material teardown below can still call back
+    //    into handleSchemeNotFound(); it must never see a dangling mSG.
     if (mRtssListener)
     {
-        Ogre::MaterialManager::getSingleton().removeListener(mRtssListener);
+        if (Ogre::MaterialManager::getSingletonPtr())
+            Ogre::MaterialManager::getSingleton().removeListener(mRtssListener);
         delete mRtssListener;
         mRtssListener = nullptr;
     }
-    mTimer.stop();
+
+    // 3) Destroy all scene content while the SceneManager and MaterialManager
+    //    are still alive.
+    mRobots.clear();
+    mBuiltJoints.clear();
+    mLinkNodes.clear();
+
+    //    Release all materials we created / referenced so they do not linger
+    //    into RTSS + MaterialManager shutdown.
+    //    (The ShaderGenerator holds per-material references; releasing them
+    //    here avoids use-after-free during singleton destruction.)
+    if (mScene)
+    {
+        // Detach & destroy every manual/entity under the world node.
+        if (mWorld)
+            destroySubtree(mScene, mWorld);
+        mWorld = nullptr;
+    }
+
+    // 4) Destroy the ShaderGenerator singleton BEFORE the Root, and after all
+    //    materials/scene managers that reference it. Ordering here is what
+    //    prevents the classic OGRE-at-exit segmentation fault.
+    if (auto *sg = Ogre::RTShader::ShaderGenerator::getSingletonPtr())
+    {
+        if (mScene)
+            sg->removeSceneManager(mScene);
+        Ogre::RTShader::ShaderGenerator::destroy();
+    }
+    mSG = nullptr;
+
+    // 5) Tear down scene manager + camera + viewport via the Root. The Root
+    //    destructor destroys all SceneManagers, RenderWindows and the loaded
+    //    plugins (see the "Unloading library RenderSystem_GL3Plus" line).
+    mScene = nullptr;
+    mCamera = nullptr;
+    mViewport = nullptr;
+    mWindow = nullptr;
     mRoot.reset();
+
+    mOgreInited = false;
 }
 
 // -------------------- Qt lifecycle --------------------
 void OgreWidget::showEvent(QShowEvent *e)
 {
     QWidget::showEvent(e);
-    if (!mOgreInited)
-    {
-        initOgre();
-        mOgreInited = true;
-        resetView();
-        mTimer.start(16);
-    }
+    ensureOgre();
 }
 void OgreWidget::resizeEvent(QResizeEvent *e)
 {
@@ -268,6 +368,10 @@ void OgreWidget::enableRTSS()
     auto *sg = ShaderGenerator::getSingletonPtr();
     sg->addSceneManager(mScene); // IMPORTANT: register your SceneManager
 
+    // Remember the singleton so shutdownOgre() can destroy it in the right
+    // order (after scene content, before the Root).
+    mSG = sg;
+
     // Install our listener once
     if (!mRtssListener)
     {
@@ -283,6 +387,9 @@ void OgreWidget::enableRTSS()
 // -------------------- Public API --------------------
 bool OgreWidget::loadURDF(const std::string &urdf_path)
 {
+    if (!ensureOgre())
+        return false;
+
     UrdfModel model;
     if (!UrdfLoader::loadFile(urdf_path, model))
     {
@@ -758,6 +865,9 @@ Ogre::MovableObject *OgreWidget::createAnyMeshOrManual(const std::string &name,
 // -------------------- Camera/nav --------------------
 void OgreWidget::updateCamera()
 {
+    if (!mCamera)
+        return;
+
     mPitch = std::clamp(mPitch, -1.40f, +1.40f);
     mDistance = std::max(0.05f, mDistance);
 
@@ -907,6 +1017,9 @@ bool OgreWidget::loadURDFDual(const std::string &urdf_path,
                               const std::string &cmdName,
                               const std::string &fbName)
 {
+    if (!ensureOgre())
+        return false;
+
     UrdfModel model;
     if (!UrdfLoader::loadFile(urdf_path, model))
     {

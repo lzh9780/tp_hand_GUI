@@ -1,5 +1,5 @@
 #include "SidePanel.h"
-#include "ActionStore.hpp"
+#include <algorithm>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QSplitter>
@@ -17,7 +17,33 @@
 #include <QPixmap>
 #include <QComboBox>
 #include <QTabWidget>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QVector>
 #include <cmath>
+
+namespace
+{
+// Signal | T | Pos | Vel | Trq | St
+constexpr int kFeedbackColumns = 6;
+
+// The read timer ticks at 100 Hz. Rewriting every cell that often would flood
+// the event loop with repaint requests, so the table is refreshed at 10 Hz.
+constexpr qint64 kFeedbackIntervalMs = 100;
+
+// Feedback table does not need sub-pixel precision; two decimals keeps the
+// columns narrow enough for the side panel.
+QString formatValue(float v)
+{
+    return QString::number(double(v), 'f', 2);
+}
+
+void setCell(QTableWidgetItem *item, float v)
+{
+    if (item)
+        item->setText(formatValue(v));
+}
+}
 
 SidePanel::SidePanel(QWidget *parent)
     : QFrame(parent)
@@ -26,139 +52,237 @@ SidePanel::SidePanel(QWidget *parent)
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    buildActionsPanel();
+    buildFeedbackPanel();
     buildSliderPanel();
 
-    // Splitter: actions (top) + sliders (bottom)
+    // Splitter: feedback (top) + sliders (bottom)
     auto *splitter = new QSplitter(Qt::Vertical, this);
-    // splitter->addWidget(img_label_);
-    splitter->addWidget(actionsPanel_);
+    splitter->addWidget(feedbackPanel_);
     splitter->addWidget(sliderPanel_);
-    // splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
 
     root->addWidget(splitter);
-
-    // Track focus changes for inline name edit UX (as in your app)
-    connect(qApp, &QApplication::focusChanged, this, &SidePanel::onFocusChanged);
 }
 
-void SidePanel::buildActionsPanel()
+void SidePanel::buildFeedbackPanel()
 {
-    actionsPanel_ = new QWidget(this);
-    auto *actionRoot = new QVBoxLayout(actionsPanel_);
-    actionRoot->setContentsMargins(6, 6, 6, 6);
-    actionRoot->setSpacing(4);
-    auto *actionList = new QWidget;
-    auto *v = new QVBoxLayout(actionList);
-    v->setContentsMargins(0, 0, 0, 0);
-    v->setSpacing(4);
+    feedbackPanel_ = new QWidget(this);
+    auto *feedbackRoot = new QVBoxLayout(feedbackPanel_);
+    feedbackRoot->setContentsMargins(6, 6, 6, 6);
+    feedbackRoot->setSpacing(4);
 
-    btnSave_ = new QPushButton("Save");
-    btnDelete_ = new QPushButton("Delete");
-    btnEditName_ = new QPushButton("Rename");
+    auto *title = new QLabel("Feedback:");
+    auto bold = title->font();
+    bold.setBold(true);
+    title->setFont(bold);
+    feedbackRoot->addWidget(title);
 
-    auto *btnWidget = new QWidget;
-    QHBoxLayout *h = new QHBoxLayout(btnWidget);
-    h->addWidget(btnSave_);
-    h->addWidget(btnDelete_);
-    h->addWidget(btnEditName_);
-    h->addStretch(1);
-    h->setContentsMargins(0, 0, 0, 0);
-    v->addLayout(h);
+    // Columns: Signal | Kind | Pos | Vel | Trq | Status
+    feedbackTable_ = new QTableWidget(0, kFeedbackColumns, this);
+    feedbackTable_->setHorizontalHeaderLabels(
+        {QStringLiteral("Signal"), QStringLiteral("T"),
+         QStringLiteral("Pos"), QStringLiteral("Vel"),
+         QStringLiteral("Trq"), QStringLiteral("St")});
+    feedbackTable_->horizontalHeader()->setToolTip(
+        "Live telemetry. T identifies the source: J = joint sensor, M = motor.\n"
+        "Pos/Vel are the reported position and velocity, Trq the motor effort.");
+    feedbackTable_->verticalHeader()->setVisible(false);
+    feedbackTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    feedbackTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    feedbackTable_->setFocusPolicy(Qt::NoFocus);
+    feedbackTable_->setAlternatingRowColors(true);
+    feedbackTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    // Header: "Actions" [collapse]
-    auto *header = new QLabel("Actions:");
-    v->addWidget(header);
+    auto *header = feedbackTable_->horizontalHeader();
+    header->setSectionResizeMode(0, QHeaderView::Stretch);
+    for (int c = 1; c < kFeedbackColumns; ++c)
+        header->setSectionResizeMode(c, QHeaderView::Fixed);
+    feedbackTable_->setColumnWidth(1, 22);  // T
+    feedbackTable_->setColumnWidth(2, 66);  // Pos
+    feedbackTable_->setColumnWidth(3, 66);  // Vel
+    feedbackTable_->setColumnWidth(4, 66);  // Trq
+    feedbackTable_->setColumnWidth(5, 26);  // St
 
-    // Actions list container
-    actionListWidget_ = new QWidget;
-    actionListWidget_->setStyleSheet("background: #fff;");
-
-    v->addWidget(actionListWidget_);
-    auto *spacer = new QSpacerItem(40, 20, QSizePolicy::Fixed, QSizePolicy::Expanding);
-    v->addItem(spacer);
-
-    actionScroll_ = new QScrollArea;
-    actionScroll_->setWidget(actionList);
-    actionScroll_->setWidgetResizable(true);
-
-    actionRoot->addWidget(btnWidget);
-    actionRoot->addWidget(actionScroll_);
-
-    connect(btnSave_, &QPushButton::clicked, this, &SidePanel::onSaveAction);
+    feedbackRoot->addWidget(feedbackTable_, 1);
 }
 
-void SidePanel::updateStore(ActionStore *store)
+void SidePanel::clearFeedbackTable()
 {
-    store_ = store;
-}
-
-void SidePanel::loadActions()
-{
-    if (!store_)
+    if (!feedbackTable_)
         return;
-    auto *listLayout = new QVBoxLayout(actionListWidget_);
-    listLayout->setContentsMargins(24, 0, 0, 0);
-    listLayout->setSpacing(2);
+    // clearContents() leaves the row count intact but orphans every item, so
+    // reset the rows explicitly. Cell widgets are removed with their rows.
+    feedbackTable_->setRowCount(0);
+    feedbackTable_->clearContents();
+    jointRows_.clear();
+    motorRows_.clear();
+}
 
-    // Populate from store
-    store_->load();
-    for (int i = 0; i < store_->actionCount(); ++i)
+void SidePanel::addFeedbackSection(const QString &title)
+{
+    const int row = feedbackTable_->rowCount();
+    feedbackTable_->insertRow(row);
+
+    auto *item = new QTableWidgetItem(title);
+    item->setFlags(Qt::NoItemFlags);
+    item->setBackground(QColor("#dcdcdc"));
+    auto f = item->font();
+    f.setBold(true);
+    item->setFont(f);
+    feedbackTable_->setItem(row, 0, item);
+    feedbackTable_->setSpan(row, 0, 1, kFeedbackColumns);
+}
+
+SidePanel::FeedbackRow SidePanel::addFeedbackRow(const QString &name,
+                                                 const QString &kind,
+                                                 bool withLed)
+{
+    const int row = feedbackTable_->rowCount();
+    feedbackTable_->insertRow(row);
+
+    auto *nameItem = new QTableWidgetItem(name);
+    nameItem->setFlags(Qt::ItemIsEnabled);
+    nameItem->setToolTip(name);
+    feedbackTable_->setItem(row, 0, nameItem);
+
+    auto *kindItem = new QTableWidgetItem(kind);
+    kindItem->setFlags(Qt::ItemIsEnabled);
+    kindItem->setTextAlignment(Qt::AlignCenter);
+    kindItem->setForeground(QColor("#666666"));
+    kindItem->setToolTip(kind == QStringLiteral("J") ? QStringLiteral("Joint sensor")
+                                                     : QStringLiteral("Motor"));
+    feedbackTable_->setItem(row, 1, kindItem);
+
+    FeedbackRow cells;
+    for (int c = 2; c <= 4; ++c)
     {
-        auto *row = new QWidget;
-        auto *rl = new QHBoxLayout(row);
-        rl->setContentsMargins(0, 0, 0, 0);
-        auto *addBtn = new QPushButton("+");
-        addBtn->setFixedSize(25, 25);
-        auto *nameBtn = new QPushButton(store_->actionName(i));
-        nameBtn->setStyleSheet(
-            "QPushButton { border: 1px solid #ffffff; background: #ffffff; text-align: left; padding-left: 10px; }"
-            "QPushButton:focus  { border: 2px solid #000000; background: #f0f0f0; text-align: left; padding-left: 10px; }");
-        nameBtn->setFixedHeight(24);
-        auto *nameEdit = new QLineEdit(store_->actionName(i));
-        nameEdit->hide();
+        auto *item = new QTableWidgetItem(QStringLiteral("-"));
+        item->setFlags(Qt::ItemIsEnabled);
+        item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        feedbackTable_->setItem(row, c, item);
+        if (c == 2)
+            cells.pos = item;
+        else if (c == 3)
+            cells.vel = item;
+        else
+            cells.trq = item;
+    }
 
-        rl->addWidget(addBtn);
-        rl->addWidget(nameBtn);
-        rl->addWidget(nameEdit);
-        listLayout->addWidget(row);
+    if (withLed)
+    {
+        cells.led = new LedIndicator();
+        cells.led->setFixedSize(16, 16);
+        feedbackTable_->setCellWidget(row, 5, cells.led);
+    }
 
-        connect(nameBtn, &QPushButton::clicked,
-                this, [=]()
-                { onActionNameClicked(); });
+    return cells;
+}
 
-        connect(qApp, &QApplication::focusChanged, this,
-                [=](QWidget *old, QWidget *now)
-                {
-                    if (old == nameEdit && now != nameEdit)
-                    {
-                        if (now != btnSave_)
-                            validate(nameEdit, nameBtn);
-                    }
+void SidePanel::loadFeedbackTable(grip::HandSettings *hand_cfg)
+{
+    if (!feedbackTable_ || !hand_cfg)
+        return;
 
-                    if (old == nameBtn)
-                    {
+    clearFeedbackTable();
 
-                        if (now == btnDelete_)
-                            onDeleteAction(nameBtn);
-                        else if (now == btnEditName_)
-                        {
-                            nameEdit->show();
-                            nameEdit->setFocus();
-                            nameBtn->hide();
-                            nameEdit->setProperty("rename", true);
-                        }
-                    }
-                });
+    for (const auto &s : hand_cfg->structs)
+    {
+        // Skip modules without a single actuated joint.
+        bool hasJoint = false;
+        for (const auto &j : s.second)
+        {
+            if (j.id >= 0)
+            {
+                hasJoint = true;
+                break;
+            }
+        }
+        if (!hasJoint)
+            continue;
 
-        connect(nameEdit, &QLineEdit::editingFinished,
-                this, [=]()
-                { validate(nameEdit, nameBtn); });
+        addFeedbackSection(QString::fromStdString(s.first));
 
-        connect(addBtn, &QPushButton::clicked, this, [=]()
-                { emit addAction(nameBtn->text()); });
+        // Joint rows: every configured joint (the wrist reports no joint data,
+        // it simply stays at "-" until the first snapshot arrives).
+        for (const auto &j : s.second)
+        {
+            if (j.id < 0)
+                continue;
+            const QString name = QString::fromStdString(j.name);
+            jointRows_.insert(name, addFeedbackRow(name, QStringLiteral("J"), true));
+        }
+
+        // Motor rows: only actuated joints have a motor behind them.
+        for (const auto &j : s.second)
+        {
+            if (j.id <= 0)
+                continue;
+            const QString name = QString::fromStdString(j.name);
+            motorRows_.insert(name, addFeedbackRow(name, QStringLiteral("M"), false));
+        }
+    }
+}
+
+void SidePanel::updateFeedback(const HandStateMap &state)
+{
+    if (!feedbackTable_)
+        return;
+
+    if (!feedbackClock_.isValid())
+        feedbackClock_.start();
+    else if (feedbackClock_.elapsed() < kFeedbackIntervalMs)
+        return;
+    feedbackClock_.restart();
+
+    for (const auto &[module, group] : state)
+    {
+        Q_UNUSED(module)
+
+        for (const auto &[jointName, data] : group.joints)
+        {
+            const QString name = QString::fromStdString(jointName);
+            auto it = jointRows_.constFind(name);
+            if (it == jointRows_.constEnd())
+                continue;
+
+            setCell(it->pos, data.position);
+            setCell(it->vel, data.velocity);
+            if (it->trq)
+                it->trq->setText(QStringLiteral("-"));
+
+            // Keep the "(value)" readout next to the joint slider in sync.
+            const int idx = sliderIndex_.value(name, -1);
+            if (idx >= 0 && idx < currValueLabels_.size())
+                currValueLabels_[idx]->setText(
+                    QString("  (%1)").arg(formatValue(data.position)));
+        }
+
+        for (const auto &[jointName, data] : group.motors)
+        {
+            const QString name = QString::fromStdString(jointName);
+            auto it = motorRows_.constFind(name);
+            if (it == motorRows_.constEnd())
+                continue;
+
+            setCell(it->pos, data.position);
+            setCell(it->vel, data.velocity);
+            setCell(it->trq, data.effort);
+        }
+
+        for (const auto &[jointName, mode] : group.control_mode)
+        {
+            const QString name = QString::fromStdString(jointName);
+            const bool enabled = (mode & 0x01) == 1;
+
+            auto it = jointRows_.constFind(name);
+            if (it != jointRows_.constEnd() && it->led)
+                it->led->setGreen(enabled);
+
+            const int idx = sliderIndex_.value(name, -1);
+            if (idx >= 0 && idx < leds_.size())
+                leds_[idx]->setGreen(enabled);
+        }
     }
 }
 
@@ -194,13 +318,24 @@ void SidePanel::buildSliderPanel()
     sliderRoot->addWidget(btnWidget);
 
     sliderScroll_ = new QScrollArea;
-    sliderScroll_->setWidget(sliderWidget);
     sliderScroll_->setWidgetResizable(true);
+    rebuildSliderHost();
     sliderRoot->addWidget(sliderScroll_);
 
     connect(btnMode_, &QPushButton::clicked, this, &SidePanel::onToggleMode);
     connect(btnExecute_, &QPushButton::clicked, this, &SidePanel::onExecute);
     connect(resetBtn, &QPushButton::clicked, this, &SidePanel::onReset);
+}
+
+void SidePanel::rebuildSliderHost()
+{
+    // Every joint row lives under a single content widget, so rebuilding the
+    // host is enough to drop the whole tree: Qt unwinds parent/child
+    // ownership for us instead of a hand-rolled recursive delete.
+    auto *sliderWidget = new QWidget;
+    sliderVBox_ = new QVBoxLayout(sliderWidget);
+    sliderVBox_->setAlignment(Qt::AlignTop);
+    sliderScroll_->setWidget(sliderWidget);
 }
 
 void SidePanel::loadSliderModule(QString name, float min, float max)
@@ -300,8 +435,13 @@ void SidePanel::loadHandControllor(grip::HandSettings *hand_cfg)
         {
             if (j.id <= 0) continue; 
             loadSliderModule(QString(j.name.c_str()), j.route.first, j.route.second);
+            // loadSliderModule appends exactly one slider, so the new slider
+            // sits at the last index. Feedback updates are keyed by joint name.
+            sliderIndex_.insert(QString::fromStdString(j.name), sliders_.size() - 1);
         }
     }
+
+    loadFeedbackTable(hand_cfg);
 }
 
 void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg)
@@ -336,14 +476,14 @@ void SidePanel::loadActuatorControllor(grip::ActuatorSettings act_cfg)
 
 void SidePanel::applyModeChange(grip::HandSettings *hand_cfg, QString joint_name, QString mode)
 {
-    size_t i = 0;
+    int i = 0;
     while (i < nameLabels_.size())
     {
         if (nameLabels_[i]->text() == joint_name)
             break;
         i++;
     }
-    if (i >= nameLabels_.size())
+    if (i >= nameLabels_.size() || i >= sliders_.size())
     {
         return;
     }
@@ -401,13 +541,13 @@ QString SidePanel::modeText() const { return btnMode_->text(); }
 void SidePanel::onAnySliderChanged()
 {
     // Update numeric labels and echo in Follow mode
-    for (int i = 0; i < sliders_.size(); ++i)
+    for (int i = 0; i < sliders_.size() && i < valueLabels_.size() && i < control_modes.size(); ++i)
     {
         if (control_modes[i] == "joint_position")
             valueLabels_[i]->setText(QString("%1").arg((float)sliders_[i]->value() / 100.0));
         else if (control_modes[i] == "hall_position")
             valueLabels_[i]->setText(QString("%1").arg((int)sliders_[i]->value()));
-        else if (control_modes[i] == "zero_torque")
+        else
             valueLabels_[i]->setText(QString("0"));
     }
     if (btnMode_->text() == "Mode: Follow")
@@ -416,19 +556,31 @@ void SidePanel::onAnySliderChanged()
 
 void SidePanel::onValueEditChanged()
 {
-    for (int i = 0; i < valueLabels_.size(); ++i)
+    // Only push back the row the user actually edited. Re-applying every row
+    // re-emitted valueChanged for each slider and flooded the bus with
+    // redundant targets.
+    auto *edit = qobject_cast<QLineEdit *>(sender());
+    const int edited = edit ? valueLabels_.indexOf(edit) : -1;
+
+    const int count = std::min({valueLabels_.size(), sliders_.size(), control_modes.size()});
+    for (int i = 0; i < count; ++i)
     {
+        if (edited >= 0 && i != edited)
+            continue;
+
         if (control_modes[i] == "joint_position")
-            sliders_[i]->setValue((int)(atof(valueLabels_[i]->text().toUtf8().constData()) * 100.0));
+            sliders_[i]->setValue((int)(valueLabels_[i]->text().toDouble() * 100.0));
         else if (control_modes[i] == "hall_position")
-            sliders_[i]->setValue((int)(atoi(valueLabels_[i]->text().toUtf8().constData())));
-        else if (control_modes[i] == "zero_torque")
+            sliders_[i]->setValue(valueLabels_[i]->text().toInt());
+        else
             sliders_[i]->setValue(0);
     }
 }
 
 void SidePanel::onMaxVelocityChanged()
 {
+    if (!mode_box || sliders_.size() < 4)
+        return;
     auto curr_mode = mode_box->currentText();
     float max_vel = (float)sliders_[0]->value() / 100.0;
     if (curr_mode == "Velocity")
@@ -447,6 +599,8 @@ void SidePanel::onMaxVelocityChanged()
 
 void SidePanel::onMaxCurrentChanged()
 {
+    if (!mode_box || sliders_.size() < 4)
+        return;
     auto curr_mode = mode_box->currentText();
     float max_current = (float)sliders_[1]->value() / 100.0;
     float max_torque = 3 / 2 * max_current * act_cfg_.psi_f * (float)act_cfg_.n_pole_pairs;
@@ -477,387 +631,85 @@ void SidePanel::onReset()
         s->setValue(0);
 }
 
-void SidePanel::onSaveAction()
-{
-    if (!store_)
-        return;
-    // Toggle add-row at end
-    auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-    if (addingRowIndex_ == -1)
-    {
-        auto *row = new QWidget;
-        auto *hl = new QHBoxLayout(row);
-        hl->setContentsMargins(0, 0, 0, 0);
-        auto *addBtn = new QPushButton("+");
-        addBtn->setFixedSize(25, 25);
-        auto *nameBtn = new QPushButton;
-        nameBtn->setStyleSheet(
-            "QPushButton { border: 1px solid #ffffff; background: #ffffff; text-align: left; padding-left: 10px; }"
-            "QPushButton:focus  { border: 2px solid #000000; background: #f0f0f0; text-align: left; padding-left: 10px; }");
-        nameBtn->hide();
-        auto *nameEdit = new QLineEdit;
-        hl->addWidget(addBtn);
-        hl->addWidget(nameBtn);
-        hl->addWidget(nameEdit);
-        layout->addWidget(row);
-        addingRowIndex_ = layout->count() - 1;
-        nameEdit->setFocus();
-        connect(nameBtn, &QPushButton::clicked,
-                this, [=]()
-                { onActionNameClicked(); });
-
-        connect(qApp, &QApplication::focusChanged, this,
-                [=](QWidget *old, QWidget *now)
-                {
-                    if (old == nameEdit && now != nameEdit)
-                    {
-                        if (now != btnSave_)
-                            validate(nameEdit, nameBtn);
-                    }
-
-                    if (old == nameBtn)
-                    {
-                        if (now == btnDelete_)
-                            onDeleteAction(nameBtn);
-                        else if (now == btnEditName_)
-                        {
-                            nameEdit->show();
-                            nameEdit->setFocus();
-                            nameBtn->hide();
-                            nameEdit->setProperty("rename", true);
-                        }
-                    }
-                });
-
-        connect(nameEdit, &QLineEdit::editingFinished,
-                this, [=]()
-                { validate(nameEdit, nameBtn); });
-        connect(addBtn, &QPushButton::clicked, this, [=]()
-                { emit addAction(nameBtn->text()); });
-        btnSave_->setText("Cancel");
-    }
-    else
-    {
-        // cancel
-        QLayoutItem *item = layout->takeAt(addingRowIndex_);
-        delete item->widget();
-        delete item;
-        addingRowIndex_ = -1;
-        btnSave_->setText("Save");
-    }
-}
-
-void SidePanel::onActionNameClicked()
-{
-    if (!store_)
-        return;
-    // Find which QPushButton sent this, then apply action to sliders
-    auto *btn = qobject_cast<QPushButton *>(sender());
-    if (!btn)
-        return;
-    int idx = store_->findActionByName(btn->text());
-    if (idx >= 0)
-        applyActionToSliders(idx);
-}
-
-void SidePanel::onFocusChanged(QWidget *oldW, QWidget *nowW)
-{
-    Q_UNUSED(oldW)
-    Q_UNUSED(nowW)
-    // no-op here; inline editing is handled on editingFinished
-}
-
-void SidePanel::onDeleteAction(QPushButton *btn)
-{
-    if (!store_)
-        return;
-    QMessageBox msgBox;
-    msgBox.setTextFormat(Qt::MarkdownText);
-    msgBox.setWindowTitle("Delete Action");
-    msgBox.setText(QString("#### Are you sure to delete action %1?").arg(btn->text()));
-    msgBox.setInformativeText("This action will also be removed if it has been contained by any action set.");
-    msgBox.setIcon(QMessageBox::Warning);
-    auto *confirmBtn = msgBox.addButton(QMessageBox::Ok);
-    auto *cancelBtn = msgBox.addButton(QMessageBox::Cancel);
-
-    auto actionSets = store_->findActionInSet(btn->text());
-    if (actionSets.size() > 0)
-    {
-        auto msg = QString("Following action set contains action %1:\n").arg(btn->text());
-        for (auto &action : actionSets)
-            msg.append(QString("  - %1\n").arg(action));
-        msgBox.setDetailedText(msg);
-    }
-    else
-        msgBox.setDetailedText(QString("No action set contains action %1").arg(btn->text()));
-
-    msgBox.exec();
-
-    if (msgBox.clickedButton() == confirmBtn)
-    {
-        auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-        int idx = store_->findActionByName(btn->text());
-        QLayoutItem *item = layout->takeAt(idx);
-        auto name = btn->text();
-
-        if (item)
-        {
-            // qDebug() << "Deleting";
-            if (QLayout *rowLyt = item->layout())
-            {
-                QLayoutItem *child;
-                while ((child = rowLyt->takeAt(0)))
-                {
-                    if (child->widget())
-                        delete child->widget();
-                    delete child;
-                }
-                delete rowLyt;
-            }
-            else if (item->widget())
-            {
-                delete item->widget();
-            }
-        }
-
-        if (idx < store_->actionCount())
-        {
-            store_->removeAction(idx);
-            persistStore();
-        }
-        if (actionSets.size() > 0)
-        {
-            store_->removeActionFromSet(name);
-            emit actionStoreUpdate();
-        }
-    }
-    else
-    {
-        return;
-    }
-}
-
 // -------- helpers --------
-void SidePanel::applyActionToSliders(int actionIndex)
+void SidePanel::applyActionValues(const QVector<double> &values)
 {
-    if (!store_)
-        return;
-    auto vals = store_->actionJoints(actionIndex);
-    for (int i = 0; i < sliders_.size() && i < vals.size(); ++i)
+    const int count = std::min({sliders_.size(), values.size(), valueLbls.size()});
+    for (int i = 0; i < count; ++i)
     {
-        float min = valueLbls[i].first->text().toFloat() * 100;
-        float max = valueLbls[i].second->text().toFloat() * 100;
-        float v = std::clamp(float(vals[i]), min, max);
-        sliders_[i]->setValue(v);
+        const float min = valueLbls[i].first->text().toFloat() * 100;
+        const float max = valueLbls[i].second->text().toFloat() * 100;
+        const float v = std::clamp(float(values[i]), min, max);
+        sliders_[i]->setValue((int)v);
     }
     emit valuesChanged();
 }
 
-void SidePanel::persistStore()
+void SidePanel::modeChange(bool teleopActive)
 {
-    if (!store_)
-        return;
-    store_->save();
-}
-
-bool SidePanel::validateNewActionName(const QString &n, const QString &o) const
-{
-    if (!store_)
-        return false;
-    if (n.trimmed().isEmpty())
-        return false;
-
-    int i = -1;
-    if (o.trimmed().isEmpty() || o != n)
+    // While tele-operation drives the hand the joint controls are read-only.
+    // Restoring them must respect the per-joint control mode, otherwise
+    // joints parked in zero_torque would become movable again.
+    for (int i = 0; i < sliders_.size(); ++i)
     {
-        i = store_->findActionByName(n);
-    }
-    return i == -1;
-}
-
-void SidePanel::validate(QLineEdit *edit, QPushButton *btn)
-{
-    if (!store_)
-        return;
-    if (edit->property("validating").toBool())
-        return;
-    edit->setProperty("validating", true);
-
-    if (validateNewActionName(edit->text(), btn->text()))
-    {
-        QMessageBox msgBox;
-        msgBox.setTextFormat(Qt::MarkdownText);
-        msgBox.setWindowTitle("Rename Action");
-        msgBox.setText(QString("#### Are you sure to rename action %1 to %2?").arg(btn->text(), edit->text()));
-        msgBox.setInformativeText(QString("This action will also be renamed if it has been contained by any action set.\n"
-            "Or you can remove all action with name %1 from action sets.").arg(btn->text()));
-        msgBox.setIcon(QMessageBox::Warning);
-        auto *renameBtn = msgBox.addButton(QMessageBox::Ok);
-        auto *cancelBtn = msgBox.addButton(QMessageBox::Cancel);
-        auto *deleteBtn = msgBox.addButton("Delete All", QMessageBox::ActionRole);
-
-        auto actionSets = store_->findActionInSet(btn->text());
-        if (actionSets.size() > 0)
-        {
-            auto msg = QString("Following action set contains action %1:\n").arg(btn->text());
-            for (auto &action : actionSets)
-                msg.append(QString("  - %1\n").arg(action));
-            msgBox.setDetailedText(msg);
-        }
+        if (teleopActive)
+            sliders_[i]->setEnabled(false);
         else
-            msgBox.setDetailedText(QString("No action set contains action %1").arg(btn->text()));
-        
-        if (edit->property("rename").toBool() && edit->text() != btn->text())
-        {
-            msgBox.exec();
-
-            if (msgBox.clickedButton() == deleteBtn)
-            {
-                if (actionSets.size() > 0)
-                    store_->removeActionFromSet(btn->text());
-            }
-            else if (msgBox.clickedButton() == renameBtn)
-            {
-                
-                if (actionSets.size() > 0)
-                    store_->renameActionInSet(btn->text(), edit->text());
-            }
-            else
-            {
-                return;
-            }
-        }
-        
-        QString aName = edit->text();
-
-        if (btn->text().trimmed().isEmpty())
-        {
-            QVector<double> vals;
-            vals.reserve(sliders_.size());
-            for (auto *s : sliders_)
-                vals.push_back(double(s->value()));
-
-            btnSave_->setText("Save");
-            addingRowIndex_ = -1;
-            store_->addAction(aName, vals);
-        }
-        else
-        {
-            int idx = store_->findActionByName(btn->text());
-            store_->setActionName(idx, aName);
-        }
-
-        btn->setText(aName);
-        btn->show();
-        edit->hide();
-        emit actionStoreUpdate();
-
-        persistStore();
+            sliders_[i]->setEnabled(control_modes[i] != "zero_torque");
     }
-    else
-    {
-        QMessageBox::warning(this, "Invalid name", "Name must be unique and non-empty.");
-        edit->setFocus();
-        edit->selectAll();
-    }
-
-    QTimer::singleShot(0, edit, [edit]
-                       { edit->setProperty("validating", false); });
-    QTimer::singleShot(0, edit, [edit]
-                       { edit->setProperty("rename", false); });
-}
-
-void SidePanel::modeChange(const QString &mode)
-{
-    if (mode == "Start Camera")
-    {
-        for (auto s : sliders_)
-            s->setEnabled(false);
-        for (auto e : valueLabels_)
-            e->setReadOnly(true);
-    }
-    else
-    {
-        for (auto s : sliders_)
-            s->setEnabled(true);
-        for (auto e : valueLabels_)
-            e->setReadOnly(false);
-    }
+    for (auto e : valueLabels_)
+        e->setReadOnly(teleopActive);
 }
 
 void SidePanel::applyCameraData(std::unordered_map<std::string, float> &data, grip::HandSettings *hand_cfg)
 {
+    // Hot path: this runs once per tele-operation sample (up to ~120 Hz).
+    // Use the prebuilt name -> row index map instead of a linear scan that
+    // rebuilt a QByteArray (toUtf8) for every single comparison.
+    const int count = std::min({nameLabels_.size(), sliders_.size(), valueLbls.size(), control_modes.size()});
+
     for (const auto &[name, value] : data)
     {
-        for (int i = 0; i < nameLabels_.size(); ++i)
-        {
-            if (nameLabels_[i]->text().toUtf8().constData() == name)
-            {
-                float min = valueLbls[i].first->text().toFloat();
-                float max = valueLbls[i].second->text().toFloat();
-                float v = std::clamp(float(value), float(min), float(max));
+        const int i = sliderIndex_.value(QString::fromStdString(name), -1);
+        if (i < 0 || i >= count)
+            continue;
 
-                if (control_modes[i] == "hall_position")
+        float min = valueLbls[i].first->text().toFloat();
+        float max = valueLbls[i].second->text().toFloat();
+        float v = std::clamp(float(value), float(min), float(max));
+
+        if (control_modes[i] == "hall_position")
+        {
+            // Cache the joint -> scale lookup; scanning every struct on every
+            // sample made this quadratic.
+            auto scaleIt = hallScales_.find(name);
+            if (scaleIt == hallScales_.end())
+            {
+                float scale = 0.0f;
+                for (auto [key, vec] : hand_cfg->structs)
                 {
-                    for (auto [key, vec] : hand_cfg->structs)
+                    for (auto joint : vec)
                     {
-                        for (auto joint : vec)
-                        {
-                            if (joint.name == name)
-                                v = v / (joint.route.second - joint.route.first) * 
-                                    (joint.hall_route.second - joint.hall_route.first) / 100;
-                        }
+                        if (joint.name == name)
+                            scale = (joint.hall_route.second - joint.hall_route.first) /
+                                    (joint.route.second - joint.route.first) / 100.0f;
                     }
                 }
-                else if (control_modes[i] == "zero_torque")
-                    continue;
-                
-                sliders_[i]->setValue(v * 100);
+                scaleIt = hallScales_.emplace(name, scale).first;
             }
+            v = v * scaleIt->second;
         }
-    }
-}
+        else if (control_modes[i] == "zero_torque")
+            continue;
 
-void SidePanel::updateJoints(const std::unordered_map<std::string, float> state)
-{
-    // for (auto l : currValueLabels_) {
-    //     l->setText("  (%1)".arg(sliders_[i]->value()));
-    // }
-    // currValueLabels_[3]->setText(QString("  (%1)").arg((index / float(M_PI) * 180), 0, 'f', 2));
-    for (auto &[name, val]: state)
-    {
-        int idx = 0;
-        for (auto sName : nameLabels_)
-        {
-            if (sName->text().toUtf8().constData() == name)
-            {
-                currValueLabels_[idx]->setText(QString("  (%1)").arg(float(val), 0, 'f', 2));
-                continue;
-            }
-            ++idx;
-        }
-    }
-}
-
-void SidePanel::updateStates(const std::unordered_map<std::string, int> state)
-{
-    for (auto &[name, val]: state)
-    {
-        int idx = 0;
-        for (auto sName : nameLabels_)
-        {
-            if (sName->text().toUtf8().constData() == name)
-            {
-                leds_[idx]->setGreen((val & 0x01) == 1);
-                continue;
-            }
-            ++idx;
-        }
+        sliders_[i]->setValue((int)(v * 100));
     }
 }
 
 void SidePanel::onControlChanged()
 {
+    if (!mode_box)
+        return;
     auto curr_mode = mode_box->currentText();
     if (curr_mode != "MIT")
     {
@@ -914,6 +766,8 @@ void SidePanel::onControlChanged()
 
 std::string SidePanel::get_control_mode()
 {
+    if (!mode_box)
+        return {};
     return mode_box->currentText().toUtf8().constData();
 }
 
@@ -925,51 +779,21 @@ void SidePanel::removeAll()
     nameLabels_.clear();
     valueLbls.clear();
     leds_.clear();
-
-    QLayoutItem *item;
-    while ((item = sliderVBox_->takeAt(0)) != nullptr)
-    {
-        deleteLayout(item);
-    }
-
-    auto *layout = qobject_cast<QVBoxLayout *>(actionListWidget_->layout());
-    while ((item = layout->takeAt(0)) != nullptr)
-    {
-        deleteLayout(item);
-    }
-    delete layout;
-
-    if (!store_)
-        return;
-    delete store_;
+    hallScales_.clear();
     control_modes.clear();
+    sliderIndex_.clear();
+
+    if (sliderScroll_)
+    {
+        if (QWidget *previous = sliderScroll_->takeWidget())
+            delete previous;
+        rebuildSliderHost();
+    }
+
+    clearFeedbackTable();
 }
 
-void SidePanel::deleteLayout(QLayoutItem *item)
-{
-    if (QLayout *lyt = item->layout())
-    {
-        QLayoutItem *child;
-        while ((child = lyt->takeAt(0)))
-        {
-            deleteLayout(child);
-        }
-        delete lyt;
-    }
-    else if (item->widget())
-    {
-        delete item->widget();
-    }
-}
 
-void SidePanel::applyActionNameToSliders(const QString &name)
-{
-    if (!store_)
-        return;
-    int idx = store_->findActionByName(name);
-    if (idx >= 0)
-        applyActionToSliders(idx);
-}
 
 QStringList SidePanel::getControlModes()
 {

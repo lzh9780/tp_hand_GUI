@@ -84,6 +84,12 @@ public:
     explicit OgreWidget(QWidget *parent = nullptr);
     ~OgreWidget() override;
 
+signals:
+    // Emitted once when OGRE could not be initialised (missing GL driver, no
+    // display, ...). The widget then stays blank instead of aborting the app.
+    void initFailed(const QString &message);
+
+public:
     struct JointInfo
     {
         std::string name;
@@ -135,6 +141,11 @@ private slots:
 
 private:
     // --- Ogre bootstrap ---
+    // Returns false when OGRE could not be brought up; every public entry
+    // point then degrades to a no-op instead of dereferencing null state.
+    bool ensureOgre();
+    void failOgre(const QString &message);
+    void shutdownOgre(); // ordered OGRE teardown; safe to call multiple times
     void initOgre();
     void selectAndInitRenderSystem();
     void enableRTSS(); // Runtime Shader System (GL3Plus friendly)
@@ -206,6 +217,7 @@ private:
     bool mOgreInited{false};
     Ogre::RTShader::ShaderGenerator *mSG{nullptr};
     RtssTechniqueResolver* mRtssListener{nullptr};
+    bool mOgreFailed{false};
 
     // URDF
     UrdfModel mModel;

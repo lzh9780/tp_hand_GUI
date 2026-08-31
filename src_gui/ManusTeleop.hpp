@@ -9,6 +9,8 @@
 
 #include <memory>
 #include <mutex>
+#include <atomic>
+#include <thread>
 #include <cmath>
 
 /// @brief The type of connection to core.
@@ -59,8 +61,32 @@ public:
     explicit ManusTeleop(QObject *parent = nullptr);
     ~ManusTeleop()
     {
-        stop();
+        // Detach from the SDK callbacks FIRST: once s_Instance is null no new
+        // callback can enter, and the mutex handshake below guarantees that any
+        // callback already inside the critical section has left before we free
+        // the landscape buffers.
+        {
+            std::lock_guard<std::mutex> lock(m_LandscapeMutex);
+            m_ShuttingDown = true;
+        }
         s_Instance = nullptr;
+
+        // Wait (bounded, so a wedged SDK thread can never hang the GUI) for
+        // any callback that grabbed s_Instance before it was cleared.
+        for (int t_Try = 0; t_Try < 2000; ++t_Try)
+        {
+            if (m_CallbacksInFlight.load(std::memory_order_acquire) == 0)
+                break;
+            std::this_thread::yield();
+        }
+
+        stop();
+
+        std::lock_guard<std::mutex> lock(m_LandscapeMutex);
+        delete m_Landscape;
+        m_Landscape = nullptr;
+        delete m_NewLandscape;
+        m_NewLandscape = nullptr;
     };
 
     static void OnErgonomicsCallback(const ErgonomicsStream *const p_Ergo);
@@ -94,4 +120,15 @@ private:
     Landscape *m_Landscape = nullptr;
     std::vector<GestureLandscapeData> m_NewGestureLandscapeData;
     std::vector<GestureLandscapeData> m_GestureLandscapeData;
+
+    // Guarded by m_LandscapeMutex. Set before s_Instance is cleared so the
+    // SDK callbacks (which may already have read the pointer) bail out.
+    bool m_ShuttingDown = false;
+
+    // The SDK invokes the callbacks from its own threads. A callback can pass
+    // the s_Instance null check just before the destructor runs, so count the
+    // ones in flight and let the destructor wait for them to leave.
+    std::atomic<int> m_CallbacksInFlight{0};
+
+    QVector<double> m_LastEmitted;
 };

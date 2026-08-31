@@ -1,13 +1,26 @@
 #pragma once
 #include <QFrame>
+#include <vector>
+#include <string>
 
 class QWidget;
 class QPushButton;
 class QComboBox;
 class QCheckBox;
-class QRadioButton;
-class QButtonGroup;
+class QLabel;
+class QGroupBox;
 
+/**
+ * Connector (GUI)
+ * ---------------
+ * Entry point of the application: pick a hand model and open/close the
+ * connection to the hardware.
+ *
+ * Signals:
+ *  - deviceConnect("Connect" | "Disconnect")
+ *  - modelChange(<model name>)
+ *  - stateCheck(check state of the "simulation mode" box)
+ */
 class Connector : public QFrame
 {
     Q_OBJECT
@@ -17,7 +30,6 @@ public:
 
 signals:
     void deviceConnect(const QString& msg);
-    // void controlSwitch(const QString& msg);
     void modelChange(const QString& msg);
     void stateCheck(const Qt::CheckState state);
 
@@ -26,11 +38,8 @@ private slots:
     void onModelChange();
 
 private:
-    QPushButton* switchBtn;
-    QPushButton* connectBtn;
-    QComboBox* model_box;
-    QCheckBox* deviceState;
-    QRadioButton* leftBtn;
-    QRadioButton* rightBtn;
-    QButtonGroup *optionGroup;
+    QPushButton* connectBtn{nullptr};
+    QComboBox* model_box{nullptr};
+    QCheckBox* deviceState{nullptr};
+    QLabel* statusLabel_{nullptr};
 };
