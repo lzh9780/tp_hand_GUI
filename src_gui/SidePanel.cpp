@@ -19,6 +19,9 @@
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QHeaderView>
+#include <QFormLayout>
+#include <QCheckBox>
+#include <QDoubleSpinBox>
 #include <QVector>
 #include <cmath>
 
@@ -86,7 +89,8 @@ void SidePanel::buildFeedbackPanel()
          QStringLiteral("Trq"), QStringLiteral("St")});
     feedbackTable_->horizontalHeader()->setToolTip(
         "Live telemetry. T identifies the source: J = joint sensor, M = motor.\n"
-        "Pos/Vel are the reported position and velocity, Trq the motor effort.");
+        "Pos/Vel are the reported position and velocity.\n"
+        "Trq is the motor current feedback from TPDO1, in mA (joint rows show '-').");
     feedbackTable_->verticalHeader()->setVisible(false);
     feedbackTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     feedbackTable_->setSelectionMode(QAbstractItemView::NoSelection);
@@ -105,6 +109,80 @@ void SidePanel::buildFeedbackPanel()
     feedbackTable_->setColumnWidth(5, 26);  // St
 
     feedbackRoot->addWidget(feedbackTable_, 1);
+
+    buildBusTable(feedbackRoot);
+}
+
+void SidePanel::buildBusTable(QVBoxLayout *root)
+{
+    auto *title = new QLabel(QStringLiteral("Bus Info"));
+    auto bold = title->font();
+    bold.setBold(true);
+    title->setFont(bold);
+    title->setContentsMargins(0, 6, 0, 0);
+    root->addWidget(title);
+
+    // Columns: Voltage | Current | Temp1 | Temp2 | Fault
+    busTable_ = new QTableWidget(1, 5, this);
+    busTable_->setHorizontalHeaderLabels(
+        {QStringLiteral("Voltage"), QStringLiteral("Current"),
+         QStringLiteral("Temp1"), QStringLiteral("Temp2"),
+         QStringLiteral("Fault")});
+    busTable_->verticalHeader()->setVisible(false);
+    busTable_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    busTable_->setSelectionMode(QAbstractItemView::NoSelection);
+    busTable_->setFocusPolicy(Qt::NoFocus);
+    busTable_->setAlternatingRowColors(true);
+    busTable_->setToolTip("Bus telemetry from the sensor frame:\n"
+                          "bus voltage / current, board temperatures and the fault word.");
+    busTable_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    busTable_->setFixedHeight(48);
+
+    auto *header = busTable_->horizontalHeader();
+    for (int c = 0; c < 5; ++c)
+    {
+        header->setSectionResizeMode(c, QHeaderView::Stretch);
+        auto *item = new QTableWidgetItem(QStringLiteral("-"));
+        item->setFlags(Qt::ItemIsEnabled);
+        item->setTextAlignment(Qt::AlignCenter);
+        busTable_->setItem(0, c, item);
+    }
+    busTable_->setVerticalHeaderLabels({QStringLiteral("bus")});
+
+    root->addWidget(busTable_);
+}
+
+void SidePanel::updateBusInfo(const BusData &bus)
+{
+    if (!busTable_)
+        return;
+
+    const QString fault = bus.fault_code == 0
+                              ? QStringLiteral("OK")
+                              : QStringLiteral("0x%1").arg(bus.fault_code, 4, 16, QLatin1Char('0'));
+    const QStringList values = {
+        QString::number(bus.bus_voltage, 'f', 2) + QStringLiteral(" V"),
+        QString::number(bus.bus_current) + QStringLiteral(" mA"),
+        QString::number(bus.temp1_cC) + QStringLiteral(" °C"),
+        QString::number(bus.temp2_cC) + QStringLiteral(" °C"),
+        fault};
+
+    for (int c = 0; c < values.size(); ++c)
+    {
+        auto *item = busTable_->item(0, c);
+        if (!item)
+            continue;
+        item->setText(values.at(c));
+        item->setToolTip(c == 4 ? QString::fromStdString([&]
+                                                         {
+                                                             auto codes = grip::fault_code_str(bus.fault_code);
+                                                             std::string joined;
+                                                             for (size_t i = 0; i < codes.size(); ++i)
+                                                                 joined += (i ? ", " : "") + codes[i];
+                                                             return joined.empty() ? std::string("no fault") : joined;
+                                                         }())
+                                               : QString());
+    }
 }
 
 void SidePanel::clearFeedbackTable()
@@ -267,6 +345,7 @@ void SidePanel::updateFeedback(const HandStateMap &state)
 
             setCell(it->pos, data.position);
             setCell(it->vel, data.velocity);
+            // Motor current reported by the drive (TPDO1 "torq", mA).
             setCell(it->trq, data.effort);
         }
 

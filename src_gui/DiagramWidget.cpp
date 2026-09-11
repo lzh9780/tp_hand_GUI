@@ -10,10 +10,20 @@
 #include <QScrollBar>
 #include <QPushButton>
 #include <QToolButton>
+#include <QFileDialog>
+#include <QFile>
+#include <QTextStream>
+#include <QMessageBox>
+#include <QDateTime>
+#include <QStandardPaths>
+#include <QDir>
+#include <QDialog>
 #include <QPainter>
 #include <QtMath>
 #include <QSplitter>
 #include <QDebug>
+#include <cmath>
+#include <limits>
 
 // using grip::HandStateMap;
 // using grip::JointState;
@@ -46,6 +56,13 @@ void DiagramWidget::buildUi()
     topRow->addWidget(resetBtn);
     connect(resetBtn, &QPushButton::clicked,
             this, &DiagramWidget::onResetZoomClicked);
+
+    auto *exportBtn = new QPushButton(tr("CSV"), this);
+    exportBtn->setFixedHeight(20);
+    exportBtn->setToolTip(tr("Save the plotted window to a CSV file"));
+    topRow->addWidget(exportBtn);
+    connect(exportBtn, &QPushButton::clicked,
+            this, &DiagramWidget::onExportCsvClicked);
 
     auto *typeLabel = new QLabel(tr("Type:"), this);
     m_typeCombo_ = new QComboBox(this);
@@ -144,6 +161,8 @@ void DiagramWidget::onTypeChanged(int index)
 {
     m_type_ = static_cast<DiagramType>(index);
     m_checkboxesDirty_ = true;
+    m_yRangeValid_ = false; // different quantity => snap to the new range
+    m_rangeDirty_ = true;
 }
 
 void DiagramWidget::clearSignalUi()
@@ -164,6 +183,7 @@ void DiagramWidget::clearSignalUi()
 void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
 {
     clearSignalUi();
+    m_signalListType_ = m_type_;
 
     if (hand.empty())
     {
@@ -338,6 +358,9 @@ void DiagramWidget::onSignalToggled(bool)
         if (sig.series)
             sig.series->setVisible(false);
     }
+
+    // Visible signal set changed: re-scale on the next frame.
+    m_rangeDirty_ = true;
 
     if (!m_updatingFromHeader_)
     {
@@ -546,6 +569,13 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
     if (startIdxDeque < 0 || endIdxDeque < startIdxDeque)
         return;
 
+    // Keep a handle on the shared history (owned by PlotPanel) so the CSV export
+    // can write every recorded sample instead of only the rendered window.
+    m_history_ = &history;
+    m_historyPeriodSec_ = samplePeriodSec;
+    m_historyOffsetSamples_ = historyOffsetSamples;
+    ++m_rangeFrame_;
+
     int startIdx = startIdxDeque;
     int endIdx = endIdxDeque;
     double xMin_ = xMin;
@@ -563,6 +593,7 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
         xMin_ = startIdx * m_samplePeriodSec_;
         xMax_ = endIdx * m_samplePeriodSec_;
         updateRequest_ = false;
+        m_rangeDirty_ = true; // window jumped (history scroll): re-scale at once
     }
     else
         return;
@@ -574,6 +605,14 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
     double globalMin = std::numeric_limits<double>::max();
     double globalMax = std::numeric_limits<double>::lowest();
     bool haveAny = false;
+
+    // The curve only shows the window above, but the Y range also covers an extra
+    // slice of older history (kRangeLookbackSec). Without it the axis would jump
+    // every time a peak scrolls out of the visible window.
+    const int extraSamples = samplePeriodSec > 0.0
+                                 ? static_cast<int>(std::ceil(kRangeLookbackSec / samplePeriodSec))
+                                 : 0;
+    const int rangeStart = (startIdx > extraSamples) ? startIdx - extraSamples : 0;
 
     // For each active signal, rebuild its series from this window
     for (auto it = m_signals_.begin(); it != m_signals_.end(); ++it)
@@ -592,7 +631,9 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
         for (int idx = 0; idx < windowLen; ++idx)
         {
             int dequeIndex = startIdx + idx;
-            int globalIdx = historyOffsetSamples + dequeIndex + 1; // 1-based
+            if (dequeIndex >= static_cast<int>(history.size()))
+                break;
+            const int globalIdx = historyOffsetSamples + dequeIndex + 1; // 1-based
             double t = globalIdx * samplePeriodSec;
 
             float v;
@@ -607,16 +648,60 @@ void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
                 globalMax = v;
             haveAny = true;
         }
+
+        // Older samples are not plotted, they only feed the Y range.
+        for (int dequeIndex = rangeStart; dequeIndex < startIdx; ++dequeIndex)
+        {
+            if (dequeIndex >= static_cast<int>(history.size()))
+                break;
+            float v;
+            if (!getValueForSignalAtSample(sig, history[dequeIndex], v))
+                continue;
+
+            if (v < globalMin)
+                globalMin = v;
+            if (v > globalMax)
+                globalMax = v;
+            haveAny = true;
+        }
     }
 
     if (haveAny)
     {
-        if (qFuzzyCompare(globalMin, globalMax))
+        // Refresh the *target* range only every N-th frame (or when something
+        // structural changed): recomputing it every frame makes the axis jitter
+        // and costs an extra pass over the lookback window each time.
+        const bool first = !m_yRangeValid_;
+        if (first || m_rangeDirty_ || (m_rangeFrame_ % kRangeRefreshFrames == 0))
         {
-            globalMin -= 1.0;
-            globalMax += 1.0;
+            double lo = globalMin;
+            double hi = globalMax;
+            if (qFuzzyCompare(lo, hi))
+            {
+                lo -= 1.0;
+                hi += 1.0;
+            }
+            const double pad = (hi - lo) * kRangePadRatio; // +10 % per side = +20 % total
+            m_yTargetMin_ = lo - pad;
+            m_yTargetMax_ = hi + pad;
+            m_yRangeValid_ = true;
+            m_rangeDirty_ = false;
         }
-        m_axisY_->setRange(globalMin, globalMax);
+
+        // Ease the visible range towards the target so it glides instead of jumping.
+        double curMin = m_axisY_->min();
+        double curMax = m_axisY_->max();
+        if (first)
+        {
+            curMin = m_yTargetMin_;
+            curMax = m_yTargetMax_;
+        }
+        else
+        {
+            curMin += (m_yTargetMin_ - curMin) * kRangeEase;
+            curMax += (m_yTargetMax_ - curMax) * kRangeEase;
+        }
+        m_axisY_->setRange(curMin, curMax);
     }
 
     // Shared x-axis range
@@ -632,4 +717,131 @@ void DiagramWidget::setLiveMode(bool isLive)
 void DiagramWidget::timeRangeChanged(int start)
 {
     updateRequest_ = true;
+}
+
+void DiagramWidget::onExportCsvClicked()
+{
+    // The file dialog must never take the whole application down: use Qt's own
+    // (non-native) dialog — the native gtk/portal one is a known crash source on
+    // some Linux setups — and turn any unexpected error into a message box.
+    try
+    {
+        exportCsv();
+    }
+    catch (const std::exception &e)
+    {
+        QMessageBox::critical(this, tr("Export CSV"),
+                              tr("Export failed:\n%1").arg(QString::fromUtf8(e.what())));
+    }
+    catch (...)
+    {
+        QMessageBox::critical(this, tr("Export CSV"), tr("Export failed: unknown error."));
+    }
+}
+
+void DiagramWidget::exportCsv()
+{
+    // Columns = the signals ticked on the right; their meaning (position,
+    // velocity, current…) comes from the type combo box.
+    if (m_signalListType_ != m_type_)
+    {
+        QMessageBox::warning(this, tr("Export CSV"),
+                             tr("The signal list is still refreshing for the selected type. "
+                                "Please wait for the next sample and try again."));
+        return;
+    }
+
+    QVector<const SignalInfo *> selected;
+    for (auto it = m_signals_.constBegin(); it != m_signals_.constEnd(); ++it)
+    {
+        const SignalInfo &sig = it.value();
+        if (sig.checkBox && sig.checkBox->isChecked() && sig.isJoint == isJointType())
+            selected.append(&sig);
+    }
+
+    if (selected.isEmpty())
+    {
+        QMessageBox::warning(this, tr("Export CSV"),
+                             tr("Nothing to export: tick at least one signal on the right."));
+        return;
+    }
+
+    if (!m_history_ || m_history_->empty())
+    {
+        QMessageBox::warning(this, tr("Export CSV"),
+                             tr("Nothing to export: no sample recorded yet (press Start)."));
+        return;
+    }
+
+    QString type = m_typeCombo_ ? m_typeCombo_->currentText() : QStringLiteral("data");
+    type.replace(QLatin1Char(' '), QLatin1Char('_'));
+    const QString defaultName = QStringLiteral("diagram_%1_%2.csv")
+                                    .arg(type)
+                                    .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+
+    const QString defaultPath = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+                                    .filePath(defaultName);
+
+    QFileDialog dlg(this, tr("Export CSV"), defaultPath,
+                    tr("CSV files (*.csv);;All files (*)"));
+    dlg.setAcceptMode(QFileDialog::AcceptSave);
+    dlg.setFileMode(QFileDialog::AnyFile);
+    dlg.setDefaultSuffix(QStringLiteral("csv"));
+    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    const QString path = dlg.selectedFiles().value(0);
+    if (path.isEmpty())
+        return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+    {
+        QMessageBox::warning(this, tr("Export CSV"),
+                             tr("Cannot write the file:\n%1").arg(path));
+        return;
+    }
+
+    auto csvField = [](const QString &s)
+    {
+        if (s.contains(QLatin1Char(',')) || s.contains(QLatin1Char('"')) || s.contains(QLatin1Char('\n')))
+            return QLatin1Char('"') + QString(s).replace(QLatin1Char('"'), QLatin1String("\"\"")) + QLatin1Char('"');
+        return s;
+    };
+
+    QTextStream out(&file);
+
+    // Header: time column first, then one column per selected signal.
+    QStringList header;
+    header << QStringLiteral("time_s");
+    for (const SignalInfo *sig : selected)
+        header << csvField(sig->checkBox ? sig->checkBox->text() : sig->id);
+    out << header.join(QLatin1Char(',')) << '\n';
+
+    // Rows — the whole recorded history, not just the rendered window.
+    const int n = static_cast<int>(m_history_->size());
+    for (int i = 0; i < n; ++i)
+    {
+        const int globalIdx = m_historyOffsetSamples_ + i + 1; // 1-based
+        const double t = globalIdx * m_historyPeriodSec_;
+        const HandStateMap &hand = (*m_history_)[i];
+
+        QStringList row;
+        row << QString::number(t, 'f', 6);
+        for (const SignalInfo *sig : selected)
+        {
+            float v = 0.0f;
+            row << (getValueForSignalAtSample(*sig, hand, v) ? QString::number(static_cast<double>(v), 'f', 6)
+                                                             : QString());
+        }
+        out << row.join(QLatin1Char(',')) << '\n';
+    }
+    file.close();
+
+    QMessageBox::information(this, tr("Export CSV"),
+                             tr("Saved %1 samples x %2 signals to:\n%3")
+                                 .arg(n)
+                                 .arg(selected.size())
+                                 .arg(path));
 }

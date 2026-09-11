@@ -23,6 +23,8 @@ class QComboBox;
 class QLayoutItem;
 class QTableWidget;
 class QTableWidgetItem;
+class QCheckBox;
+class QDoubleSpinBox;
 
 /**
  * SidePanel (GUI)
@@ -39,6 +41,8 @@ class QTableWidgetItem;
  *  - notify(text): status lines for MainWindow logging
  *  - controlChanged(name, mode): global finger / wrist control mode changed
  *  - openAdvancePanel(): user asked for the per-joint motor panel
+ *
+ * NOTE: the feedback-filter settings now live in the Settings pop-up.
  */
 class SidePanel : public QFrame {
     Q_OBJECT
@@ -65,6 +69,8 @@ public:
     void loadFeedbackTable(grip::HandSettings *hand_cfg);
     // Push one telemetry snapshot into the table and the slider readouts.
     void updateFeedback(const HandStateMap &state);
+    // Push the latest bus telemetry (voltage / current / temps / faults).
+    void updateBusInfo(const BusData &bus);
 
 signals:
     void valuesChanged();
@@ -103,6 +109,7 @@ private:
     void addFeedbackSection(const QString &title);
     FeedbackRow addFeedbackRow(const QString &name, const QString &kind, bool withLed);
     void clearFeedbackTable();
+    void buildBusTable(QVBoxLayout *root);
 
 private:
     // UI: control row
@@ -113,6 +120,9 @@ private:
     QWidget* feedbackPanel_{nullptr};
     QTableWidget* feedbackTable_{nullptr};
     QElapsedTimer feedbackClock_;
+
+    // Bus telemetry: Voltage | Current | Temp1 | Temp2 | Fault
+    QTableWidget* busTable_{nullptr};
     // joint name -> table row cells (joint telemetry, no data for the wrist)
     QHash<QString, FeedbackRow> jointRows_;
     // joint name -> table row cells (motor telemetry)
@@ -140,6 +150,8 @@ private:
     // UI: actuator
     QComboBox* mode_box{nullptr};
     grip::ActuatorSettings act_cfg_;
+
+
 
     // cache joint count
     int jointCount_{0};

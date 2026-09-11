@@ -17,7 +17,8 @@
 #include "grip/data_def.hpp"
 
 class SidePanel;
-class Connector;
+class ConnectionBar;
+class SettingsWindow;
 class QTextEdit;
 class QThread;
 class QString;
@@ -44,7 +45,23 @@ private slots:
     void onSidePanelCommitted();       // Setup mode → Execute
     void onSidePanelNotify(const QString& msg);
     void onConnectorDeviceConnect(const QString &msg);
-    void onConnectorStateCheck(Qt::CheckState state);
+    void onConnectionBarCanConfigChanged(int device_index, int channel_index);
+    void onSimulationModeChanged(bool simulation);
+    void onCanConfigChanged(int device_type, int device_index, int channel_index,
+                            int core_clock_hz, bool termination_enabled,
+                            int arb_tseg1, int arb_tseg2, int arb_sjw, int arb_brp,
+                            int data_tseg1, int data_tseg2, int data_sjw, int data_brp);
+    void onFilterChanged(bool enabled, double freq, double min_cutoff,
+                         double beta, double d_cutoff);
+    void onFilterReset();
+    void onModel3DConfigChanged(bool dual, bool use_feedback);
+    void openSettings();
+
+private:
+    /* 3D model helpers: load single/dual URDF and pick the driving data source. */
+    void loadModel3D();
+    bool model3DShowsSource(const char *source) const;
+    bool model3DDual() const;
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
     void onActionPanelActionUpdate(const QString &msg);
@@ -61,7 +78,6 @@ private:
     // Panel shortcuts. Every helper reuses an existing tab instead of
     // appending a duplicate one (see addOrShowTab).
     void openCameraTab();
-    void openConnectorTab();
     void openUrdfLoaderTab();
     void openMotorControlTab();
     void openActionPanelTab();
@@ -93,6 +109,7 @@ private:
 
     // params
     bool withCan = true;
+    grip::CanDeviceSettings can_cfg_{};
 
     // widgets
     QWidget* central{nullptr};
@@ -102,19 +119,25 @@ private:
     OgreWidget* ogre_{nullptr};
     MotorPanel* motor_{nullptr};
     ActionPanel* actionFlow_{nullptr};
-    Connector* connect_{nullptr};
+    ConnectionBar* connBar_{nullptr};
     TactileVisual* tactile_{nullptr};
     CameraWidget* camera_{nullptr};
 
     QToolBar* toolBar_{nullptr};
-    QAction* actConnector_{nullptr};
     QAction* actModel3D_{nullptr};
     QAction* actActionSets_{nullptr};
     QAction* actJointModes_{nullptr};
     QAction* actDiagram_{nullptr};
     QAction* actHandDetect_{nullptr};
     QAction* actTactile_{nullptr};
+    QAction* actSettings_{nullptr};
     QAction* actLog_{nullptr};
+
+    SettingsWindow* settingsWindow_{nullptr};
+
+    /* Last applied 3D-model choice, so unrelated "Apply" clicks do not rebuild it. */
+    bool model3DDual_{true};
+    bool model3DUseFeedback_{true};
 
     DraggableTabWidget* upperTabs{nullptr};
 

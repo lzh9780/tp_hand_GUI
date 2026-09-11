@@ -40,29 +40,26 @@ namespace grip
         stop_all();
         try
         {
-            if (ctrl)
-            {
-                grip_control_close_bus(ctrl);
-                ctrl = nullptr;
-            }
+            ctrl_.close_bus();
         }
         catch (...)
         {
         }
     }
 
-    void ControlInterface::start_bus()
+    void ControlInterface::start_bus(const CanDeviceSettings &cfg)
     {
-        grip_can_device_settings_t *cfg = grip_device_setting_create(33, 0, 0);
-        ctrl = grip_control_create();
-        if (grip_control_start_bus(ctrl, cfg) == GRIP_OK)
-            std::cout << "Can device open successfully\n";
+        if (ctrl_.start_bus(cfg) == Status::Ok)
+            std::cout << "Can device open successfully: devID = 0x" << std::hex << ctrl_.dev_id()
+                      << std::dec << " (slave id " << ctrl_.hand_id() << "), hand side = "
+                      << ctrl_.hand_side() << "\n";
         else
         {
-            const char* error = grip_get_last_error(ctrl);
-            grip_control_close_bus(ctrl);
+            std::string error = ctrl_.last_error();
+            ctrl_.close_bus();
             throw std::runtime_error(error);
         }
+        reset_filters();
         rx_thread_ = std::thread([this]
                                  { receiver_loop(); });
     }
@@ -83,10 +80,10 @@ namespace grip
                                    { control_loop(); });
     }
 
-    void ControlInterface::submit_target(std::string ctrl_joint, float radians)
+    void ControlInterface::submit_target(std::string ctrl_joint, float value)
     {
         std::lock_guard<std::mutex> ql(inbox_mtx_);
-        inbox_.emplace_back(ctrl_joint, radians);
+        inbox_.emplace_back(ctrl_joint, value);
     }
 
     void ControlInterface::submit_control_mode(std::string ctrl_joint, std::string mode)
@@ -114,16 +111,16 @@ namespace grip
         {
             auto [d, r] = inbox_.front();
             inbox_.pop_front();
-            targets_rad_[d] = r;
+            target_values_[d] = r;
         }
         while (!mode_inbox_.empty())
         {
             auto [d, m] = mode_inbox_.front();
             mode_inbox_.pop_front();
-            uint16_t mode_id = grip_control_mode_id(m.c_str());
-            if (mode_id == 0xff)
+            ControlMode mode = control_mode_from_string(m);
+            if (static_cast<int>(mode) == 0xff)
                 continue;
-            control_mode_[d] = mode_id;
+            control_mode_[d] = static_cast<int>(mode);
         }
         while (!vel_inbox_.empty())
         {
@@ -141,74 +138,112 @@ namespace grip
 
     void ControlInterface::receiver_loop()
     {
+        // Buffers reused across iterations (no per-frame allocation).
+        std::vector<RealtimeData> realtime(num_joint + 1);
+        std::vector<JointTels> data(num_joint + 1);
+        std::vector<TipTels> tip_data(5);
+        BusData bus_data;
+
+        // Last timestamp already fed into the filter, per signal. TPDO1 (runtime) and
+        // TPDO2 (sensor) can land in different batches, so a signal may be unchanged
+        // even though frames arrived — it must not be filtered twice.
+        std::vector<uint32_t> last_joint_ts(num_joint + 1, 0);
+        std::vector<uint32_t> last_tip_ts(5, 0);
+
         while (!shutting_down_)
         {
-            RealtimeData *realtime = (RealtimeData *)malloc((num_joint + 1) * sizeof(RealtimeData));
-            JointTels *data = (JointTels *)malloc((num_joint + 1) * sizeof(JointTels));
-            TipTels tip_data[5];
-            BusData bus_data;
-            grip_status_t st = grip_receive_step(ctrl, realtime, data, tip_data, &bus_data, num_joint);
-            if (st != GRIP_OK)
+            uint32_t got = 0;
+            Status st = ctrl_.receive_step(realtime, data, tip_data, bus_data, num_joint, &got);
+            if (st != Status::Ok)
             {
-                std::cout << grip_get_last_error(ctrl);
+                std::cout << ctrl_.last_error();
                 continue;
             }
 
+            // No new frame: the buffers still hold the previous sample. Filtering it
+            // again would converge the filter onto that stale value and cancel the
+            // smoothing, so only touch the state when fresh data arrived.
+            if (got == 0)
+                continue;
+
+            std::lock_guard<std::mutex> lk(mtx_);
+            bus_info_ = bus_data; // latest bus telemetry for the UI
+
+            // Decoders fill their buffers by axis-block index i (block i <-> axis id i+1,
+            // see protocol 九 / 6.1), so the feedback of joint id j lives at index j-1.
             for (int j = 1; j < num_joint + 1; j++)
             {
-                size_t id = (size_t)data[j].dev_id;
-                size_t realtime_id = (size_t)realtime[j].dev_id;
+                auto name_it = joint_names_.find(j);
+                if (name_it == joint_names_.end())
+                    continue;
+                const std::string &name = name_it->second;
+                const int idx = j - 1;
+
+                // Only feed the filter when this signal actually carries a new sample.
+                if (data[idx].timestamp_ms == last_joint_ts[idx])
+                    continue;
+                last_joint_ts[idx] = data[idx].timestamp_ms;
+
+                // CAN timestamp is in ms; the filter works in seconds.
+                const double t_sec = static_cast<double>(data[idx].timestamp_ms) * 1e-3;
+                const float joint_pos = filter_enabled_
+                    ? static_cast<float>(get_filter(joint_pos_filters_, name).filter(data[idx].joint_position, t_sec))
+                    : data[idx].joint_position;
+                const float motor_pos = filter_enabled_
+                    ? static_cast<float>(get_filter(motor_pos_filters_, name).filter(data[idx].motor_position, t_sec))
+                    : data[idx].motor_position;
 
                 DevState joint_state;
-                joint_state.position = data[id].joint_position;
+                joint_state.position = joint_pos;
                 joint_state.velocity = 0;
                 joint_state.effort = 0;
 
-                DevState motor_state;
-                motor_state.position = data[id].motor_position;
-                motor_state.velocity = 0;
-                motor_state.effort = 0;
+                // Motor torque feedback comes from TPDO1 (RealtimeData::curr_torque).
+                // Filter it like the positions: the raw value is noisy.
+                const float motor_torque = filter_enabled_
+                    ? static_cast<float>(get_filter(torque_filters_, name).filter(realtime[idx].curr_torque, t_sec))
+                    : static_cast<float>(realtime[idx].curr_torque);
 
-                for (const auto &[key, val] : state_)
+                DevState motor_state;
+                motor_state.position = motor_pos;
+                motor_state.velocity = 0;
+                // TPDO1 "torq" is the motor current in mA (raw, not normalised).
+                motor_state.effort = motor_torque;
+
+                for (auto &[key, val] : state_)
                 {
-                    if (joint_names_.find(id) != joint_names_.end() &&
-                        val.joints.find(joint_names_[id]) != val.joints.end())
-                    {
-                        std::lock_guard<std::mutex> lk(mtx_);
-                        if (id == j)
-                        {
-                            state_[key].joints[joint_names_[id]] = joint_state;
-                            state_[key].motors[joint_names_[id]] = motor_state;
-                        }
-                        if (realtime_id == j)
-                        {
-                            state_[key].control_mode[joint_names_[id]] = (grip_control_mode_t)realtime[j].control_mode;
-                        }
-                        break;
-                    }
+                    auto jit = val.joints.find(name);
+                    if (jit == val.joints.end())
+                        continue;
+                    jit->second = joint_state;
+                    val.motors[name] = motor_state;
+                    val.control_mode[name] = static_cast<int>(realtime[idx].control_mode);
                 }
             }
             for (size_t i = 0; i < 5; i++)
             {
-                TipTels ts;
-                ts.device = tip_data[i].device;
-                ts.timestamp_ms = tip_data[i].timestamp_ms;
-                ts.tip_tactile = tip_data[i].tip_tactile;
-                ts.tip_proximity_sense = tip_data[i].tip_proximity_sense;
+                const std::string &dev = tip_data[i].device;
+                if (dev.empty())
+                    continue;
 
+                if (tip_data[i].timestamp_ms == last_tip_ts[i])
+                    continue;
+                last_tip_ts[i] = tip_data[i].timestamp_ms;
+
+                TipTels ts = tip_data[i];
+                if (filter_enabled_)
                 {
-                    std::lock_guard<std::mutex> lk(mtx_);
-                    std::string str;
-                    str = tip_data[i].device ? tip_data[i].device : "";
-                    auto buf = state_.find(str);
-                    if (buf == state_.end())
-                        continue;
-                    else
-                        buf->second.tip_sensor = ts;
+                    const double t_sec = static_cast<double>(ts.timestamp_ms) * 1e-3;
+                    ts.tip_tactile = static_cast<int16_t>(
+                        std::lround(get_filter(tip_tactile_filters_, dev).filter(ts.tip_tactile, t_sec)));
+                    ts.tip_proximity_sense = static_cast<uint16_t>(
+                        std::lround(get_filter(tip_prox_filters_, dev).filter(ts.tip_proximity_sense, t_sec)));
                 }
+
+                auto buf = state_.find(dev);
+                if (buf != state_.end())
+                    buf->second.tip_sensor = ts;
             }
-            free(realtime);
-            free(data);
         }
     }
 
@@ -225,7 +260,7 @@ namespace grip
         while (!shutting_down_)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(control_period_));
-            CmdStruct *cmds = (CmdStruct *)malloc(num_joint * sizeof(CmdStruct));
+            std::vector<CmdStruct> cmds(num_joint);
             {
                 std::lock_guard<std::mutex> lk(mtx_);
                 drain_pending_targets_locked();
@@ -233,8 +268,10 @@ namespace grip
                 {
                     CmdStruct cs;
                     cs.dev_id = static_cast<size_t>(id);
-                    cs.control_mode = static_cast<grip_control_mode_t>(control_mode_[name]);
-                    cs.cmd_joint_angle = targets_rad_[name] / 100.0f;
+                    cs.control_mode = static_cast<ControlMode>(control_mode_[name]);
+                    // target values are raw slider counts (angle modes: 0.01 deg i.e. deg*100;
+                    // hall mode: hall counts). /100 -> degree/counts, then encode scales *100.
+                    cs.cmd_joint_angle = target_values_[name] / 100.0f;
                     cs.joint_vel_ref = targets_vel_[name] / 100.0f;
                     cs.motor_torque_ref = targets_torque_[name];
                     cmds[cs.dev_id - 1] = cs;
@@ -243,8 +280,7 @@ namespace grip
                 }
                 // std::cout << std::endl;
             }
-            grip_send_command(ctrl, cmds, num_joint);
-            free(cmds);
+            ctrl_.send_command(cmds);
         }
     }
 
@@ -254,9 +290,82 @@ namespace grip
         return state_;
     }
 
+    BusData ControlInterface::bus_info() const
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        return bus_info_;
+    }
+
+    int ControlInterface::hand_id() const
+    {
+        return ctrl_.hand_id();
+    }
+
+    uint32_t ControlInterface::dev_id() const
+    {
+        return ctrl_.dev_id();
+    }
+
+    std::string ControlInterface::hand_side() const
+    {
+        return ctrl_.hand_side();
+    }
+
     int ControlInterface::get_board_state() const
     {
         return board_state_;
+    }
+
+    OneEuroFilter &ControlInterface::get_filter(std::unordered_map<std::string, OneEuroFilter> &m,
+                                                const std::string &name)
+    {
+        auto it = m.find(name);
+        if (it == m.end())
+            it = m.emplace(name, OneEuroFilter(f_freq_, f_min_cutoff_, f_beta_, f_d_cutoff_)).first;
+        return it->second;
+    }
+
+    void ControlInterface::set_filter_enabled(bool on)
+    {
+        filter_enabled_ = on;
+    }
+
+    void ControlInterface::set_filter_params(double freq, double min_cutoff, double beta, double d_cutoff)
+    {
+        // The receiver thread touches the same filters while holding mtx_.
+        std::lock_guard<std::mutex> lk(mtx_);
+
+        f_freq_ = freq > 0.0 ? freq : f_freq_;
+        f_min_cutoff_ = min_cutoff;
+        f_beta_ = beta;
+        f_d_cutoff_ = d_cutoff;
+
+        auto apply = [&](std::unordered_map<std::string, OneEuroFilter> &m)
+        {
+            for (auto &[name, f] : m)
+                f.set_params(f_freq_, f_min_cutoff_, f_beta_, f_d_cutoff_);
+        };
+        apply(joint_pos_filters_);
+        apply(motor_pos_filters_);
+        apply(torque_filters_);
+        apply(tip_tactile_filters_);
+        apply(tip_prox_filters_);
+    }
+
+    void ControlInterface::reset_filters()
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+
+        auto clear = [](std::unordered_map<std::string, OneEuroFilter> &m)
+        {
+            for (auto &[name, f] : m)
+                f.reset();
+        };
+        clear(joint_pos_filters_);
+        clear(motor_pos_filters_);
+        clear(torque_filters_);
+        clear(tip_tactile_filters_);
+        clear(tip_prox_filters_);
     }
 
     void ControlInterface::set_module_control_mode(std::string module, int mode)

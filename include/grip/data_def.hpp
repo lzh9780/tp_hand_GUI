@@ -4,13 +4,13 @@
 #include <string>
 #include <vector>
 
-#include "interface.h"
+#include "hand_interface.hpp"
 
-using JointTels = grip_joint_sensor_t;
-using TipTels = grip_tip_sensor_t;
-using BusData = grip_bus_info_t;
-using RealtimeData = grip_realtime_data_t;
-using CmdStruct = grip_command_t;
+using JointTels = grip::JointSensor;
+using TipTels = grip::TipSensor;
+using BusData = grip::BusInfo;
+using RealtimeData = grip::RealtimeData;
+using CmdStruct = grip::Command;
 
 struct DevState
 {

@@ -65,19 +65,21 @@ if (BUILD_MANUS_GLOVE)
   include_directories(${CURSES_INCLUDE_DIR})
 endif()
 
-# Vendor library
-set(TPHAND_SO "${CMAKE_SOURCE_DIR}/lib/libtphandapi.so")
-add_library(tphandapi SHARED IMPORTED GLOBAL)
-set_target_properties(tphandapi PROPERTIES IMPORTED_LOCATION "${TPHAND_SO}")
+# Vendor library (ZLG CAN-FD driver)
+set(ZLGCAN_SO "/lib/libusbcanfd.so")
+add_library(zlgcanfd SHARED IMPORTED GLOBAL)
+set_target_properties(zlgcanfd PROPERTIES IMPORTED_LOCATION "${ZLGCAN_SO}")
 
 # Core
 add_library(grip_core STATIC
   src/settings.cpp
   src/control_interface.cpp
+  src/hand_interface.cpp
 )
-target_link_libraries(grip_core PUBLIC yaml-cpp tphandapi)
+target_link_libraries(grip_core PUBLIC yaml-cpp zlgcanfd)
 set_target_properties(grip_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(grip_core PRIVATE include)
+target_include_directories(grip_core PRIVATE ${CMAKE_SOURCE_DIR}/third_party/zlgcan)
 
 set(_rpath "$ORIGIN")
 
@@ -91,7 +93,8 @@ set(GUI_SOURCES
   src_gui/OgreWidget.cpp
   src_gui/UrdfLoader.cpp
   src_gui/MotorPanel.cpp
-  src_gui/Connector.cpp
+  src_gui/ConnectionBar.cpp
+  src_gui/SettingsWindow.cpp
   src_gui/CameraWidget.cpp
   src_gui/DraggableTabBar.cpp
   src_gui/DraggableTabWidget.cpp

@@ -17,7 +17,8 @@
 #include <QPushButton>
 #include <iostream>
 #include "DraggableTabWidget.hpp"
-#include "Connector.hpp"
+#include "ConnectionBar.hpp"
+#include "SettingsWindow.h"
 #include "CameraWidget.hpp"
 #include "ActionPanel.hpp"
 
@@ -25,6 +26,7 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
     : QMainWindow(parent), cfg_(cfg)
 {
+    can_cfg_ = cfg_.can_device;
     buildUI();
     resize(1400, 900);
     setMinimumSize(1100, 700);
@@ -52,12 +54,15 @@ MainWindow::~MainWindow()
 void MainWindow::buildUI()
 {
     central = new QWidget(this);
-    auto *rootLayout = new QHBoxLayout(central);
+    auto *rootLayout = new QVBoxLayout(central);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
 
+    // ---- Top: single-row connection strip (model / device / channel / connect) ----
+    connBar_ = new ConnectionBar(central, cfg_.models);
+    rootLayout->addWidget(connBar_);
+
     // ---- Modules (created once, hosted by the tab area on demand) ----
-    connect_ = new Connector(this, cfg_.models);
     ogre_ = new OgreWidget();
     motor_ = new MotorPanel();
     camera_ = new CameraWidget();
@@ -77,8 +82,7 @@ void MainWindow::buildUI()
     upperTabs->setDocumentMode(true);
 
     // Open the panels that follow the actual workflow:
-    // connect the hand → watch the 3D model → run action sets.
-    upperTabs->addTab(connect_, "Connector");
+    // watch the 3D model → run action sets.
     upperTabs->addTab(ogre_, "3D Model");
     upperTabs->addTab(actionFlow_, "Action Sets");
     upperTabs->setCurrentIndex(0);
@@ -99,7 +103,7 @@ void MainWindow::buildUI()
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({360, 1020});
 
-    rootLayout->addWidget(splitter);
+    rootLayout->addWidget(splitter, 1);
 
     central->setLayout(rootLayout);
     setCentralWidget(central);
@@ -115,10 +119,29 @@ void MainWindow::buildUI()
     connect(motor_, &MotorPanel::mode_change, this, &MainWindow::onJointPanelControlModeChange);
     connect(motor_, &MotorPanel::vel_ref_change, this, &MainWindow::onJointPanelVelRefModeChange);
     connect(motor_, &MotorPanel::torque_ref_change, this, &MainWindow::onJointPanelTorqueRefModeChange);
-    connect(connect_, &Connector::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
+    connect(connBar_, &ConnectionBar::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
     // connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
-    connect(connect_, &Connector::modelChange, this, &MainWindow::onConnectorModelChange);
-    connect(connect_, &Connector::stateCheck, this, &MainWindow::onConnectorStateCheck);
+    connect(connBar_, &ConnectionBar::modelChange, this, &MainWindow::onConnectorModelChange);
+    connect(connBar_, &ConnectionBar::canConfigChanged, this, &MainWindow::onConnectionBarCanConfigChanged);
+    connect(connBar_, &ConnectionBar::statusMessage, this, &MainWindow::appendLog);
+
+
+    // Settings pop-up: CAN bus + feedback filter. Created lazily by openSettings().
+    settingsWindow_ = new SettingsWindow(this);
+    connect(settingsWindow_, &SettingsWindow::canConfigChanged, this, &MainWindow::onCanConfigChanged);
+    connect(settingsWindow_, &SettingsWindow::filterChanged, this, &MainWindow::onFilterChanged);
+    connect(settingsWindow_, &SettingsWindow::filterReset, this, &MainWindow::onFilterReset);
+    connect(settingsWindow_, &SettingsWindow::notify, this, &MainWindow::appendLog);
+    connect(settingsWindow_, &SettingsWindow::simulationModeChanged,
+            this, &MainWindow::onSimulationModeChanged);
+    connect(settingsWindow_, &SettingsWindow::model3DConfigChanged,
+            this, &MainWindow::onModel3DConfigChanged);
+    settingsWindow_->applyCanConfig(); // seed can_cfg_ with the defaults
+
+    QStringList modelNames;
+    for (const auto &m : cfg_.models)
+        modelNames << QString::fromStdString(m);
+    settingsWindow_->setSoftwareInfo(QString::fromStdString(config_path_), modelNames);
     connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
     connect(ogre_, &OgreWidget::initFailed, this, [this](const QString &msg)
             { appendLog(QString("3D view unavailable: %1").arg(msg)); });
@@ -172,37 +195,35 @@ void MainWindow::buildToolBar()
     toolBar_->setToolButtonStyle(Qt::ToolButtonTextOnly);
     addToolBar(Qt::TopToolBarArea, toolBar_);
 
-    actConnector_  = new QAction("Connector", this);
     actModel3D_    = new QAction("3D Model", this);
     actActionSets_ = new QAction("Action Sets", this);
     actJointModes_ = new QAction("Joint Modes", this);
     actHandDetect_ = new QAction("Hand Detect", this);
     actTactile_    = new QAction("Tactile", this);
     actDiagram_    = new QAction("New Diagram", this);
+    actSettings_   = new QAction("Settings", this);
     actLog_        = new QAction("Log", this);
     actLog_->setCheckable(true);
     actLog_->setChecked(true);
 
-    actConnector_->setToolTip("Show the device connector");
     actModel3D_->setToolTip("Show the 3D visualization of the hand");
     actActionSets_->setToolTip("Show the action set sequencer");
     actJointModes_->setToolTip("Show per-joint control modes and limits");
     actHandDetect_->setToolTip("Show tele-operation / hand tracking");
     actTactile_->setToolTip("Show tactile pressure visualization");
     actDiagram_->setToolTip("Open a new live diagram panel");
+    actSettings_->setToolTip("Open the settings window (CAN bus + feedback filter)");
     actLog_->setToolTip("Show or hide the log console");
 
-    connect(actConnector_,  &QAction::triggered, this, &MainWindow::openConnectorTab);
     connect(actModel3D_,    &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
     connect(actActionSets_, &QAction::triggered, this, &MainWindow::openActionPanelTab);
     connect(actJointModes_, &QAction::triggered, this, &MainWindow::openMotorControlTab);
     connect(actHandDetect_, &QAction::triggered, this, &MainWindow::openCameraTab);
     connect(actTactile_,    &QAction::triggered, this, &MainWindow::openTactileImage);
     connect(actDiagram_,    &QAction::triggered, this, &MainWindow::openDiagram);
+    connect(actSettings_,   &QAction::triggered, this, &MainWindow::openSettings);
     connect(actLog_,        &QAction::triggered, this, &MainWindow::toggleLogPanel);
 
-    toolBar_->addAction(actConnector_);
-    toolBar_->addSeparator();
     toolBar_->addAction(actModel3D_);
     toolBar_->addAction(actActionSets_);
     toolBar_->addAction(actJointModes_);
@@ -211,11 +232,11 @@ void MainWindow::buildToolBar()
     toolBar_->addAction(actTactile_);
     toolBar_->addAction(actDiagram_);
     toolBar_->addSeparator();
+    toolBar_->addAction(actSettings_);
     toolBar_->addAction(actLog_);
 
     // The same shortcuts stay reachable from the menu bar.
     auto *viewMenu = menuBar()->addMenu("&View");
-    viewMenu->addAction(actConnector_);
     viewMenu->addAction(actModel3D_);
     viewMenu->addAction(actActionSets_);
     viewMenu->addAction(actJointModes_);
@@ -224,6 +245,7 @@ void MainWindow::buildToolBar()
     viewMenu->addAction(actTactile_);
     viewMenu->addAction(actDiagram_);
     viewMenu->addSeparator();
+    viewMenu->addAction(actSettings_);
     viewMenu->addAction(actLog_);
 }
 
@@ -319,8 +341,19 @@ void MainWindow::onSidePanelValuesChanged()
                 joint_target.emplace(name, j.second);
         }
     }
-    for (auto &[key, value] : joint_target)
-        ogre_->setJointPosition("fb", key, value);
+    if (model3DShowsSource("cmd"))
+    {
+        if (model3DDual())
+        {
+            for (auto &[key, value] : joint_target)
+                ogre_->setJointPosition("cmd", key, value);
+        }
+        else
+        {
+            for (auto &[key, value] : joint_target)
+                ogre_->setJointPosition(key, value);
+        }
+    }
 }
 
 void MainWindow::onSidePanelCommitted()
@@ -354,8 +387,19 @@ void MainWindow::onSidePanelCommitted()
                 joint_target.emplace(name, j.second);
         }
     }
-    for (auto &[key, value] : joint_target)
-        ogre_->setJointPosition("fb", key, value);
+    if (model3DShowsSource("cmd"))
+    {
+        if (model3DDual())
+        {
+            for (auto &[key, value] : joint_target)
+                ogre_->setJointPosition("cmd", key, value);
+        }
+        else
+        {
+            for (auto &[key, value] : joint_target)
+                ogre_->setJointPosition(key, value);
+        }
+    }
 
     appendLog(QString("Execute: %1 targets sent.").arg(count));
 }
@@ -403,7 +447,10 @@ void MainWindow::onConnectorDeviceConnect(const QString &msg)
     if (msg == "Connect")
         onDeviceConnect();
     else
+    {
         onDeviceDisconnect();
+        side_->updateBusInfo(BusData{});
+    }
 }
 
 void MainWindow::onDeviceConnect()
@@ -411,7 +458,7 @@ void MainWindow::onDeviceConnect()
     if (selectedModel_.isEmpty())
     {
         appendLog("Please select a hand model before connecting.");
-        connect_->onChange(false);
+        connBar_->onChange(false);
         return;
     }
 
@@ -421,10 +468,21 @@ void MainWindow::onDeviceConnect()
         hand_cfg_ = grip::load_hand_settings(config_path_);
 
         ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
+
+        // A fresh ControlInterface starts from its own defaults: push whatever the
+        // settings window currently shows so the GUI stays the single source of truth.
+        ctrl_->set_filter_enabled(settingsWindow_->filterEnabled());
+        ctrl_->set_filter_params(settingsWindow_->filterFreq(), settingsWindow_->filterMinCutoff(),
+                                 settingsWindow_->filterBeta(), settingsWindow_->filterDCutoff());
+
         if (withCan)
         {
-            ctrl_->start_bus();
+            ctrl_->start_bus(can_cfg_);
             appendLog("Device Connected. ");
+            appendLog(QString("Device id: 0x%1 (slave id %2), hand side: %3")
+                          .arg(QString::number(ctrl_->dev_id(), 16))
+                          .arg(ctrl_->hand_id())
+                          .arg(QString::fromStdString(ctrl_->hand_side())));
             ctrl_->start_control_loop();
             // appendLog("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
             appendLog("Current control mode: " + side_->modeText());
@@ -453,7 +511,7 @@ void MainWindow::onDeviceConnect()
 
         side_->loadHandControllor(&hand_cfg_);
         motor_->load(hand_cfg_);
-        ogre_->loadURDFDual(hand_cfg_.urdf_file);
+        loadModel3D();
 
         // The action panel owns the store, so it is released to it only after
         // everything else succeeded; a throw in between still frees it.
@@ -462,14 +520,16 @@ void MainWindow::onDeviceConnect()
         actionFlow_->setStore(store.get());
         store.release();
 
-        connect_->onChange(true);
+        connBar_->onChange(true);
+        settingsWindow_->setConnected(true); // CAN parameters are frozen now
         setConnectedStatus(true);
     }
     catch (const std::exception &e)
     {
         const QString qerr = QString(e.what());
         appendLog(qerr);
-        connect_->onChange(false);
+        connBar_->onChange(false);
+        settingsWindow_->setConnected(false);
         setConnectedStatus(false);
     }
 }
@@ -493,7 +553,8 @@ void MainWindow::onDeviceDisconnect()
         delete ctrl_;
         ctrl_ = nullptr;
     }
-    connect_->onChange(false);
+    connBar_->onChange(false);
+    settingsWindow_->setConnected(false);
     setConnectedStatus(false);
     ogre_->clearScene();
     dof_names.clear();
@@ -504,12 +565,110 @@ void MainWindow::onDeviceDisconnect()
     act_cfg_ = grip::ActuatorSettings();
 }
 
-void MainWindow::onConnectorStateCheck(Qt::CheckState state)
+void MainWindow::onSimulationModeChanged(bool simulation)
 {
-    if (state == Qt::Unchecked)
-        withCan = true;
-    else if (state == Qt::Checked)
-        withCan = false;
+    withCan = !simulation;
+    appendLog(simulation ? "Simulation mode: no hardware connected."
+                         : "Simulation mode off: CAN device will be used.");
+}
+
+void MainWindow::onCanConfigChanged(int device_type, int device_index, int channel_index,
+                                    int core_clock_hz, bool termination_enabled,
+                                    int arb_tseg1, int arb_tseg2, int arb_sjw, int arb_brp,
+                                    int data_tseg1, int data_tseg2, int data_sjw, int data_brp)
+{
+    can_cfg_.device_type = device_type;
+    can_cfg_.device_index = device_index;
+    can_cfg_.channel_index = channel_index;
+    can_cfg_.core_clock_hz = core_clock_hz;
+    can_cfg_.termination_enabled = termination_enabled;
+    can_cfg_.bit_timing.arbitration = {arb_tseg1, arb_tseg2, arb_sjw, arb_brp};
+    can_cfg_.bit_timing.data_phase = {data_tseg1, data_tseg2, data_sjw, data_brp};
+
+    // Keep the connection bar showing the same location.
+    connBar_->setDeviceLocation(device_index, channel_index);
+}
+
+void MainWindow::onConnectionBarCanConfigChanged(int device_index, int channel_index)
+{
+    // The bar owns device index / channel; mirror them into the shared config and
+    // tell the settings window so its CAN signal echoes the same values back.
+    can_cfg_.device_index = device_index;
+    can_cfg_.channel_index = channel_index;
+    if (settingsWindow_)
+        settingsWindow_->setDeviceLocation(device_index, channel_index);
+    appendLog(QString("CAN location: device=%1, channel=%2").arg(device_index).arg(channel_index));
+}
+
+void MainWindow::onFilterChanged(bool enabled, double freq, double min_cutoff,
+                                 double beta, double d_cutoff)
+{
+    if (!ctrl_)
+        return;
+    ctrl_->set_filter_enabled(enabled);
+    ctrl_->set_filter_params(freq, min_cutoff, beta, d_cutoff);
+}
+
+void MainWindow::onFilterReset()
+{
+    if (!ctrl_)
+        return;
+    ctrl_->reset_filters();
+    appendLog("Filter state reset.");
+}
+
+void MainWindow::loadModel3D()
+{
+    if (!ogre_ || hand_cfg_.urdf_file.empty())
+        return;
+
+    model3DDual_ = settingsWindow_ ? settingsWindow_->dualModel() : model3DDual_;
+    model3DUseFeedback_ = settingsWindow_ ? settingsWindow_->useFeedbackData() : model3DUseFeedback_;
+
+    const bool dual = model3DDual();
+    const bool ok = dual ? ogre_->loadURDFDual(hand_cfg_.urdf_file)
+                         : ogre_->loadURDF(hand_cfg_.urdf_file);
+    appendLog(ok ? QString("3D model loaded: %1.").arg(dual ? "dual (command + feedback)" : "single")
+                 : QString("3D model load failed: %1").arg(QString::fromStdString(hand_cfg_.urdf_file)));
+}
+
+bool MainWindow::model3DDual() const
+{
+    return model3DDual_;
+}
+
+bool MainWindow::model3DShowsSource(const char *source) const
+{
+    if (model3DDual_)
+        return true; // dual mode draws both instances
+
+    return model3DUseFeedback_ ? (std::strcmp(source, "fb") == 0)
+                               : (std::strcmp(source, "cmd") == 0);
+}
+
+void MainWindow::onModel3DConfigChanged(bool dual, bool use_feedback)
+{
+    if (hand_cfg_.urdf_file.empty())
+        return; // nothing loaded yet: the choice is applied on the next connect
+
+    // Applying unrelated settings (e.g. filter parameters) re-emits this signal:
+    // only rebuild the scene when the choice actually changed, otherwise the model
+    // would be torn down and recreated on every Apply.
+    if (dual == model3DDual_ && use_feedback == model3DUseFeedback_)
+        return;
+
+    model3DDual_ = dual;
+    model3DUseFeedback_ = use_feedback;
+    loadModel3D();
+}
+
+void MainWindow::openSettings()
+{
+    if (!settingsWindow_)
+        return;
+    settingsWindow_->show();
+    settingsWindow_->raise();
+    settingsWindow_->activateWindow();
 }
 
 void MainWindow::onActionPanelActionUpdate(const QString &msg)
@@ -589,9 +748,21 @@ void MainWindow::readJointAngles()
             controlStates.emplace(joint_name, data);
         }
     }
-    for (auto &[key, value] : joint_target)
-        ogre_->setJointPosition("cmd", key, value);
+    if (model3DShowsSource("fb"))
+    {
+        if (model3DDual())
+        {
+            for (auto &[key, value] : joint_target)
+                ogre_->setJointPosition("fb", key, value);
+        }
+        else
+        {
+            for (auto &[key, value] : joint_target)
+                ogre_->setJointPosition(key, value);
+        }
+    }
     side_->updateFeedback(state);
+    side_->updateBusInfo(ctrl_->bus_info());
     tactile_->setHandPressureData(tips);
 }
 
@@ -630,11 +801,6 @@ void MainWindow::toggleLogPanel()
 void MainWindow::openCameraTab()
 {
     addOrShowTab(camera_, "Hand Detect");
-}
-
-void MainWindow::openConnectorTab()
-{
-    addOrShowTab(connect_, "Connector");
 }
 
 void MainWindow::openUrdfLoaderTab()

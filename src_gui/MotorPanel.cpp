@@ -106,7 +106,7 @@ void MotorPanel::load(grip::HandSettings hand)
 
             // --- torque reference ---
             auto *torqueSlider = new QSlider(Qt::Horizontal);
-            torqueSlider->setRange(0, 300);
+            torqueSlider->setRange(0, 1500);
             auto *torqueEdit = new QLineEdit("0");
             torqueEdit->setFixedWidth(70);
             torqueEdit->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -115,14 +115,14 @@ void MotorPanel::load(grip::HandSettings hand)
             torqueRow->setSpacing(6);
             torqueRow->addWidget(new QLabel("0"));
             torqueRow->addWidget(torqueSlider, 1);
-            torqueRow->addWidget(new QLabel("300 mA"));
+            torqueRow->addWidget(new QLabel("1500 mA"));
             torqueRow->addWidget(torqueEdit);
             form->addRow("Torque:", torqueRow);
 
             velSlider->setEnabled(false);
             velEdit->setEnabled(false);
-            torqueSlider->setEnabled(false);
-            torqueEdit->setEnabled(false);
+            torqueSlider->setEnabled(true);
+            torqueEdit->setEnabled(true);
             velSlider->setValue(0);
             torqueSlider->setValue(0);
 
@@ -132,13 +132,14 @@ void MotorPanel::load(grip::HandSettings hand)
                       const bool mit = (mode_box->currentText() == "MIT_torque");
                       velSlider->setEnabled(mit);
                       velEdit->setEnabled(mit);
-                      torqueSlider->setEnabled(mit);
-                      torqueEdit->setEnabled(mit);
-                      if (!mit)
-                      {
-                          velSlider->setValue(0);
-                          torqueSlider->setValue(0);
-                      } });
+                    //   torqueSlider->setEnabled(mit);
+                    //   torqueEdit->setEnabled(mit);
+                    //   if (!mit)
+                    //   {
+                    //       velSlider->setValue(0);
+                    //       torqueSlider->setValue(0);
+                    //   } });
+                    } );
 
             connect(velSlider, &QSlider::valueChanged,
                     this, [=]()

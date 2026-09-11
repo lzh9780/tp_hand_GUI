@@ -397,6 +397,12 @@ bool OgreWidget::loadURDF(const std::string &urdf_path)
         return false;
     }
     clearScene();
+    // clearScene() destroys the nodes but these maps / the loader-side maps keep
+    // stale pointers and names around, so a second load would either reuse dangling
+    // nodes or throw ItemIdentityException on the duplicate names.
+    mRobots.clear();
+    mBuiltJoints.clear();
+    mLinkNodes.clear();
     mModel = std::move(model);
     buildSceneFromURDF(urdf_path);
     resetView();
@@ -1002,15 +1008,20 @@ void OgreWidget::ensureBaseMaterials()
 void OgreWidget::clearInstances()
 {
     // Destroy all instance roots but keep the grid/light that you created separately.
+    // NOTE: SceneNode::removeAndDestroyAllChildren() only deletes the nodes, it does
+    // NOT destroy the MovableObjects attached to them. Those stay registered in the
+    // SceneManager, so rebuilding an instance under the same name throws
+    // ItemIdentityException ("... already exists"). Detach + destroy explicitly.
     for (auto &kv : mRobots)
     {
         if (kv.second.root)
         {
-            kv.second.root->removeAndDestroyAllChildren();
-            mScene->destroySceneNode(kv.second.root);
+            destroySubtree(mScene, kv.second.root);
         }
     }
     mRobots.clear();
+    mBuiltJoints.clear();
+    mLinkNodes.clear();
 }
 
 bool OgreWidget::loadURDFDual(const std::string &urdf_path,
@@ -1031,8 +1042,8 @@ bool OgreWidget::loadURDFDual(const std::string &urdf_path,
 
     const std::string dir = fs::path(urdf_path).parent_path().string();
 
-    buildInstance(cmdName, /*transparent*/ false, dir);
-    buildInstance(fbName, /*transparent*/ true, dir);
+    buildInstance(fbName, /*transparent*/ false, dir);
+    buildInstance(cmdName, /*transparent*/ true, dir);
 
     resetView();
     return true;
