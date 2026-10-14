@@ -119,8 +119,8 @@ void MotorPanel::load(grip::HandSettings hand)
             torqueRow->addWidget(torqueEdit);
             form->addRow("Torque:", torqueRow);
 
-            velSlider->setEnabled(false);
-            velEdit->setEnabled(false);
+            velSlider->setEnabled(true);
+            velEdit->setEnabled(true);
             torqueSlider->setEnabled(true);
             torqueEdit->setEnabled(true);
             velSlider->setValue(0);
@@ -129,9 +129,9 @@ void MotorPanel::load(grip::HandSettings hand)
             connect(mode_box, &QComboBox::currentTextChanged,
                     this, [=]()
                     { emit mode_change(mode_label->text(), mode_box->currentText());
-                      const bool mit = (mode_box->currentText() == "MIT_torque");
-                      velSlider->setEnabled(mit);
-                      velEdit->setEnabled(mit);
+                    //   const bool mit = (mode_box->currentText() == "MIT_torque");
+                    //   velSlider->setEnabled(mit);
+                    //   velEdit->setEnabled(mit);
                     //   torqueSlider->setEnabled(mit);
                     //   torqueEdit->setEnabled(mit);
                     //   if (!mit)

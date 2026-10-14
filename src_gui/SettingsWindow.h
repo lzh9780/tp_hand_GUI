@@ -62,6 +62,11 @@ public:
     bool dualModel() const;       // true = two instances (cmd + fb), false = single
     bool useFeedbackData() const; // single model only: feedback or command driven
 
+    /* Navigation style of the 3D view, named after RViz' view controller. */
+    QString viewStyle() const;
+    /* Draw the camera's look-at point (orbit pivot) in the 3D view. */
+    bool showFocalMarker() const;
+
     /* Fill the "Software" tab (config file, available models, …). */
     void setSoftwareInfo(const QString &configPath, const QStringList &models);
 
@@ -78,6 +83,8 @@ signals:
     void filterReset();
     void simulationModeChanged(bool simulation);
     void model3DConfigChanged(bool dual, bool use_feedback);
+    void viewStyleChanged(const QString &style);
+    void focalMarkerVisibilityChanged(bool visible);
     void notify(const QString &msg);
 
 private slots:
@@ -125,6 +132,8 @@ private:
     /* 3D model */
     QComboBox *model3DMode_{nullptr};
     QComboBox *model3DSource_{nullptr};
+    QComboBox *viewStyle_{nullptr};
+    QCheckBox *showFocalMarker_{nullptr};
 
     /* Software information (read-only) */
     QTextBrowser *infoView_{nullptr};

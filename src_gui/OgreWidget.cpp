@@ -4,6 +4,7 @@
 #include <QWheelEvent>
 #include <QDebug>
 #include <QResizeEvent>
+#include <QKeyEvent>
 
 #include <cstdint>
 #include <filesystem>
@@ -44,6 +45,15 @@
 using std::string;
 namespace fs = std::filesystem;
 
+// Opacity of the look-at point marker. Semi-transparent on purpose: it is an
+// aiming aid drawn over the scene, so it must not hide the geometry it sits on.
+static constexpr float kFocalMarkerAlpha = 0.2f;
+
+// How long the marker lingers after the last mouse event. Long enough that it
+// does not flicker between the individual events of one drag, short enough that
+// it is gone by the time the user settles on a new view.
+static constexpr int kFocalMarkerHoldMs = 700;
+
 static void addRtssResourceLocations();
 
 // -------------------- helpers --------------------
@@ -82,6 +92,22 @@ OgreWidget::OgreWidget(QWidget *parent) : QWidget(parent)
     setAttribute(Qt::WA_PaintOnScreen, true);
     setAttribute(Qt::WA_NoSystemBackground, true);
     setUpdatesEnabled(false);
+    // The WASD / QE navigation in keyPressEvent() only fires when the widget
+    // itself has focus, so it must be able to receive it at all.
+    setFocusPolicy(Qt::StrongFocus);
+
+    // The look-at point marker is transient: it shows up while navigating and
+    // this timer takes it away again once the interaction stops.
+    mFocalMarkerHideTimer.setSingleShot(true);
+    mFocalMarkerHideTimer.setInterval(kFocalMarkerHoldMs);
+    connect(&mFocalMarkerHideTimer, &QTimer::timeout, this, [this]
+            {
+                if (mDragMode == DragMode::None)
+                    hideFocalMarker();
+                else
+                    mFocalMarkerHideTimer.start(); // still dragging, keep it up
+            });
+
     connect(&mTimer, &QTimer::timeout, this, &OgreWidget::onFrame);
     ensureOgre();
 }
@@ -213,6 +239,7 @@ void OgreWidget::shutdownOgre()
 void OgreWidget::showEvent(QShowEvent *e)
 {
     QWidget::showEvent(e);
+    setFocus(Qt::OtherFocusReason);
     ensureOgre();
 }
 void OgreWidget::resizeEvent(QResizeEvent *e)
@@ -225,6 +252,28 @@ void OgreWidget::resizeEvent(QResizeEvent *e)
 }
 void OgreWidget::onFrame()
 {
+    // Continuous movement while a WASD/QE key is held (RViz FPS mode moves the
+    // camera that way; in Orbit mode the same keys nudge the focal point).
+    Ogre::Vector3 fwd, left, down;
+    cameraBasis(fwd, left, down);
+    const float speed = (mStyle == ViewStyle::Orbit) ? mFpsMoveSpeed * 0.2f : mFpsMoveSpeed;
+
+    if (mKeyFwd)
+        mSlew += fwd * speed;
+    if (mKeyBack)
+        mSlew -= fwd * speed;
+    if (mKeyLeft)
+        mSlew += left * speed;
+    if (mKeyRight)
+        mSlew -= left * speed;
+    if (mKeyUp)
+        mSlew -= down * speed;
+    if (mKeyDown)
+        mSlew += down * speed;
+
+    if (mSlew.squaredLength() > 1e-12f)
+        updateCamera();
+
     if (mRoot)
         mRoot->renderOneFrame();
 }
@@ -244,58 +293,82 @@ void OgreWidget::initOgre()
                                         std::max(1, height()),
                                         false, &params);
 
-    // Scene + camera
+    // Scene + camera. The camera is NOT parented to a node: updateCamera()
+    // positions/orients it explicitly in the Z-up world frame, so what the
+    // window shows is exactly the RViz convention.
     mScene = mRoot->createSceneManager(Ogre::ST_GENERIC);
     mCamera = mScene->createCamera("MainCamera");
     mCamera->setNearClipDistance(0.01f);
     mCamera->setFarClipDistance(2000.0f);
     mCamera->setAutoAspectRatio(true);
     mViewport = mWindow->addViewport(mCamera);
-    mViewport->setBackgroundColour(Ogre::ColourValue(0.8f, 0.8f, 0.8f));
+    mViewport->setBackgroundColour(Ogre::ColourValue(0.2f, 0.2f, 0.2f));
 
-    mWorld = mScene->getRootSceneNode()->createChildSceneNode("WorldFixip");
-    mWorld->pitch(Ogre::Degree(-90.0f));
+    // Z-up world node. Unlike a "convert NED -> Y-up" helper, this node only
+    // carries the fixed rotation of the RViz scene under the Y-up Ogre root:
+    //   ros(X forward, Y left, Z up)  ->  ogre(X right, Y forward, Z up-up)
+    // The space is rotated 90 deg about +X, which is right-handed, so URDF is
+    // consumed as-is and the scene is Z-up / right-handed like RViz. All child
+    // geometry, joint axes and origins keep their AR/URDF numbers untouched
+    // (no per-mesh flip, no mirrored handedness).
+    mWorld = mScene->getRootSceneNode()->createChildSceneNode("rviz_world");
+    mWorld->setOrientation(Ogre::Quaternion(Ogre::Degree(90.0f), Ogre::Vector3::UNIT_X));
 
     addRtssResourceLocations();
 
-    // 1) Enable RTSS first
+    // The GL3Plus render system has no fixed-function pipeline, so anything that
+    // has to be shaded needs an RTSS generated technique. The viewport therefore
+    // asks for the RTSS scheme, and only the lit materials are registered with
+    // it. The grid / axes / vertex-colour helpers stay on the default scheme:
+    // letting RTSS rewrite them would replace their per-vertex colours with its
+    // own lighting result, which left the grid showing two flat greys (its alpha
+    // fade gone) and made the axes disappear completely.
     enableRTSS();
-    // 2) Tell the viewport to use the RTSS scheme (this is the one GL3Plus will request)
     mViewport->setMaterialScheme(Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME);
-    // 3) Create our basic materials AFTER RTSS is active
     ensureBaseMaterials();
-    // 4) Seed RTSS once for the materials we’ll use so a shader technique is available immediately
+
+    // Seed a shader technique for the lit materials so the very first frame
+    // already has a valid technique instead of a one-frame fallback.
     if (auto *sg = Ogre::RTShader::ShaderGenerator::getSingletonPtr())
     {
         auto seed = [&](const Ogre::String &matName)
         {
             Ogre::MaterialPtr m = Ogre::MaterialManager::getSingleton().getByName(matName);
-            if (!m.isNull())
-            {
-                sg->createShaderBasedTechnique(
-                    *m,
-                    Ogre::MaterialManager::DEFAULT_SCHEME_NAME,
-                    Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME,
-                    /*overProgrammable=*/false);
-                sg->validateMaterial(
-                    Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME,
-                    matName);
-            }
+            if (m.isNull())
+                return;
+            sg->createShaderBasedTechnique(
+                *m,
+                Ogre::MaterialManager::DEFAULT_SCHEME_NAME,
+                Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME,
+                /*overProgrammable=*/false);
+            sg->validateMaterial(Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME, matName);
         };
+        // Seed every material the scene uses, so the first frame already has a
+        // valid RTSS technique and nothing falls back for a frame.
         seed("DefaultWhite");
         seed("GhostWhite");
         seed("GridUnlit");
+        seed("GridLineUnlit");
     }
 
-    // Light
-    auto *light = mScene->createLight("MainLight");
-    auto *lnode = mScene->getRootSceneNode()->createChildSceneNode();
-    lnode->setPosition(3, 5, -8);
-    lnode->attachObject(light);
+    recreateLighting();
 
-    // RViz-like grid (on XY plane, Z up)
-    auto *grid = createGridMO("GroundGrid", 30, 0.05f);
-    mWorld->createChildSceneNode()->attachObject(grid);
+    // Ambient term used by every lit material. It is what keeps surfaces facing
+    // away from the lights readable, in the same spirit as RViz' shaded
+    // RobotModel display. Without an explicit value Ogre leaves a low default
+    // and the dark grey URDF meshes render almost black.
+    mScene->setAmbientLight(Ogre::ColourValue(0.75f, 0.75f, 0.75f));
+
+    // Camera first, so the grid is already framed when the window appears.
+    updateCamera();
+
+    // RViz-like ground grid: XY plane, normal +Z (i.e. Z points up), placed a
+    // hair below the origin so it never fights with the model. The cell size is
+    // the RViz default and the extent is grown to fit the model on load.
+    createGrid("GroundGrid", 1.0f, 30);
+    createAxes(0.05f);
+    // No focal marker here on purpose: it is created on demand while the user
+    // navigates, so an idle view stays clean.
 }
 
 void OgreWidget::selectAndInitRenderSystem()
@@ -303,16 +376,22 @@ void OgreWidget::selectAndInitRenderSystem()
     // Try GL3Plus first, then GL
     std::vector<string> plugins;
 #if defined(Q_OS_WIN)
-    plugins = {"RenderSystem_GL3Plus", "RenderSystem_GL", "Plugin_RTSS"};
+    plugins = {"RenderSystem_GL3Plus", "RenderSystem_GL"};
 #else
-    // Linux paths fallback if OGRE_PLUGIN_DIR env isn’t set
+    // Full paths first: Root::loadPlugin("RenderSystem_GL3Plus") is resolved by
+    // DynLib against the working directory, not against the OGRE plugin dir.
     plugins = {
-        // "RenderSystem_GL3Plus", "RenderSystem_GL", "Plugin_RTSS",
         "/usr/lib/x86_64-linux-gnu/OGRE/RenderSystem_GL3Plus",
-        // "/usr/lib/x86_64-linux-gnu/OGRE/RenderSystem_GL",
-        // "/usr/lib/x86_64-linux-gnu/OGRE/Plugin_RTSS"};
+        "/usr/lib/x86_64-linux-gnu/OGRE/RenderSystem_GL",
     };
 #endif
+    // Load the FIRST candidate that works and stop there. The previous version
+    // had no break, so it went on to call loadPlugin() for the remaining paths
+    // as well; those files do not exist, the resulting InternalErrorException
+    // escaped the catch(...) of the following block entirely and unwound out of
+    // initOgre(), leaving shutdownOgre() to destroy a half-initialised Root
+    // (SIGSEGV in Root::uninstallPlugin) - the "black window" this whole
+    // investigation was about.
     bool any = false;
     for (auto &p : plugins)
     {
@@ -320,9 +399,12 @@ void OgreWidget::selectAndInitRenderSystem()
         {
             mRoot->loadPlugin(p);
             any = true;
+            break; // do not try the remaining candidates: they are alternatives
         }
-        catch (...)
+        catch (const Ogre::Exception &e)
         {
+            qDebug() << "Render system plugin" << p.c_str() << "unavailable:"
+                     << e.getFullDescription().c_str();
         }
     }
     if (!any)
@@ -352,36 +434,78 @@ void OgreWidget::enableRTSS()
 {
     using namespace Ogre::RTShader;
 
-    // Load plugin if available (safe if already loaded)
-    try
-    {
-        mRoot->loadPlugin("Plugin_RTSS");
-    }
-    catch (...)
-    {
-    }
+    // NOTE: no Root::loadPlugin() call on Linux. RTSS is not a plugin on
+    // Debian/Ubuntu - it is the plain library libOgreRTShaderSystem.so, which
+    // this program already links against. See loadRtssPlugin() for details.
+    loadRtssPlugin();
 
-    // Init generator singleton
+    // Initialize the generator singleton. By this point the render window has
+    // been created, which is what makes RenderSystem_GL3Plus register the "glsl"
+    // high level program factory; initialize() then picks "glsl" as its target
+    // language automatically. Doing this before createRenderWindow() makes it
+    // fall back to "null" (the default target language is Cg) and every
+    // generated material ends up invalid, so the ordering above matters.
     if (!ShaderGenerator::getSingletonPtr())
         ShaderGenerator::initialize();
+    mSG = ShaderGenerator::getSingletonPtr();
+    if (!mSG)
+    {
+        qWarning() << "RTSS unavailable: falling back to plain fixed-function materials.";
+        return;
+    }
 
-    auto *sg = ShaderGenerator::getSingletonPtr();
-    sg->addSceneManager(mScene); // IMPORTANT: register your SceneManager
-
-    // Remember the singleton so shutdownOgre() can destroy it in the right
-    // order (after scene content, before the Root).
-    mSG = sg;
+    mSG->addSceneManager(mScene); // IMPORTANT: register your SceneManager
 
     // Install our listener once
     if (!mRtssListener)
     {
-        mRtssListener = new RtssTechniqueResolver(sg);
+        mRtssListener = new RtssTechniqueResolver(mSG);
         Ogre::MaterialManager::getSingleton().addListener(mRtssListener);
     }
 
     // Make RTSS the active scheme so GL3Plus uses generated shaders
     Ogre::MaterialManager::getSingleton()
         .setActiveScheme(ShaderGenerator::DEFAULT_SCHEME_NAME);
+}
+
+// Make sure the RTSS shader generators are available.
+//
+// On Debian/Ubuntu RTSS is NOT a plugin. There is no Plugin_RTSS.so anywhere on
+// the system: RTSS ships as the plain library libOgreRTShaderSystem.so, which
+// this target already links through ${OGRE_LIBRARIES}. Calling
+// Root::loadPlugin("Plugin_RTSS") therefore throws InternalErrorException, and
+// because that call used to sit outside any try/catch inside enableRTSS(), the
+// exception unwound all the way out of initOgre() -> ensureOgre() ->
+// failOgre(), which tore the whole renderer down. That is why the widget showed
+// a black window with nothing but
+//     "Loading library Plugin_RTSS.so.1.12.10"
+// followed by an immediate "OGRE Shutdown" in log/ogre.log.
+//
+// Windows is the one platform where the OGRE SDK genuinely ships
+// Plugin_RTSS.dll, so the plugin is still loaded there.
+bool OgreWidget::loadRtssPlugin()
+{
+#if defined(Q_OS_WIN)
+    const char *names[] = {"Plugin_RTSS", "Plugin_RTSS_d"};
+    for (const char *n : names)
+    {
+        try
+        {
+            mRoot->loadPlugin(n);
+            return true;
+        }
+        catch (const Ogre::Exception &)
+        {
+            // try the next candidate
+        }
+    }
+    qWarning() << "Plugin_RTSS.dll not found; RTSS may be unavailable.";
+    return false;
+#else
+    // Statically linked component: nothing to load. ShaderGenerator will pick
+    // up the render system's "glsl" factory once a window exists.
+    return true;
+#endif
 }
 
 // -------------------- Public API --------------------
@@ -405,6 +529,7 @@ bool OgreWidget::loadURDF(const std::string &urdf_path)
     mLinkNodes.clear();
     mModel = std::move(model);
     buildSceneFromURDF(urdf_path);
+    fitGridToModel();
     resetView();
     return true;
 }
@@ -430,18 +555,399 @@ void OgreWidget::setJointPositions(const std::unordered_map<std::string, float> 
     for (auto &kv : qmap)
         setJointPosition(kv.first, kv.second);
 }
+void OgreWidget::setViewStyle(ViewStyle s)
+{
+    mStyle = s;
+    // Nothing else to do: updateCamera() derives the eye pose from whichever
+    // representation the active style uses, so the view never jumps.
+}
+
+// RViz names ("Orbit", "FPS (first person)") mapped onto the two styles here.
+void OgreWidget::setViewPreset(const QString &name)
+{
+    const QString n = name.trimmed().toLower();
+    const bool fps = n.startsWith(QStringLiteral("fps")) ||
+                     n.contains(QStringLiteral("first person"));
+    setViewStyle(fps ? ViewStyle::FPS : ViewStyle::Orbit);
+}
+
+// --- Camera math -----------------------------------------------------------
+// The scene lives in the ROS frame (X forward, Y left, Z up = RViz), which the
+// "rviz_world" node maps onto Ogre's frame (X right, Y forward, Z up) with a
+// fixed +90 deg rotation about X. The camera is created unparented, so its
+// values have to be expressed in Ogre's frame, but the numbers below are the
+// plain RViz numbers:  Z forward, Y left, X down (the ROS convention rotated
+// the same way). This keeps every angle identical to RViz.
+//
+//   RViz relative vector (x, y, z)  ->  Ogre (x, -z, y)
+//
+Ogre::Vector3 OgreWidget::focalPoint() const
+{
+    return Ogre::Vector3(mTarget.x(), -mTarget.z(), mTarget.y());
+}
+
+void OgreWidget::setFocalPoint(const Ogre::Vector3 &p)
+{
+    mTarget = QVector3D(p.x, p.z, -p.y);
+}
+
+// Forward / left / down basis of the current camera, in Ogre coordinates.
+void OgreWidget::cameraBasis(Ogre::Vector3 &fwd, Ogre::Vector3 &left, Ogre::Vector3 &down) const
+{
+    // The whole basis is built in the ROS frame (X forward, Y left, Z up) where
+    // yaw/pitch have the same meaning as in RViz, and only then converted to
+    // Ogre coordinates. Building `left` directly in Ogre coordinates was the
+    // bug: it produced a Z-up horizontal vector inside a Y-up camera basis, so
+    // basis and look direction were not orthogonal (dot(fwd,left) reached 0.88
+    // for the default view) and orbit / pan moved the camera to the wrong place.
+    const float cy = std::cos(mYaw), sy = std::sin(mYaw);
+    const float cp = std::cos(mPitch), sp = std::sin(mPitch);
+
+    // mYaw / mPitch always describe the LOOK direction, in both styles, so the
+    // two modes stay interchangeable and view presets behave identically:
+    //   yaw   = 0    -> looking along ROS +X (RViz' "front")
+    //   yaw   = +90  -> looking along ROS +Y
+    //   pitch = +45  -> looking upwards, pitch = -45 -> looking downwards
+    const Ogre::Vector3 lookRos(cp * cy, cp * sy, sp);
+
+    // Right-handed basis in the ROS frame (X forward, Y left, Z up):
+    //   forward = lookRos
+    //   left    = up x forward
+    //   down    = forward x left
+    const Ogre::Vector3 upRos(0.f, 0.f, 1.f);
+    Ogre::Vector3 leftRos = upRos.crossProduct(lookRos);
+    if (leftRos.squaredLength() < 1e-12f)
+        leftRos = Ogre::Vector3(0.f, 1.f, 0.f); // straight up/down: pick any
+    leftRos.normalise();
+    const Ogre::Vector3 downRos = lookRos.crossProduct(leftRos);
+
+    // ROS (x forward, y left, z up) -> Ogre (x right, y forward, z up), i.e. the
+    // world node's Rx(+90) transform: (x, y, z) -> (x, -z, y). This is the same
+    // mapping focalPoint() uses, so the eye offset and the focal point stay in
+    // agreement (getting these two out of sync was what broke the default view).
+    auto toOgre = [](const Ogre::Vector3 &v) { return Ogre::Vector3(v.x, -v.z, v.y); };
+
+    fwd = toOgre(lookRos);
+    left = toOgre(leftRos);
+    down = toOgre(downRos);
+}
+
+// Keep the view clear of the poles: RViz clamps to +/-89 deg.
+void OgreWidget::clampPitch()
+{
+    const float lim = Ogre::Math::HALF_PI - Ogre::Degree(1.0f).valueRadians();
+    if (mPitch > lim)
+        mPitch = lim;
+    else if (mPitch < -lim)
+        mPitch = -lim;
+}
+
+// Keyboard displacement queued between frames (WASD / QE).
+void OgreWidget::applySlew()
+{
+    if (mSlew.squaredLength() < 1e-12f)
+        return;
+    setFocalPoint(focalPoint() + mSlew);
+    mSlew = Ogre::Vector3::ZERO;
+}
+
 void OgreWidget::setCameraTarget(const QVector3D &t)
 {
+    // RViz' "Focal Point" is given in the fixed frame: (X forward, Y left, Z up).
     mTarget = t;
+    updateCamera();
+}
+
+// Master switch for the marker. Enabling it does not draw anything by itself:
+// the marker appears while the user navigates (see showFocalMarkerTemporarily).
+void OgreWidget::setFocalMarkerVisible(bool on)
+{
+    mFocalMarkerEnabled = on;
+    if (!on)
+        hideFocalMarker();
+}
+
+// Build the marker into the scene and let the hide timer take it away again.
+void OgreWidget::showFocalMarkerTemporarily()
+{
+    if (mFocalMarkerEnabled)
+    {
+        float dist = 1.0f;
+        if (mCamera)
+        {
+            const float d = (mCamera->getPosition() - focalPoint()).length();
+            if (d > 1e-3f)
+                dist = d;
+        }
+        createFocalMarker(dist * 0.02f);
+        mFocalMarkerShown = true;
+    }
+    // Restart the grace period on every event so the marker stays up for the
+    // whole gesture and a little beyond it.
+    mFocalMarkerHideTimer.start(kFocalMarkerHoldMs);
+}
+
+// Remove the marker from the scene.
+void OgreWidget::hideFocalMarker()
+{
+    if (!mFocalMarkerShown && !mFocalMarkerNode)
+        return;
+    destroyWorldChild("FocalMarkerNode");
+    if (mScene->hasManualObject("FocalMarkerCross"))
+        mScene->destroyManualObject("FocalMarkerCross");
+    if (mScene->hasManualObject("FocalMarkerBall"))
+        mScene->destroyManualObject("FocalMarkerBall");
+    mFocalMarkerNode = nullptr;
+    mFocalMarkerShown = false;
+}
+
+// Move the orbit pivot onto the model and back off far enough to frame it, so
+// the camera rotates around the model instead of around the world origin.
+void OgreWidget::focusOnModel()
+{
+    Ogre::Vector3 mn, mx;
+    if (modelBounds(mn, mx))
+    {
+        const Ogre::Vector3 centre = (mn + mx) * 0.5f;
+        const Ogre::Vector3 size = mx - mn;
+        const float extent = std::max(std::max(size.x, size.y), size.z);
+
+        mTarget = QVector3D(centre.x, centre.y, centre.z);
+        const float fov = mCamera ? mCamera->getFOVy().valueRadians() : 0.7f;
+        mDistance = std::max(extent / (2.f * std::tan(fov * 0.5f)) * 2.2f, 0.25f);
+    }
+    else
+    {
+        // Nothing built yet: orbit the world origin at a sane distance.
+        mTarget = QVector3D(0.f, 0.f, 0.f);
+        mDistance = 1.0f;
+    }
+    mFocalDistSet = true;
     updateCamera();
 }
 void OgreWidget::resetView()
 {
-    mTarget = QVector3D(0, 0, 0);
-    mDistance = 1.0f;
-    mYaw = -0.7f;
-    mPitch = 0.35f;
+    // RViz' default start-up angles: eye behind and above the look-at point,
+    // looking down at the scene. mPitch is the look elevation, so looking down
+    // is negative, and yaw = -35 deg puts the camera to the right of the point
+    // as seen from ROS +X. The look-at point and distance are left to
+    // focusOnModel() so both paths frame the scene identically.
+    mYaw = Ogre::Degree(-35.0f).valueRadians();
+    mPitch = Ogre::Degree(-45.0f).valueRadians();
+    mSlew = Ogre::Vector3::ZERO;
+    focusOnModel();
+}
+
+// Same mapping RViz uses for its fixed-frame camera buttons: the vector is the
+// direction the camera looks along, in the Z-up ROS frame.
+void OgreWidget::setViewDirection(const QVector3D &dir)
+{
+    const float x = dir.x(), y = dir.y(), z = dir.z();
+
+    // RViz' XAxesMapping: yaw is derived from |x| vs |y| so the four horizontal
+    // buttons give exactly the angles RViz reports.
+    if (std::abs(x) > std::abs(y))
+    {
+        mYaw = (x >= 0.f) ? 0.f : Ogre::Math::PI;
+    }
+    else
+    {
+        mYaw = (y >= 0.f) ? -Ogre::Math::HALF_PI : Ogre::Math::HALF_PI;
+    }
+
+    // Vertical component: fully up/down is clamped one degree short of the pole
+    // (same margin RViz' lookAt() applies) so the up vector stays defined.
+    const float lim = Ogre::Math::HALF_PI - Ogre::Degree(1.0f).valueRadians();
+    if (z <= -0.5f)
+        mPitch = -lim;
+    else if (z >= 0.5f)
+        mPitch = lim;
+    else
+        mPitch = 0.f;
+
+    // mPitch is the look elevation in both styles now, so no negation is needed
+    // when switching between Orbit and FPS.
+    if (!mFocalDistSet)
+    {
+        // Look straight up/down puts the focal point underneath the eye; pull
+        // the camera back a bit so the model is not half clipped by the near
+        // plane on the first switch to a side view.
+        mDistance = 1.0f;
+    }
+
+    clampPitch();
     updateCamera();
+}
+
+
+// Farthest visual origin from the model origin, in the ROS frame. Used to pick
+// a grid size / camera distance that suits hands (0.1 m) and full robots (1 m)
+// without either disappearing or turning into a single visible cell.
+float OgreWidget::modelReach() const
+{
+    // Same reasoning as modelBounds(): measure the built scene, because the URDF
+    // visual origins are usually all zero and the real placement is on the
+    // chained joints. Falls back to the URDF numbers when nothing is built yet.
+    Ogre::Vector3 mn, mx;
+    if (modelBounds(mn, mx))
+    {
+        float reach = 0.f;
+        for (const auto &c : {mn, mx})
+            reach = std::max(reach, c.length());
+        return reach;
+    }
+
+    float reach = 0.f;
+    for (const auto &kv : mModel.links)
+        for (const auto &v : kv.second.visuals)
+        {
+            const float r = std::sqrt(v.xyz[0] * v.xyz[0] +
+                                      v.xyz[1] * v.xyz[1] +
+                                      v.xyz[2] * v.xyz[2]);
+            reach = std::max(reach, r);
+        }
+    return reach;
+}
+
+// Bounding box of the built scene, in the ROS frame.
+//
+// This deliberately walks the *scene graph* instead of the URDF data. A URDF
+// typically writes <origin xyz="0 0 0"/> on every <visual> and carries the real
+// placement on the chained <joint> elements, so reading the visual offsets
+// directly yields a degenerate zero-size box and the camera would frame nothing.
+// The node transforms already combine link, joint and visual placement.
+bool OgreWidget::modelBounds(Ogre::Vector3 &minRos, Ogre::Vector3 &maxRos) const
+{
+    bool any = false;
+    for (const auto &kv : mLinkNodes) // every visual lives under a link node
+    {
+        const Ogre::SceneNode *linkNode = kv.second;
+        if (!linkNode)
+            continue;
+        Ogre::SceneNode::ConstChildNodeIterator it = linkNode->getChildIterator();
+        while (it.hasMoreElements())
+        {
+            const auto *child = static_cast<const Ogre::SceneNode *>(it.getNext());
+            if (!child || child->getName().find("_vis_") == std::string::npos)
+                continue;
+
+            // World position, then Ogre -> ROS: (x, y, z) -> (x, z, -y).
+            const Ogre::Vector3 p = child->_getDerivedPosition();
+            const Ogre::Vector3 pRos(p.x, p.z, -p.y);
+            if (!any)
+            {
+                minRos = maxRos = pRos;
+                any = true;
+            }
+            else
+            {
+                minRos.makeFloor(pRos);
+                maxRos.makeCeil(pRos);
+            }
+        }
+    }
+    return any;
+}
+
+// RViz' Grid display shows 10 x 10 cells of 1 m around the origin, which is far
+// too coarse for a 0.2 m hand: the model would sit inside a single cell. This
+// picks the largest cell size from a 1-2-5 style ladder that keeps the model
+// spanning a handful of cells, so the grid reads like RViz does for a robot.
+void OgreWidget::fitGridToModel()
+{
+    if (!mWorld)
+        return;
+
+    const float reach = modelReach();
+    float cell = 1.0f;
+    int cells = 30;
+    if (reach > 1e-4f)
+    {
+        // 1-2-5 ladder, so the cell stays a round number at every scale:
+        // 1 mm .. 100 m. A hand (~0.2 m) lands on 5 cm cells, a full robot
+        // (~1 m) on 50 cm cells - in both cases the model spans a few cells,
+        // which is how RViz' 10 x 1 m grid frames a robot.
+        static const float ladder[] = {
+            0.001f, 0.002f, 0.005f,
+            0.01f, 0.02f, 0.05f,
+            0.1f, 0.2f, 0.5f,
+            1.f, 2.f, 5.f, 10.f, 20.f, 50.f, 100.f};
+        cell = ladder[sizeof(ladder) / sizeof(ladder[0]) - 1];
+        for (float c : ladder)
+        {
+            if (c >= reach * 0.15f) // model spans ~7 cells (RViz' ratio)
+            {
+                cell = c;
+                break;
+            }
+        }
+        // Aim for a grid that comfortably fills the view at the default camera
+        // distance, and keep the cell count even so a line lands exactly on the
+        // origin. The extent is expressed in view-widths rather than as a
+        // multiple of the model, otherwise a small model gets a grid that ends
+        // in the middle of the screen (the visible "seam").
+        const float wantHalf = std::max(reach * 8.f, cell * 20.f);
+        cells = int(std::ceil(wantHalf / cell)) * 2;
+        cells = std::clamp(cells, 20, 200);
+    }
+
+    // Rebuild both displays; createGrid()/createAxes() replace the old nodes.
+    destroyWorldChild("GroundGridNode");
+    destroyWorldChild("WorldAxesNode");
+
+    createGrid("GroundGrid", cell, cells);
+    createAxes(std::max(reach * 0.35f, cell * 0.1f));
+    // The focal marker is rebuilt on the next interaction; if it happens to be
+    // on screen right now, hide it because the scale changed underneath it.
+    hideFocalMarker();
+}
+
+// Two directional lights so a shaded surface stays readable from every angle,
+// the way RViz' shaded RobotModel display does.
+//
+// The directions are given in the *world* (Ogre, Y-up) frame, so the light
+// nodes hang off the root scene node and keep an identity rotation. That is
+// deliberate: putting them under the 90 deg "rviz_world" node and calling
+// SceneNode::setDirection() on them produced a mirrored node basis (Ogre
+// derives the node's axis vectors from that call while the parent rotation is
+// still pending), which made the render system's normal matrix degenerate and
+// the whole viewport came out black.
+void OgreWidget::recreateLighting()
+{
+    if (!mScene)
+        return;
+
+    auto make = [&](const char *name, const Ogre::Vector3 &dir, float intensity, float spec)
+    {
+        // The light object itself is the existence marker. A node created with
+        // createSceneNode() gets an auto-generated name, so it never shows up in
+        // getChild()/getChildSceneNode() lookups - using those to detect
+        // "already created" raised ItemIdentityException and aborted initOgre().
+        if (mScene->hasLight(name))
+            return; // already there
+        auto *light = mScene->createLight(name);
+        light->setType(Ogre::Light::LT_DIRECTIONAL);
+        // The light travels *along* this vector: pointing it downwards (-Y in
+        // the Y-up world) is what actually illuminates the scene.
+        light->setDirection(dir.normalisedCopy());
+        light->setDiffuseColour(Ogre::ColourValue(intensity, intensity, intensity));
+        light->setSpecularColour(Ogre::ColourValue(spec, spec, spec));
+
+        // Root-owned node with an identity rotation: the direction lives on the
+        // Light, and staying out of the rotated "rviz_world" node avoids the
+        // mirrored-basis problem described above.
+        auto *node = mScene->createSceneNode();
+        node->attachObject(light);
+    };
+
+    // Key light from above / front-left, fill from below / back-right, plus a
+    // soft top-down light. Three mild lights rather than one strong key light
+    // keep every surface legible no matter how the model is oriented.
+    // The ROS frame is rotated +90 deg about world X, so ROS +Z (up) maps to
+    // world +Y: "from above" therefore means a world direction with -Y.
+    make("KeyLight", Ogre::Vector3(-0.5f, -0.8f, 0.4f), 0.75f, 0.15f);
+    make("FillLight", Ogre::Vector3(0.6f, 0.6f, -0.5f), 0.45f, 0.0f);
+    make("TopLight", Ogre::Vector3(0.15f, -1.0f, -0.2f), 0.40f, 0.0f);
 }
 
 // -------------------- Scene build --------------------
@@ -449,24 +955,55 @@ void OgreWidget::clearScene()
 {
     if (!mScene)
         return;
-    if (!mWorld) 
+    if (!mWorld)
     {
-        mWorld = mScene->getRootSceneNode()->createChildSceneNode("WorldFixip");
-        mWorld->pitch(Ogre::Degree(-90.0f));
+        mWorld = mScene->getRootSceneNode()->createChildSceneNode("rviz_world");
+        mWorld->setOrientation(Ogre::Quaternion(Ogre::Degree(90.0f), Ogre::Vector3::UNIT_X));
     }
     mRobots.clear();
     mBuiltJoints.clear();
     mLinkNodes.clear();
 
-    // Destroy all children under root (keep light manager itself alive)
+    // Destroy all children under root: models, grid, axes and lights alike.
+    // Everything is recreated below / on the next load, which keeps this path
+    // free of the "item already exists" traps of a partial teardown.
     auto *root = mWorld;
     auto kids = root->getChildren();
     for (auto *n : kids)
         destroySubtree(mScene, static_cast<Ogre::SceneNode*>(n));
 
-    // Re-create grid after clear
-    auto *grid = createGridMO("NewGroundGrid", 30, 0.05f);
-    mWorld->createChildSceneNode()->attachObject(grid);
+    recreateLighting();
+
+    // Back to the RViz default grid / axes for an empty scene. The focal marker
+    // is left out: it reappears on the next navigation event.
+    createGrid("GroundGrid", 1.0f, 30);
+    createAxes(0.05f);
+    mFocalMarkerShown = false;
+}
+
+// Destroy a named child of mWorld if it is there.
+//
+// Node::getChild(const String&) throws ItemIdentityException for an unknown
+// name - it is not a lookup that can return null - so the children have to be
+// scanned by hand instead. Returns the child, or nullptr if there is none.
+Ogre::SceneNode *OgreWidget::findWorldChild(const char *name) const
+{
+    if (!mWorld)
+        return nullptr;
+    for (auto *n : mWorld->getChildren())
+    {
+        if (n && n->getName() == name)
+            return static_cast<Ogre::SceneNode *>(n);
+    }
+    return nullptr;
+}
+
+void OgreWidget::destroyWorldChild(const char *name)
+{
+    if (!mScene)
+        return;
+    if (auto *n = findWorldChild(name))
+        destroySubtree(mScene, n);
 }
 
 void OgreWidget::destroySubtree(Ogre::SceneManager* sm, Ogre::SceneNode* n) {
@@ -771,29 +1308,221 @@ Ogre::ManualObject *OgreWidget::createSphereMO(const std::string &name, float ra
     return mo;
 }
 
-Ogre::ManualObject *OgreWidget::createGridMO(const std::string &name, int halfLines, float spacing)
+// Defined below with the other material helpers; declared here because the
+// grid / axes builders need it while they create their own materials.
+static void ensureUnlitMaterial(const char *name, const Ogre::ColourValue &colour);
+static void ensureTranslucentUnlitMaterial(const char *name, const Ogre::ColourValue &colour);
+
+void OgreWidget::createGrid(const std::string &name, float cellSize, int cellsPerSide)
 {
-    auto *mo = mScene->createManualObject(name);
-    mo->begin("GridUnlit", Ogre::RenderOperation::OT_LINE_LIST);
-    const int N = halfLines;
-    const float S = spacing;
-    // Grid on XY plane (Z up), from -N..N
-    for (int i = -N; i <= N; ++i)
+    if (mScene->hasManualObject(name))
+        mScene->destroyManualObject(name);
+
+    // RViz' Grid display:
+    //   * extent  = cellsPerSide x cellSize
+    //   * every "Line Count" (10) line is drawn in the brighter "Line" colour
+    //     instead of the dim "Cell" colour
+    //   * the world axes are provided separately by createAxes()
+    const float half = cellSize * cellsPerSide;
+    const int cells = std::max(1, int(std::ceil(half / cellSize))); // full cells per side
+    const int halfLines = cells / 2;
+    const float hDim = cells * cellSize * 0.5f;
+
+    Ogre::ManualObject *mo = mScene->createManualObject(name);
+
+    // Two passes: the dim "cell" lines and the bright "line" lines, matching
+    // RViz' two grid colours. Per-vertex colour and alpha fading are not
+    // available on GL3Plus (no fixed-function stage), so the fade is dropped
+    // and the two colours are expressed as two separate RTSS sections.
+    // The vertices keep the plain ROS numbers (x, y, z = 0); the "rviz_world"
+    // node performs the Y-up/ROS mapping, so Z ends up pointing up.
+    const int lineStep = 10;
+
+    auto addLines = [&](bool bright)
     {
-        float d = i * S;
-        // lines parallel X
-        mo->position(-N * S, d, 0);
-        mo->normal(0, 0, 1);
-        mo->position(N * S, d, 0);
-        mo->normal(0, 0, 1);
-        // lines parallel Y
-        mo->position(d, -N * S, 0);
-        mo->normal(0, 0, 1);
-        mo->position(d, N * S, 0);
-        mo->normal(0, 0, 1);
+        mo->begin(bright ? "GridLineUnlit" : "GridUnlit", Ogre::RenderOperation::OT_LINE_LIST);
+        for (int i = -halfLines; i <= halfLines; ++i)
+        {
+            const bool isMajor = (i % lineStep) == 0;
+            if (isMajor != bright)
+                continue;
+            const float d = i * cellSize;
+
+            mo->position(-hDim, d, 0.f);
+            mo->normal(0, 0, 1);
+            mo->position(hDim, d, 0.f);
+            mo->normal(0, 0, 1);
+
+            mo->position(d, -hDim, 0.f);
+            mo->normal(0, 0, 1);
+            mo->position(d, hDim, 0.f);
+            mo->normal(0, 0, 1);
+        }
+        mo->end();
+    };
+    addLines(/*bright=*/false);
+    addLines(/*bright=*/true);
+
+    auto *node = mWorld->createChildSceneNode(name + "Node");
+    // A hair below the origin so the model's own z = 0 faces win the depth test.
+    node->setPosition(0.f, 0.f, -0.0005f * std::max(half, 1.f));
+    node->attachObject(mo);
+}
+
+void OgreWidget::createAxes(float length)
+{
+    if (mScene->hasManualObject("WorldAxes"))
+        mScene->destroyManualObject("WorldAxes");
+
+    // RViz' Axes display: X red, Y green, Z blue, drawn from the origin.
+    //
+    // GL3Plus has no fixed-function stage, so per-vertex colours are not an
+    // option: each axis gets its own single-colour material instead and the
+    // three segments are emitted as separate sections. The materials are plain
+    // RTSS-shaded ones, which is what the render system can actually draw.
+    struct AxisDef
+    {
+        const char *material;
+        Ogre::ColourValue colour;
+        Ogre::Vector3 dir;
+    };
+    const AxisDef axes[3] = {
+        {"AxisXUnlit", Ogre::ColourValue(0.90f, 0.15f, 0.15f), Ogre::Vector3::UNIT_X}, // X red
+        {"AxisYUnlit", Ogre::ColourValue(0.15f, 0.85f, 0.15f), Ogre::Vector3::UNIT_Y}, // Y green
+        {"AxisZUnlit", Ogre::ColourValue(0.20f, 0.45f, 1.00f), Ogre::Vector3::UNIT_Z}, // Z blue
+    };
+    for (const auto &a : axes)
+    {
+        ensureUnlitMaterial(a.material, a.colour);
+        if (auto *sg = Ogre::RTShader::ShaderGenerator::getSingletonPtr())
+            sg->validateMaterial(Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME,
+                                 a.material);
     }
-    mo->end();
-    return mo;
+
+    auto *mo = mScene->createManualObject("WorldAxes");
+    for (const auto &a : axes)
+    {
+        mo->begin(a.material, Ogre::RenderOperation::OT_LINE_LIST);
+        mo->position(Ogre::Vector3::ZERO);
+        mo->position(a.dir * length);
+        mo->end();
+    }
+
+    auto *node = mWorld->createChildSceneNode("WorldAxesNode");
+
+    node->attachObject(mo);
+}
+
+// Marker for the camera's look-at point - RViz calls it the "Focal Point".
+//
+// Drawn the way RViz' focal-point indicator reads: a small sphere with a
+// three-axis cross through it. The cross keeps the exact pivot readable even
+// when the sphere is only a few pixels wide, and the amber colour stands out
+// against both the grey grid and the grey model.
+//
+// The marker is semi-transparent because it is an overlay, not part of the
+// scene: at full opacity it competes with the model it is supposed to help you
+// aim at. The alpha leaves the geometry readable while still letting whatever
+// sits underneath show through.
+void OgreWidget::createFocalMarker(float size)
+{
+    // Rebuild from scratch: the geometry is tiny and the size changes with the
+    // viewing distance, so regenerating is simpler than rescaling in place.
+    destroyWorldChild("FocalMarkerNode");
+    if (mScene->hasManualObject("FocalMarkerCross"))
+        mScene->destroyManualObject("FocalMarkerCross");
+    if (mScene->hasManualObject("FocalMarkerBall"))
+        mScene->destroyManualObject("FocalMarkerBall");
+
+    // Alpha is carried in the emissive colour, which is the only channel the
+    // unlit material path uses.
+    ensureTranslucentUnlitMaterial("FocalCrossUnlit", Ogre::ColourValue(1.00f, 0.45f, 0.00f, kFocalMarkerAlpha));
+    ensureTranslucentUnlitMaterial("FocalBallUnlit", Ogre::ColourValue(1.00f, 0.80f, 0.10f, kFocalMarkerAlpha));
+    if (auto *sg = Ogre::RTShader::ShaderGenerator::getSingletonPtr())
+    {
+        sg->validateMaterial(Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME, "FocalCrossUnlit");
+        sg->validateMaterial(Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME, "FocalBallUnlit");
+    }
+
+    const float arm = std::max(size, 1e-5f);
+
+    // Three-axis cross. Slightly longer than the sphere radius so its tips stick
+    // out and read as a cross rather than as a blob.
+    auto *cross = mScene->createManualObject("FocalMarkerCross");
+    cross->begin("FocalCrossUnlit", Ogre::RenderOperation::OT_LINE_LIST);
+    const Ogre::Vector3 dirs[3] = {Ogre::Vector3::UNIT_X,
+                                   Ogre::Vector3::UNIT_Y,
+                                   Ogre::Vector3::UNIT_Z};
+    for (const auto &d : dirs)
+    {
+        cross->position(-d * arm);
+        cross->position(d * arm);
+    }
+    cross->end();
+
+    // Low-poly sphere; cheap and always faces the viewer.
+    auto *ball = mScene->createManualObject("FocalMarkerBall");
+    ball->begin("FocalBallUnlit", Ogre::RenderOperation::OT_TRIANGLE_LIST);
+    {
+        const int rings = 8, segs = 12;
+        const float rad = arm * 0.5f;
+        for (int r = 0; r <= rings; ++r)
+        {
+            const float phi = (float(r) / rings) * Ogre::Math::PI;
+            for (int s = 0; s <= segs; ++s)
+            {
+                const float th = (float(s) / segs) * Ogre::Math::TWO_PI;
+                const Ogre::Vector3 n(std::sin(phi) * std::cos(th),
+                                      std::sin(phi) * std::sin(th),
+                                      std::cos(phi));
+                ball->position(n * rad);
+                ball->normal(n);
+            }
+        }
+        auto idx = [segs](int r, int s) { return r * (segs + 1) + s; };
+        for (int r = 0; r < rings; ++r)
+            for (int s = 0; s < segs; ++s)
+            {
+                const int i0 = idx(r, s), i1 = idx(r, s + 1);
+                const int i2 = idx(r + 1, s), i3 = idx(r + 1, s + 1);
+                ball->triangle(i0, i2, i1);
+                ball->triangle(i1, i2, i3);
+            }
+    }
+    ball->end();
+
+    mFocalMarkerNode = mWorld->createChildSceneNode("FocalMarkerNode");
+    mFocalMarkerNode->attachObject(cross);
+    mFocalMarkerNode->attachObject(ball);
+    mFocalMarkerSize = arm;
+    syncFocalMarker();
+}
+
+// Put the marker on the current look-at point. mTarget is already stored in the
+// ROS frame, which is the frame mWorld's children live in.
+void OgreWidget::syncFocalMarker()
+{
+    if (mFocalMarkerNode)
+        mFocalMarkerNode->setPosition(mTarget.x(), mTarget.y(), mTarget.z());
+}
+
+// Keep the marker a roughly constant size on screen by scaling it with the
+// viewing distance. Without this it vanishes when zoomed out and swallows the
+// model when zoomed in.
+void OgreWidget::resizeFocalMarkerToView()
+{
+    if (!mFocalMarkerNode || !mCamera)
+        return;
+
+    float dist = (mCamera->getPosition() - focalPoint()).length();
+    if (dist < 1e-3f)
+        dist = (mStyle == ViewStyle::Orbit) ? mDistance : 1.0f;
+
+    const float want = dist * 0.02f; // ~2% of the view height
+    if (std::abs(want - mFocalMarkerSize) < mFocalMarkerSize * 0.05f)
+        return; // close enough; do not rebuild the geometry every frame
+
+    createFocalMarker(want);
 }
 
 // -------------------- Mesh loading --------------------
@@ -801,22 +1530,26 @@ Ogre::MovableObject *OgreWidget::createAnyMeshOrManual(const std::string &name,
                                                        const std::string &absPath,
                                                        const std::array<float, 3> &scale)
 {
-    // 1) Try native .mesh by path or resource name
-    try
+    // 1) Native .mesh (OGRE's own format) if the file happens to be one.
+    if (absPath.size() > 5 && absPath.compare(absPath.size() - 5, 5, ".mesh") == 0)
     {
-        // If absPath endswith .mesh and is in a resource location, this works:
-        auto *ent = mScene->createEntity(name, absPath);
-        return ent; // caller attaches to node and applies node scale
-    }
-    catch (...)
-    { /* continue */
+        try
+        {
+            return mScene->createEntity(name, absPath);
+        }
+        catch (const Ogre::Exception &)
+        { /* not in a resource location: fall through to Assimp */
+        }
     }
 
-    // 2) Assimp fallback
+    // 2) Assimp for STL / OBJ / DAE / FBX.
+    //    aiProcess_GenSmoothNormals matches RViz' STL loader (it smooths the
+    //    facets into a solid-looking surface); aiProcess_JoinIdenticalVertices
+    //    + OptimizeMeshes keep the vertex count sane for the 21-file URDFs.
     Assimp::Importer importer;
     const aiScene *sc = importer.ReadFile(absPath,
                                           aiProcess_Triangulate |
-                                              aiProcess_GenNormals |
+                                              aiProcess_GenSmoothNormals |
                                               aiProcess_JoinIdenticalVertices |
                                               aiProcess_ImproveCacheLocality |
                                               aiProcess_SortByPType |
@@ -824,40 +1557,73 @@ Ogre::MovableObject *OgreWidget::createAnyMeshOrManual(const std::string &name,
                                               aiProcess_OptimizeGraph);
     if (!sc || !sc->mRootNode)
     {
-        qWarning() << "Assimp failed:" << absPath.c_str();
+        qWarning() << "Assimp failed to read mesh:" << absPath.c_str()
+                   << importer.GetErrorString();
         return nullptr;
     }
 
     auto *mo = mScene->createManualObject(name + "_mo");
     mo->begin("DefaultWhite", Ogre::RenderOperation::OT_TRIANGLE_LIST);
-    unsigned vbase = 0;
 
-    std::function<void(const aiNode *, aiMatrix4x4)> visit = [&](const aiNode *node, aiMatrix4x4 parent)
+    unsigned vbase = 0;
+    std::function<void(const aiNode *, const aiMatrix4x4 &)> visit =
+        [&](const aiNode *node, const aiMatrix4x4 &parent)
     {
-        aiMatrix4x4 M = parent * node->mTransformation;
+        const aiMatrix4x4 M = parent * node->mTransformation;
+        // Normals must be transformed by the inverse-transpose, otherwise a file
+        // with non-uniform node scaling lights up incorrectly (this is what made
+        // the FBX-based URDF look washed out / inside-out).
+        aiMatrix3x3 N = aiMatrix3x3(M);
+        N.Inverse().Transpose();
+
         for (unsigned m = 0; m < node->mNumMeshes; ++m)
         {
             const aiMesh *mesh = sc->mMeshes[node->mMeshes[m]];
-            for (unsigned v = 0; v < mesh->mNumVertices; ++v)
+            const unsigned nv = mesh->mNumVertices;
+            if (nv == 0)
+                continue;
+
+            for (unsigned v = 0; v < nv; ++v)
             {
-                aiVector3D P = mesh->mVertices[v];
-                aiVector3D N = mesh->HasNormals() ? mesh->mNormals[v] : aiVector3D(0, 0, 1);
-                // Apply node transform (no full normal transform for brevity)
-                aiVector3D P2 = M * P;
-                mo->position(scale[0] * P2.x, scale[1] * P2.y, scale[2] * P2.z);
-                mo->normal(N.x, N.y, N.z);
+                const aiVector3D P = M * mesh->mVertices[v];
+                mo->position(scale[0] * P.x, scale[1] * P.y, scale[2] * P.z);
+
+                Ogre::Vector3 n(0.f, 0.f, 1.f);
+                if (mesh->HasNormals())
+                {
+                    n = Ogre::Vector3(mesh->mNormals[v].x, mesh->mNormals[v].y, mesh->mNormals[v].z);
+                    n = Ogre::Vector3(N.a1, N.a2, N.a3) * n.x +
+                        Ogre::Vector3(N.b1, N.b2, N.b3) * n.y +
+                        Ogre::Vector3(N.c1, N.c2, N.c3) * n.z;
+                }
+                // Scaling is applied per axis, so the normal has to be scaled by
+                // its inverse to stay perpendicular to the transformed surface.
+                if (std::abs(scale[0] - 1.f) > 1e-6f ||
+                    std::abs(scale[1] - 1.f) > 1e-6f ||
+                    std::abs(scale[2] - 1.f) > 1e-6f)
+                {
+                    n.x /= (scale[0] != 0.f ? scale[0] : 1.f);
+                    n.y /= (scale[1] != 0.f ? scale[1] : 1.f);
+                    n.z /= (scale[2] != 0.f ? scale[2] : 1.f);
+                }
+                if (n.squaredLength() > 1e-12f)
+                    n.normalise();
+                else
+                    n = Ogre::Vector3(0.f, 0.f, 1.f);
+                mo->normal(n);
             }
+
             for (unsigned f = 0; f < mesh->mNumFaces; ++f)
             {
                 const aiFace &face = mesh->mFaces[f];
-                if (face.mNumIndices == 3)
-                {
-                    mo->triangle(vbase + face.mIndices[0],
-                                 vbase + face.mIndices[1],
-                                 vbase + face.mIndices[2]);
-                }
+                if (face.mNumIndices != 3)
+                    continue; // aiProcess_Triangulate guarantees 3, but stay safe
+                const unsigned a = face.mIndices[0], b = face.mIndices[1], c = face.mIndices[2];
+                if (a >= nv || b >= nv || c >= nv)
+                    continue;
+                mo->triangle(vbase + a, vbase + b, vbase + c);
             }
-            vbase += mesh->mNumVertices;
+            vbase += nv;
         }
         for (unsigned c = 0; c < node->mNumChildren; ++c)
             visit(node->mChildren[c], M);
@@ -874,78 +1640,271 @@ void OgreWidget::updateCamera()
     if (!mCamera)
         return;
 
-    mPitch = std::clamp(mPitch, -1.40f, +1.40f);
-    mDistance = std::max(0.05f, mDistance);
+    clampPitch();
+    mDistance = std::max(1e-3f, mDistance);
+    applySlew();
 
-    // Target in world, orbit angles yaw (around Z) and pitch (around X in camera local)
-    const float cy = std::cos(mYaw), sy = std::sin(mYaw);
-    const float cp = std::cos(mPitch), sp = std::sin(mPitch);
+    Ogre::Vector3 fwd, left, down;
+    cameraBasis(fwd, left, down);
 
-    // Build a direction (Z-up world)
-    Ogre::Vector3 dir(cp * cy, cp * sy, sp);
-    Ogre::Vector3 eye = Ogre::Vector3(mTarget.x(), mTarget.y(), mTarget.z()) + (-dir * mDistance);
+    const Ogre::Vector3 focal = focalPoint();
+    // Orbit: the eye sits at a fixed distance behind the focal point.
+    // FPS:   the focal point is virtual; only the orientation matters.
+    const Ogre::Vector3 eye = (mStyle == ViewStyle::Orbit)
+                                  ? focal - fwd * mDistance
+                                  : focal;
 
     mCamera->setPosition(eye);
-    mCamera->lookAt(Ogre::Vector3(mTarget.x(), mTarget.y(), mTarget.z()));
+
+    // Build the orientation from an orthonormal camera basis: X = left (screen
+    // right is -left), Y = up, Z = -forward (Ogre cameras look along -Z).
+    //
+    // Two things must hold here and neither did before:
+    //   * "up" is the world up (ROS +Z) projected so it is perpendicular to the
+    //     view direction. Feeding the raw world up made the triple
+    //     (left, up, -fwd) non-orthogonal, so the quaternion came out wrong.
+    //   * the world up expressed in Ogre coordinates is toOgre(ros +Z) =
+    //     (0, -1, 0), NOT Ogre::UNIT_Z. Using UNIT_Z treated a horizontal axis
+    //     as "up", which rolled the camera 90 deg - the reason the ground grid
+    //     rendered as a vertical wall.
+    const Ogre::Vector3 worldUp = -left.crossProduct(fwd); // world up, Ogre coords
+    Ogre::Vector3 up = worldUp - fwd * worldUp.dotProduct(fwd); // perpendicular part
+    if (up.squaredLength() < 1e-8f)
+        up = down * -1.f; // looking straight up/down: fall back to the basis
+    up.normalise();
+
+    // Re-orthogonalise "left" too, so all three axes are exactly perpendicular
+    // even after the projection above.
+    Ogre::Vector3 right = fwd.crossProduct(up);
+    right.normalise();
+
+    mCamera->setOrientation(Ogre::Quaternion(right, up, -fwd));
+
+    // Keep the look-at marker glued to the point we orbit around, and scale it
+    // to the current viewing distance so it stays legible at any zoom.
+    resizeFocalMarkerToView();
+    syncFocalMarker();
 }
 
+// -------------------- RViz-like navigation --------------------
+// Button mapping matches RViz' default view controller:
+//   left       Orbit (RViz) / Look around (FPS)
+//   middle     Move the focal point in the camera plane
+//   right      Zoom (dolly)
+//   shift+left Move (same as middle; handy on laptops without a middle button)
 void OgreWidget::mousePressEvent(QMouseEvent *e)
 {
     mLastMouse = e->pos();
-    if (e->button() == Qt::LeftButton)
-        mLDown = true;
-    if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ShiftModifier)))
-        mMDown = true;
-    if (e->button() == Qt::RightButton)
-        mRDown = true;
+    setFocus(Qt::MouseFocusReason);
+
+    const bool shift = e->modifiers().testFlag(Qt::ShiftModifier);
+    if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && shift))
+        mDragMode = DragMode::Move;
+    else if (e->button() == Qt::RightButton)
+        mDragMode = DragMode::Zoom;
+    else if (e->button() == Qt::LeftButton)
+        mDragMode = (mStyle == ViewStyle::Orbit) ? DragMode::Orbit : DragMode::Look;
+    else
+        mDragMode = DragMode::None;
+
+    // The marker is a navigation aid, so it appears as soon as the user starts
+    // interacting with the view.
+    if (mDragMode != DragMode::None)
+        showFocalMarkerTemporarily();
 }
-void OgreWidget::mouseReleaseEvent(QMouseEvent *e)
+void OgreWidget::mouseReleaseEvent(QMouseEvent * /*e*/)
 {
-    if (e->button() == Qt::LeftButton)
-        mLDown = false;
-    if (e->button() == Qt::MiddleButton || (e->button() == Qt::LeftButton && (e->modifiers() & Qt::ShiftModifier)))
-        mMDown = false;
-    if (e->button() == Qt::RightButton)
-        mRDown = false;
+    mDragMode = DragMode::None;
+    // Keep it up briefly after the button is released: hiding it the instant the
+    // drag ends makes it flicker on every click, and the user usually wants to
+    // see where the pivot ended up.
+    if (mFocalMarkerEnabled)
+        mFocalMarkerHideTimer.start();
 }
 void OgreWidget::mouseMoveEvent(QMouseEvent *e)
 {
-    QPoint d = e->pos() - mLastMouse;
+    const QPoint d = e->pos() - mLastMouse;
     mLastMouse = e->pos();
+    if (!mCamera || mDragMode == DragMode::None || (d.x() == 0 && d.y() == 0))
+        return;
 
-    if (mLDown && !(e->modifiers() & Qt::ShiftModifier))
+    // Keep the marker up for the whole gesture.
+    showFocalMarkerTemporarily();
+
+    // Screen-space drag expressed in a Z-up camera frame: +X right, +Y up,
+    // +Z towards the viewer. This is the frame RViz uses for its controls.
+    const Ogre::Vector3 screen(-float(d.x()), float(d.y()), 0.f);
+
+    switch (mDragMode)
     {
-        // Orbit
-        mPitch += d.x() * mOrbitSpeed;
-        mYaw -= d.y() * mOrbitSpeed;
-        updateCamera();
-    }
-    else if (mMDown || (mLDown && (e->modifiers() & Qt::ShiftModifier)))
+    case DragMode::Orbit:
     {
-        // Pan in camera plane
-        float panScale = mPanSpeed * mDistance;
-        // Build camera basis
-        Ogre::Vector3 z = (mCamera->getPosition() - Ogre::Vector3(mTarget.x(), mTarget.y(), mTarget.z()));
-        z.normalise();
-        Ogre::Vector3 x = mCamera->getRight(); // Ogre gives camera right/up
-        Ogre::Vector3 y = mCamera->getUp();
-        Ogre::Vector3 t = Ogre::Vector3(mTarget.x(), mTarget.y(), mTarget.z()) - x * (d.x() * panScale) + y * (d.y() * panScale);
-        mTarget = QVector3D(t.x, t.y, t.z);
-        updateCamera();
+        // Orbit around the focal point.
+        //
+        // Only mYaw / mPitch are updated here and updateCamera() does all of the
+        // orientation work. That is deliberate: the camera basis has no roll by
+        // construction (it is rebuilt from yaw/pitch every frame), so composing
+        // the rotation directly onto the camera quaternion - which is what this
+        // used to do - produced a rolled orientation that the very next
+        // updateCamera() could not reproduce, and the view snapped one frame
+        // after every drag. Driving yaw/pitch keeps both paths identical.
+        //
+        // Angle sign convention, matching RViz' orbit controller:
+        //   dragging right -> the model turns right, i.e. the camera swings to
+        //                     the LEFT around it (the scene follows the cursor)
+        //   dragging down  -> the model turns down, so the camera rises and you
+        //                     end up looking at its top
+        // screen.x is the drag to the right, screen.y the drag downwards, and
+        // mPitch is the look elevation (negative = looking down).
+        //
+        // Both Y signs have to agree with the image: dragging right must move the
+        // camera towards the screen-left basis vector. mYaw grows towards ROS +Y
+        // (to the left of a +X view), so following the cursor means ADDING the
+        // rightward drag to mYaw. Subtracting it (the previous code) orbited the
+        // camera the other way, which made the scene drift against the cursor -
+        // most obvious when panning along the horizon.
+        mYaw += screen.x * mOrbitSpeed;
+        mPitch -= screen.y * mOrbitSpeed;
+        clampPitch();
+
+        mFocalDistSet = true;
+        break; // fall through to the shared updateCamera() call below
     }
-    else if (mRDown)
+    case DragMode::Look:
     {
-        // Dolly (zoom)
-        mDistance *= (1.f + d.y() * mZoomSpeed * 0.02f);
-        updateCamera();
+        // FPS mode: the drag turns the head in place, so only yaw/pitch change
+        // (the eye stays put). Driving the angles directly - instead of composing
+        // a quaternion and re-deriving from it - keeps this consistent with
+        // updateCamera(), which is the same fix applied to Orbit above.
+        //
+        // Sign convention matches Orbit so the two modes feel alike: the drag
+        // turns the view in the direction the cursor moves (dragging right looks
+        // to the right, dragging down looks down).
+        mYaw += screen.x * mFpsLookSpeed;
+        mPitch -= screen.y * mFpsLookSpeed;
+        clampPitch();
+        break;
     }
+    case DragMode::Move:
+    {
+        // Shift the focal point in the camera plane, scaled with the distance so
+        // the scene tracks the cursor one to one. The offsets are expressed in
+        // the live camera basis (right / up) rather than in a raw local frame,
+        // so panning stays level no matter how the camera is oriented.
+        Ogre::Vector3 fwd, left, down;
+        cameraBasis(fwd, left, down);
+        const Ogre::Vector3 right = left;
+        const Ogre::Vector3 up = down;
+
+        float dist = (mCamera->getPosition() - focalPoint()).length();
+        if (dist < 1e-3f)
+            dist = mDistance;
+        const float k = mPanSpeed * dist;
+
+        const Ogre::Vector3 offset = right * (-k * screen.x) + up * (k * screen.y);
+        setFocalPoint(focalPoint() + offset);
+        mFocalDistSet = true;
+        break;
+    }
+    case DragMode::Zoom:
+    {
+        // Dolly along the viewing direction (RViz' "Zoom"), NOT a fov zoom, and
+        // crucially leave the focal point alone: the camera only changes how far
+        // it is from the look-at point, so the orbit pivot stays exactly where it
+        // was. Moving the focal point here would drag the pivot with the mouse
+        // and break the "always rotate around the look-at point" behaviour.
+        if (mStyle == ViewStyle::Orbit)
+        {
+            // Multiplicative, so one drag notch feels the same at any zoom level.
+            mDistance *= (1.f + mZoomSpeed * 0.1f * screen.y);
+            mDistance = std::max(mDistance, 1e-3f);
+            mFocalDistSet = true;
+        }
+        else
+        {
+            // FPS has no orbit radius: walk the eye along its view direction.
+            Ogre::Vector3 fwd, left, down;
+            cameraBasis(fwd, left, down);
+            mSlew += fwd * (mZoomSpeed * 0.1f * screen.y);
+        }
+        break;
+    }
+    default: // DragMode::None
+        return;
+    }
+
+    updateCamera();
 }
+
 void OgreWidget::wheelEvent(QWheelEvent *e)
 {
-    // Smooth zoom
-    float steps = e->angleDelta().y() / 120.f; // 1 step = 120
-    mDistance *= (1.f - steps * mZoomSpeed * 0.25f);
+    // One notch (120 units) moves the camera a fraction of its current distance
+    // closer to the look-at point, exactly like RViz' wheel zoom. The focal
+    // point is deliberately untouched so the orbit pivot stays put.
+    const float steps = float(e->angleDelta().y()) / 120.f;
+    if (steps == 0.f || !mCamera)
+        return;
+
+    // Zooming is navigation too, so it reveals the pivot just like a drag does.
+    showFocalMarkerTemporarily();
+
+    if (mStyle == ViewStyle::Orbit)
+    {
+        // Multiplicative so each notch feels identical at any zoom level.
+        mDistance *= std::pow(1.f - mZoomSpeed, steps);
+        mDistance = std::max(mDistance, 1e-3f);
+        mFocalDistSet = true;
+    }
+    else
+    {
+        // FPS has no orbit radius: walk the eye along its view direction.
+        Ogre::Vector3 fwd, left, down;
+        cameraBasis(fwd, left, down);
+        mSlew += fwd * (mZoomSpeed * steps);
+    }
     updateCamera();
+}
+
+void OgreWidget::keyPressEvent(QKeyEvent *e)
+{
+    if (e->isAutoRepeat())
+    {
+        QWidget::keyPressEvent(e);
+        return;
+    }
+    switch (e->key())
+    {
+    case Qt::Key_W: mKeyFwd = true; break;
+    case Qt::Key_S: mKeyBack = true; break;
+    case Qt::Key_A: mKeyLeft = true; break;
+    case Qt::Key_D: mKeyRight = true; break;
+    case Qt::Key_Q: mKeyUp = true; break;
+    case Qt::Key_E: mKeyDown = true; break;
+    case Qt::Key_R: resetView(); return;
+    default:
+        QWidget::keyPressEvent(e);
+        return;
+    }
+}
+void OgreWidget::keyReleaseEvent(QKeyEvent *e)
+{
+    if (e->isAutoRepeat())
+    {
+        QWidget::keyReleaseEvent(e);
+        return;
+    }
+    switch (e->key())
+    {
+    case Qt::Key_W: mKeyFwd = false; break;
+    case Qt::Key_S: mKeyBack = false; break;
+    case Qt::Key_A: mKeyLeft = false; break;
+    case Qt::Key_D: mKeyRight = false; break;
+    case Qt::Key_Q: mKeyUp = false; break;
+    case Qt::Key_E: mKeyDown = false; break;
+    default:
+        QWidget::keyReleaseEvent(e);
+        return;
+    }
 }
 
 std::vector<OgreWidget::JointInfo> OgreWidget::jointsInfo() const
@@ -975,34 +1934,110 @@ bool OgreWidget::getJointPosition(const std::string &name, float &out) const
     return true;
 }
 
+// Flat-coloured material for the grid and the world axes.
+//
+// Two hard constraints of this render setup shape the implementation:
+//
+//  1. GL3Plus has no fixed-function pipeline, so EVERY pass must come from a
+//     shader. A "setLightingEnabled(false)" material therefore cannot be drawn
+//     at all - and RTSS refuses to synthesise a shader for it too
+//     (verify: ShaderGenerator::createShaderBasedTechnique() returns false).
+//  2. Per-vertex colours (TVC_DIFFUSE) need that same fixed-function stage, so
+//     they are not available either.
+//
+// The only workable route is a normal lit material whose colour does not depend
+// on the scene lights. That is achieved with a fully emissive pass: the emissive
+// term is added after lighting, so the surface renders as a flat patch of the
+// requested colour regardless of how the model is lit.
+static void ensureUnlitMaterial(const char *name, const Ogre::ColourValue &colour)
+{
+    using RGM = Ogre::ResourceGroupManager;
+    if (Ogre::MaterialManager::getSingleton().resourceExists(name))
+        return;
+    auto m = Ogre::MaterialManager::getSingleton().create(name, RGM::DEFAULT_RESOURCE_GROUP_NAME);
+    auto *p = m->getTechnique(0)->getPass(0);
+    // Lighting must stay enabled for RTSS (see 1. above), but cutting the
+    // diffuse response and pushing the colour through emissive makes the result
+    // independent of the lights, which is the "unlit" look wanted here.
+    p->setLightingEnabled(true);
+    p->setAmbient(Ogre::ColourValue::Black); // no ambient response
+    p->setDiffuse(Ogre::ColourValue::Black); // no diffuse response
+    p->setSpecular(Ogre::ColourValue::Black);
+    p->setEmissive(colour);                  // flat self-lit colour
+    p->setDepthWriteEnabled(true);
+}
+
+// Same flat look as ensureUnlitMaterial(), but blended so the marker reads as an
+// overlay instead of a solid object sitting in the scene.
+//
+// Transparent geometry needs a few extra pass settings on GL3Plus/RTSS:
+//   * SBT_TRANSPARENT_ALPHA  - actually blend the alpha
+//   * depth write off         - otherwise the marker hides whatever is drawn
+//                               behind it even where it is nearly invisible
+//   * depth bias              - lift it a hair off coplanar geometry so it does
+//                               not z-fight with the grid it sits on
+static void ensureTranslucentUnlitMaterial(const char *name, const Ogre::ColourValue &colour)
+{
+    using RGM = Ogre::ResourceGroupManager;
+    if (Ogre::MaterialManager::getSingleton().resourceExists(name))
+        return;
+    auto m = Ogre::MaterialManager::getSingleton().create(name, RGM::DEFAULT_RESOURCE_GROUP_NAME);
+    auto *p = m->getTechnique(0)->getPass(0);
+    p->setLightingEnabled(true);
+    p->setAmbient(Ogre::ColourValue::Black);
+    p->setDiffuse(Ogre::ColourValue::Black);
+    p->setSpecular(Ogre::ColourValue::Black);
+    p->setEmissive(colour); // alpha carried here as well
+    p->setSceneBlending(Ogre::SBT_TRANSPARENT_ALPHA);
+    p->setDepthWriteEnabled(false);
+    p->setDepthBias(2.f, 4.f);
+}
+
 void OgreWidget::ensureBaseMaterials()
 {
     using RGM = Ogre::ResourceGroupManager;
+
+    // --- Model surfaces -----------------------------------------------------
+    // "DefaultWhite" is used for every URDF mesh that does not carry a colour.
+    // RViz' RobotModel display shades links in that exact grey (0.7) on its
+    // dark viewport, so lit geometry reads the same way here.
     if (!Ogre::MaterialManager::getSingleton().resourceExists("DefaultWhite"))
     {
         auto m = Ogre::MaterialManager::getSingleton().create(
             "DefaultWhite", RGM::DEFAULT_RESOURCE_GROUP_NAME);
         m->setReceiveShadows(true);
-        m->getTechnique(0)->getPass(0)->setLightingEnabled(true);
+        auto *p = m->getTechnique(0)->getPass(0);
+        p->setLightingEnabled(true);
+        // Use the pass's own ambient instead of the scene's, and keep it high:
+        // RTSS evaluates ambient + diffuse*N.L, so a low ambient left every
+        // surface facing away from the key light almost black. RViz' RobotModel
+        // display behaves the same way - the whole link stays its grey (0.7)
+        // from any viewing angle.
+        p->setAmbient(Ogre::ColourValue(0.55f, 0.55f, 0.55f));
+        p->setDiffuse(Ogre::ColourValue(0.70f, 0.70f, 0.70f));
+        p->setSpecular(Ogre::ColourValue(0.08f, 0.08f, 0.08f));
+        p->setShininess(8.f);
     }
+    // Ghost instance of the dual view: same grey, additive-ish transparency.
     if (!Ogre::MaterialManager::getSingleton().resourceExists("GhostWhite"))
     {
         auto m = Ogre::MaterialManager::getSingleton().create(
             "GhostWhite", RGM::DEFAULT_RESOURCE_GROUP_NAME);
         auto *p = m->getTechnique(0)->getPass(0);
         p->setLightingEnabled(true);
-        p->setAmbient(0.4f, 0.8f, 1.0f);        // cyan-ish
-        p->setDiffuse(0.4f, 0.8f, 1.0f, 0.35f); // alpha 0.35
+        p->setAmbient(Ogre::ColourValue(0.10f, 0.16f, 0.22f));
+        p->setDiffuse(Ogre::ColourValue(0.55f, 0.75f, 0.95f, 0.35f)); // cyan-ish ghost
+        p->setSpecular(Ogre::ColourValue(0.10f, 0.10f, 0.10f, 0.35f));
         p->setSceneBlending(Ogre::SBT_TRANSPARENT_ALPHA);
         p->setDepthWriteEnabled(false); // nicer overlay without z-fighting artifacts
     }
-    if (!Ogre::MaterialManager::getSingleton().resourceExists("GridUnlit")) {
-        auto m = Ogre::MaterialManager::getSingleton().create("GridUnlit", RGM::DEFAULT_RESOURCE_GROUP_NAME);
-        auto* p = m->getTechnique(0)->getPass(0);
-        p->setLightingEnabled(false);
-        p->setDiffuse(0.65f, 0.65f, 0.65f, 1.0f);
-        p->setAmbient(0.65f, 0.65f, 0.65f);
-    }
+
+    // --- Grid / axes --------------------------------------------------------
+    // These are drawn as plain coloured line lists. RTSS generates their shader
+    // from the same lit template as the model, so they are handled by the
+    // normal scheme mechanism (see ensureUnlitMaterial above).
+    ensureUnlitMaterial("GridUnlit", Ogre::ColourValue(0.35f, 0.35f, 0.35f));     // dim cells
+    ensureUnlitMaterial("GridLineUnlit", Ogre::ColourValue(0.45f, 0.45f, 0.45f)); // bright lines
 }
 
 void OgreWidget::clearInstances()
@@ -1045,6 +2080,7 @@ bool OgreWidget::loadURDFDual(const std::string &urdf_path,
     buildInstance(fbName, /*transparent*/ false, dir);
     buildInstance(cmdName, /*transparent*/ true, dir);
 
+    fitGridToModel();
     resetView();
     return true;
 }
@@ -1274,11 +2310,27 @@ Ogre::Technique *RtssTechniqueResolver::handleSchemeNotFound(
 
     // Get a handle to the material
     const String &matName = originalMaterial->getName();
+
+    // Every material in this scene needs an RTSS generated pass, because
+    // GL3Plus has no fixed-function pipeline at all. The generator is driven
+    // purely by the pass diffuse/ambient colours, so no material is skipped.
     MaterialPtr mat = MaterialManager::getSingleton().getByName(matName);
     if (mat.isNull())
         return nullptr;
 
-    // *** KEY FIX: pass a Material& (not name, not pointer) ***
+    // If the material already carries a technique for the requested scheme it
+    // was validated up front (see seed() in initOgre) and is ready to use.
+    for (unsigned i = 0; i < mat->getNumTechniques(); ++i)
+    {
+        Technique *t = mat->getTechnique(i);
+        if (t && t->getSchemeName() == ShaderGenerator::DEFAULT_SCHEME_NAME)
+            return t;
+    }
+
+    // Otherwise generate it now. This is the path taken by materials created
+    // after the initial seeding pass (the per-axis materials, for instance), and
+    // it is what keeps them from silently falling back to their fixed-function
+    // technique - which on GL3Plus renders nothing at all.
     const bool ok = mSG->createShaderBasedTechnique(
         *mat,
         MaterialManager::DEFAULT_SCHEME_NAME, // source scheme (fixed-function)
@@ -1287,6 +2339,11 @@ Ogre::Technique *RtssTechniqueResolver::handleSchemeNotFound(
 
     if (!ok)
         return nullptr;
+
+    // createShaderBasedTechnique() only registers the technique; the shader
+    // programs themselves are built by validateMaterial(). Skipping this leaves
+    // the technique without GpuPrograms, so the material draws as flat black.
+    mSG->validateMaterial(ShaderGenerator::DEFAULT_SCHEME_NAME, matName);
 
     // Return the technique that matches the RTSS scheme
     for (unsigned i = 0; i < mat->getNumTechniques(); ++i)

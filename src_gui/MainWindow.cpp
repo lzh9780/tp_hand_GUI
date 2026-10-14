@@ -136,6 +136,21 @@ void MainWindow::buildUI()
             this, &MainWindow::onSimulationModeChanged);
     connect(settingsWindow_, &SettingsWindow::model3DConfigChanged,
             this, &MainWindow::onModel3DConfigChanged);
+    // Navigation controller of the 3D view (RViz "Orbit" / "FPS").
+    connect(settingsWindow_, &SettingsWindow::viewStyleChanged, this,
+            [this](const QString &style)
+            {
+                ogre_->setViewPreset(style);
+                appendLog(QString("3D view navigation: %1.").arg(style));
+            });
+    // Look-at point marker (the point the camera orbits around).
+    connect(settingsWindow_, &SettingsWindow::focalMarkerVisibilityChanged, this,
+            [this](bool visible)
+            {
+                ogre_->setFocalMarkerVisible(visible);
+                appendLog(visible ? "Look-at point marker shown."
+                                  : "Look-at point marker hidden.");
+            });
     settingsWindow_->applyCanConfig(); // seed can_cfg_ with the defaults
 
     QStringList modelNames;

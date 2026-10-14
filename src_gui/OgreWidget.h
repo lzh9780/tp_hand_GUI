@@ -107,9 +107,46 @@ public:
     void setJointPosition(const std::string &joint, float value);
     void setJointPositions(const std::unordered_map<std::string, float> &qmap);
 
-    // Simple camera API (focus/orbit target)
-    void setCameraTarget(const QVector3D &t);
-    void resetView(); // sensible default view
+    // Navigation style, mirrors the RViz "Views" controller choices.
+    enum class ViewStyle
+    {
+        Orbit, // RViz "Orbit": drag rotates around the focal point, scroll zooms
+        FPS    // RViz "FPS (first person)": drag looks around, WASD moves
+    };
+
+    // --- Camera API (RViz-compatible semantics) ---
+    // Frame convention: right-handed, Z up (ROS / RViz). Distances are meters,
+    // so the focal point is stored in Ogre coordinates (X right, Y forward,
+    // Z up) and matches the URDF numbers one to one.
+    void setCameraTarget(const QVector3D &t); // = RViz "Focal Point"
+    void resetView();                         // restore the default view
+    void setViewStyle(ViewStyle s);           // Orbit (default) / FPS
+    ViewStyle viewStyle() const { return mStyle; }
+
+    // The camera always orbits the look-at point (RViz' "Focal Point"). Zoom and
+    // orbit never move it; only Move/pan and these setters do.
+    void setLookAtPoint(const QVector3D &p) { setCameraTarget(p); }
+    QVector3D lookAtPoint() const { return mTarget; }
+    // Point the camera at the loaded model's centre and frame it.
+    void focusOnModel();
+
+    // Show / hide the look-at point marker.
+    void setFocalMarkerVisible(bool on);
+    bool focalMarkerVisible() const { return mFocalMarkerNode != nullptr; }
+
+    // Place the camera like the RViz fixed-frame views: the vector is the
+    // viewing direction, i.e. the axis the camera looks along.
+    //   front -> +X, back -> -X, left -> +Y, right -> -Y, top -> -Z.
+    void setViewDirection(const QVector3D &dir);
+    void lookFromFront() { setViewDirection(QVector3D(1.f, 0.f, 0.f)); }
+    void lookFromBack() { setViewDirection(QVector3D(-1.f, 0.f, 0.f)); }
+    void lookFromLeft() { setViewDirection(QVector3D(0.f, 1.f, 0.f)); }
+    void lookFromRight() { setViewDirection(QVector3D(0.f, -1.f, 0.f)); }
+    void lookFromTop() { setViewDirection(QVector3D(0.f, 0.f, -1.f)); }
+    void lookFromBottom() { setViewDirection(QVector3D(0.f, 0.f, 1.f)); }
+
+    // Named view preset, using the same names as RViz ("Orbit" / "FPS").
+    void setViewPreset(const QString &name);
 
     // Enumerate all joints (order is unspecified)
     std::vector<JointInfo> jointsInfo() const;
@@ -135,6 +172,8 @@ protected:
     void mouseMoveEvent(QMouseEvent *) override;
     void mouseReleaseEvent(QMouseEvent *) override;
     void wheelEvent(QWheelEvent *) override;
+    void keyPressEvent(QKeyEvent *) override;
+    void keyReleaseEvent(QKeyEvent *) override;
 
 private slots:
     void onFrame();
@@ -148,7 +187,8 @@ private:
     void shutdownOgre(); // ordered OGRE teardown; safe to call multiple times
     void initOgre();
     void selectAndInitRenderSystem();
-    void enableRTSS(); // Runtime Shader System (GL3Plus friendly)
+    void enableRTSS();        // Runtime Shader System (GL3Plus friendly)
+    bool loadRtssPlugin();    // resolve + load Plugin_RTSS through Root
 
     // --- Scene building / teardown ---
     void destroySubtree(Ogre::SceneManager* sm, Ogre::SceneNode* n);
@@ -170,12 +210,32 @@ private:
     void applyJointPose(RobotInstance &R, BuiltJoint &bj);
     void setNodeTreeMaterial(Ogre::SceneNode *node, const std::string &matName);
     void ensureBaseMaterials(); // "DefaultWhite" + "GhostWhite"
+    void recreateLighting();    // key + fill directional lights on the root node
 
     // --- Geometry helpers ---
     Ogre::ManualObject *createBoxMO(const std::string &name, float sx, float sy, float sz);
     Ogre::ManualObject *createCylinderMO(const std::string &name, float radius, float length, int seg = 32);
     Ogre::ManualObject *createSphereMO(const std::string &name, float radius, int rings = 16, int segs = 24);
-    Ogre::ManualObject *createGridMO(const std::string &name, int halfLines = 20, float spacing = 0.1f); // RViz-ish grid
+
+    // RViz "Grid" display: fading cells, a bright line every 10 cells and the
+    // red / green world axes overdrawn on top.
+    void createGrid(const std::string &name, float cellSize = 1.0f, int cellsPerSide = 30);
+    // RViz "Axes" display: red X, green Y, blue Z from the origin.
+    void createAxes(float length = 0.05f);
+
+    // Marker showing the camera's look-at point (the orbit pivot), drawn like
+    // RViz' focal-point indicator: a small sphere with a three-axis cross.
+    void createFocalMarker(float size = 0.02f);
+    void syncFocalMarker();          // move it onto the current look-at point
+    void resizeFocalMarkerToView();  // keep it ~constant size on screen
+    // Look up / destroy a named child of mWorld. Node::getChild(String) throws
+    // for an unknown name, so these scan getChildren() instead.
+    Ogre::SceneNode *findWorldChild(const char *name) const;
+    void destroyWorldChild(const char *name);
+
+    // Size the grid / axes so they frame the loaded model the way RViz' default
+    // Grid display (10 x 10 cells of 1 m) frames a freshly added robot.
+    void fitGridToModel();
 
     // Mesh loader: try native Ogre (.mesh), else Assimp → ManualObject
     Ogre::MovableObject *createAnyMeshOrManual(const std::string &name,
@@ -185,6 +245,14 @@ private:
     // --- Math helpers ---
     static Ogre::Quaternion fromRPY(float r, float p, float y);
     static Ogre::Vector3 normAxis(const std::array<float, 3> &a);
+    // Reach of the loaded model in the ROS frame (origin -> farthest visual).
+    float modelReach() const;
+    // Bounding box of the built scene, in the ROS frame. Reads the actual world
+    // positions of the visual nodes rather than the URDF offsets, because a URDF
+    // routinely gives every <visual> an origin of (0,0,0) and puts the real
+    // placement on the joints (which are chained). Returns false if nothing is
+    // built yet.
+    bool modelBounds(Ogre::Vector3 &minRos, Ogre::Vector3 &maxRos) const;
 
     // --- Joint application ---
     void applyJointPose(BuiltJoint &bj);
@@ -192,18 +260,59 @@ private:
     // --- Paths ---
     static std::string resolvePathRelative(const std::string &baseFile, const std::string &uri);
 
-    // --- Camera control state ---
+    // --- Camera control state (RViz-like) ---
+    enum class DragMode
+    {
+        None,
+        Orbit,  // left button
+        Look,   // left button in FPS mode
+        Move,   // middle button / shift + left: move the focal point
+        Zoom    // right button
+    };
+
     void updateCamera();
+    // Current camera basis in the Z-up world frame (Z forward, Y left, X down)
+    // expressed in Ogre coordinates; identical numbers to RViz' camera basis.
+    void cameraBasis(Ogre::Vector3 &fwd, Ogre::Vector3 &left, Ogre::Vector3 &down) const;
+    Ogre::Vector3 focalPoint() const;
+    void setFocalPoint(const Ogre::Vector3 &p);
+    void applySlew();   // consume the pending WASD displacement
+    void clampPitch();  // keep the view away from the poles
+
     QPoint mLastMouse;
-    bool mLDown{false}, mMDown{false}, mRDown{false};
-    // Orbit camera parameters (target in world, spherical angles)
+    DragMode mDragMode{DragMode::None};
+    ViewStyle mStyle{ViewStyle::Orbit};
+    bool mFocalDistSet{false}; // true once zoom/pan/move set a real distance
+
+    // Orbit camera parameters (focal point in world, spherical angles)
     QVector3D mTarget{0.f, 0.f, 0.f};
     float mDistance{1.5f}; // meters
     float mYaw{0.0f};      // around +Z (radians)
     float mPitch{0.3f};    // radians, clamp[-1.4, +1.4]
-    float mPanSpeed{0.0025f};
-    float mOrbitSpeed{0.0055f};
-    float mZoomSpeed{0.12f};
+
+    // Look-at point marker (the point the camera orbits around).
+    Ogre::SceneNode *mFocalMarkerNode{nullptr};
+    float mFocalMarkerSize{0.02f};
+
+    // The marker is only shown while the user is navigating: it is a transient
+    // aiming aid, not permanent scene furniture.
+    bool mFocalMarkerEnabled{true};  // master switch (Settings checkbox)
+    bool mFocalMarkerShown{false};   // currently built into the scene
+    QTimer mFocalMarkerHideTimer;    // grace period after a drag ends
+    void showFocalMarkerTemporarily();
+    void hideFocalMarker();
+
+    // Pending displacement queued by the keyboard and applied on the next frame.
+    Ogre::Vector3 mSlew{Ogre::Vector3::ZERO};
+    bool mKeyFwd{false}, mKeyBack{false}, mKeyLeft{false}, mKeyRight{false};
+    bool mKeyUp{false}, mKeyDown{false};
+
+    // Same tuning as RViz' default view controller.
+    float mPanSpeed{0.002f};
+    float mOrbitSpeed{0.002f};
+    float mZoomSpeed{0.05f};
+    float mFpsLookSpeed{0.005f};
+    float mFpsMoveSpeed{0.05f}; // meters per frame while a WASD key is held
 
 private:
     // Ogre

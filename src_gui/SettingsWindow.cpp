@@ -184,11 +184,28 @@ void SettingsWindow::buildModelSection(QVBoxLayout *root)
     model3DSource_->setCurrentIndex(0);
     model3DSource_->setToolTip(tr("Which values drive the model when only one is loaded."));
 
+    viewStyle_ = new QComboBox(group);
+    viewStyle_->addItem(tr("Orbit"), QStringLiteral("Orbit"));
+    viewStyle_->addItem(tr("FPS (first person)"), QStringLiteral("FPS"));
+    
+    viewStyle_->setToolTip(tr("Same two controllers as RViz: Orbit rotates around the look-at "
+                              "point, FPS looks around and moves with WASD."));
+
+    showFocalMarker_ = new QCheckBox(tr("Show look-at point"), group);
+    showFocalMarker_->setChecked(true);
+    showFocalMarker_->setToolTip(tr("Draw a marker on the point the camera orbits around "
+                                    "(RViz' focal point). Zoom never moves it."));
+
     form->addRow(tr("Model count:"), model3DMode_);
     form->addRow(tr("Single model driven by:"), model3DSource_);
+    form->addRow(tr("Navigation:"), viewStyle_);
+    form->addRow(QString(), showFocalMarker_);
 
     auto *hint = new QLabel(tr("Dual: left model follows the commands, right model the feedback. "
-                               "Single: one model only — pick which data drives it."),
+                               "Single: one model only — pick which data drives it.\n"
+                               "View: Z is up (ROS/RViz convention). Left drag = orbit / look, "
+                               "middle (or shift+left) drag = move the focal point, wheel or "
+                               "right drag = zoom, WASD/QE = move, R = reset view."),
                             group);
     hint->setWordWrap(true);
     hint->setStyleSheet("color: gray; font-size: 9px;");
@@ -342,6 +359,8 @@ void SettingsWindow::onApply()
     }
 
     emit model3DConfigChanged(dualModel(), useFeedbackData());
+    emit viewStyleChanged(viewStyle());
+    emit focalMarkerVisibilityChanged(showFocalMarker());
     emit notify(tr("3D model: %1%2")
                     .arg(dualModel() ? tr("dual (command + feedback)")
                                      : tr("single"))
@@ -404,6 +423,16 @@ bool SettingsWindow::dualModel() const
 bool SettingsWindow::useFeedbackData() const
 {
     return model3DSource_ && model3DSource_->currentData().toBool();
+}
+
+QString SettingsWindow::viewStyle() const
+{
+    return viewStyle_ ? viewStyle_->currentData().toString() : QStringLiteral("Orbit");
+}
+
+bool SettingsWindow::showFocalMarker() const
+{
+    return showFocalMarker_ ? showFocalMarker_->isChecked() : true;
 }
 
 bool SettingsWindow::filterEnabled() const
