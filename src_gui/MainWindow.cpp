@@ -3,24 +3,25 @@
 #include <algorithm>
 #include <memory>
 #include <QTextEdit>
-#include <QSplitter>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QStatusBar>
 #include <QTimer>
 #include <QString>
 #include <QStringList>
-#include <QMenuBar>
-#include <QTabWidget>
-#include <QToolBar>
 #include <QLabel>
 #include <QPushButton>
+#include <QShortcut>
+#include <QKeySequence>
 #include <iostream>
-#include "DraggableTabWidget.hpp"
+#include "MainWidget.hpp"
+#include "SideDock.hpp"
 #include "ConnectionBar.hpp"
 #include "SettingsWindow.h"
 #include "CameraWidget.hpp"
 #include "ActionPanel.hpp"
+#include "TactilePanel.hpp"
+#include "LogPanel.hpp"
 
 MainWindow::MainWindow(const grip::AppSettings &cfg,
                        QWidget *parent)
@@ -34,6 +35,13 @@ MainWindow::MainWindow(const grip::AppSettings &cfg,
 
 MainWindow::~MainWindow()
 {
+    if (plot_timer_)
+    {
+        plot_timer_->stop();
+        delete plot_timer_;
+        plot_timer_ = nullptr;
+    }
+
     if (camera_)
         camera_->stopAll();
 
@@ -53,97 +61,69 @@ MainWindow::~MainWindow()
 
 void MainWindow::buildUI()
 {
-    central = new QWidget(this);
-    auto *rootLayout = new QVBoxLayout(central);
-    rootLayout->setContentsMargins(0, 0, 0, 0);
-    rootLayout->setSpacing(0);
-
-    // ---- Top: single-row connection strip (model / device / channel / connect) ----
-    connBar_ = new ConnectionBar(central, cfg_.models);
-    rootLayout->addWidget(connBar_);
-
-    // ---- Modules (created once, hosted by the tab area on demand) ----
+    // ---- modules (created once; the docks re-parent them) ----
     ogre_ = new OgreWidget();
-    motor_ = new MotorPanel();
     camera_ = new CameraWidget();
     actionFlow_ = new ActionPanel();
-    tactile_ = new TactileVisual();
-    tactile_->setPalmImage(QPixmap("./images/white.jpeg"));
+    tactile_ = new TactilePanel();
 
-    // ---- Left: joint / action control panel ----
     side_ = new SidePanel(this);
-    side_->setMinimumWidth(320);
+    plotPanel_ = new PlotPanel(this);
 
-    // ---- Right: work area (tabs) on top, log console at the bottom ----
-    // DraggableTabWidget installs its own tab bar that already handles
-    // reordering, so leave QTabBar::movable at its default.
-    upperTabs = new DraggableTabWidget(this);
-    upperTabs->setTabsClosable(true);
-    upperTabs->setDocumentMode(true);
+    // ---- layered canvas: connection bar + [left dock | 3D | right dock] ----
+    canvas_ = new MainWidget(this);
+    setCentralWidget(canvas_);
+    canvas_->setBackgroundWidget(ogre_);
 
-    // Open the panels that follow the actual workflow:
-    // watch the 3D model → run action sets.
-    upperTabs->addTab(ogre_, "3D Model");
-    upperTabs->addTab(actionFlow_, "Action Sets");
-    upperTabs->setCurrentIndex(0);
+    connBar_ = new ConnectionBar(canvas_, cfg_.models);
+    canvas_->setTopBar(connBar_);
 
-    buildLogPanel();
+    buildDocks();
 
-    auto *workArea = new QSplitter(Qt::Vertical, this);
-    workArea->addWidget(upperTabs);
-    workArea->addWidget(logPanel_);
-    workArea->setStretchFactor(0, 1);
-    workArea->setStretchFactor(1, 0);
-    workArea->setSizes({700, 200});
+    plot_timer_ = new QTimer(this);
+    connect(plot_timer_, &QTimer::timeout, this, [this]()
+            {
+                if (!plotPanel_)
+                    return;
+                HandStateMap snapshot;
+                {
+                    std::lock_guard<std::mutex> lk(mtx_);
+                    if (ctrl_)
+                        snapshot = ctrl_->snapshot();
+                }
+                plotPanel_->feedData(snapshot);
+            });
 
-    auto *splitter = new QSplitter(Qt::Horizontal, this);
-    splitter->addWidget(side_);
-    splitter->addWidget(workArea);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({360, 1020});
-
-    rootLayout->addWidget(splitter, 1);
-
-    central->setLayout(rootLayout);
-    setCentralWidget(central);
-
-    buildToolBar();
-    setConnectedStatus(false);
-
+    /* ---- signal wiring ---- */
     connect(side_, &SidePanel::valuesChanged, this, &MainWindow::onSidePanelValuesChanged);
-    connect(side_, &SidePanel::committed, this, &MainWindow::onSidePanelCommitted);
     connect(side_, &SidePanel::notify, this, &MainWindow::onSidePanelNotify);
-    connect(side_, &SidePanel::controlChanged, this, &MainWindow::onSidePanelControlChanged);
-    connect(side_, &SidePanel::openAdvancePanel, this, &MainWindow::openMotorControlTab);
-    connect(motor_, &MotorPanel::mode_change, this, &MainWindow::onJointPanelControlModeChange);
-    connect(motor_, &MotorPanel::vel_ref_change, this, &MainWindow::onJointPanelVelRefModeChange);
-    connect(motor_, &MotorPanel::torque_ref_change, this, &MainWindow::onJointPanelTorqueRefModeChange);
+
     connect(connBar_, &ConnectionBar::deviceConnect, this, &MainWindow::onConnectorDeviceConnect);
-    // connect(camera_, &CameraWidget::controlSwitch, this, &MainWindow::onCameraWidgetControlSwitch);
     connect(connBar_, &ConnectionBar::modelChange, this, &MainWindow::onConnectorModelChange);
     connect(connBar_, &ConnectionBar::canConfigChanged, this, &MainWindow::onConnectionBarCanConfigChanged);
-    connect(connBar_, &ConnectionBar::statusMessage, this, &MainWindow::appendLog);
+    // appendLog is overloaded, so select the one-argument form explicitly.
+    connect(connBar_, &ConnectionBar::statusMessage, this,
+            qOverload<const QString &>(&MainWindow::appendLog));
+    connect(connBar_, &ConnectionBar::settingsRequested, this, &MainWindow::openSettings);
+    connect(connBar_, &ConnectionBar::enableChanged, this, &MainWindow::onEnableChanged);
 
-
-    // Settings pop-up: CAN bus + feedback filter. Created lazily by openSettings().
+    /* ---- settings pop-up: CAN bus + feedback filter ---- */
     settingsWindow_ = new SettingsWindow(this);
     connect(settingsWindow_, &SettingsWindow::canConfigChanged, this, &MainWindow::onCanConfigChanged);
     connect(settingsWindow_, &SettingsWindow::filterChanged, this, &MainWindow::onFilterChanged);
     connect(settingsWindow_, &SettingsWindow::filterReset, this, &MainWindow::onFilterReset);
-    connect(settingsWindow_, &SettingsWindow::notify, this, &MainWindow::appendLog);
+    connect(settingsWindow_, &SettingsWindow::notify, this,
+            qOverload<const QString &>(&MainWindow::appendLog));
     connect(settingsWindow_, &SettingsWindow::simulationModeChanged,
             this, &MainWindow::onSimulationModeChanged);
     connect(settingsWindow_, &SettingsWindow::model3DConfigChanged,
             this, &MainWindow::onModel3DConfigChanged);
-    // Navigation controller of the 3D view (RViz "Orbit" / "FPS").
     connect(settingsWindow_, &SettingsWindow::viewStyleChanged, this,
             [this](const QString &style)
             {
                 ogre_->setViewPreset(style);
                 appendLog(QString("3D view navigation: %1.").arg(style));
             });
-    // Look-at point marker (the point the camera orbits around).
     connect(settingsWindow_, &SettingsWindow::focalMarkerVisibilityChanged, this,
             [this](bool visible)
             {
@@ -157,11 +137,10 @@ void MainWindow::buildUI()
     for (const auto &m : cfg_.models)
         modelNames << QString::fromStdString(m);
     settingsWindow_->setSoftwareInfo(QString::fromStdString(config_path_), modelNames);
-    connect(upperTabs, &QTabWidget::tabCloseRequested, this, &MainWindow::onUpperTabCloseRequested);
+
     connect(ogre_, &OgreWidget::initFailed, this, [this](const QString &msg)
-            { appendLog(QString("3D view unavailable: %1").arg(msg)); });
-    // The action panel owns the store and therefore resolves the joint values
-    // itself; the side panel only knows how to push targets to the sliders.
+            { appendLog(LogLevel::Error, QString("3D view unavailable: %1").arg(msg)); });
+
     connect(actionFlow_, &ActionPanel::actionUpdate, this, &MainWindow::onActionPanelActionUpdate);
     actionFlow_->setPoseProvider([this]() -> QVector<double>
     {
@@ -191,111 +170,95 @@ void MainWindow::buildUI()
                             dof_pos.emplace(name, buff.second);
                     }
                 }
-                side_->applyCameraData(dof_pos, &hand_cfg_); 
+                side_->applyCameraData(dof_pos, &hand_cfg_);
             });
     connect(camera_, &CameraWidget::controlSwitch, this, [this](const QString &msg)
-            { side_->modeChange(msg == "Start"); });
+            { appendLog(QString("Hand tracking %1.").arg(msg.toLower())); });
     connect(camera_, &CameraWidget::status, this, [this](const QString &s)
             { statusBar()->showMessage(s, 2000); });
     connect(camera_, &CameraWidget::error, this, [this](const QString &e)
             {
                 statusBar()->showMessage(QString("Error: %1").arg(e), 5000);
-                appendLog(QString("Error: %1").arg(e)); });
+                appendLog(LogLevel::Error, QString("Hand tracking: %1").arg(e)); });
+
+    /* ---- keyboard shortcuts for the panel columns ---- */
+    // Ctrl+1..3 focus a page of the left column, Ctrl+4..6 the right one;
+    // Ctrl+B toggles both columns down to their tab strips.
+    {
+        auto addShortcut = [this](const QKeySequence &key, void (MainWindow::*slot)())
+        {
+            auto *sc = new QShortcut(key, this);
+            connect(sc, &QShortcut::activated, this, slot);
+        };
+        addShortcut(QKeySequence("Ctrl+1"), &MainWindow::showCameraPanel);
+        addShortcut(QKeySequence("Ctrl+2"), &MainWindow::showPlotPanel);
+        addShortcut(QKeySequence("Ctrl+3"), &MainWindow::showTactilePanel);
+        addShortcut(QKeySequence("Ctrl+4"), &MainWindow::showLogPanel);
+        addShortcut(QKeySequence("Ctrl+B"), &MainWindow::toggleLeftDock);
+        addShortcut(QKeySequence("Ctrl+Shift+B"), &MainWindow::toggleRightDock);
+    }
+
+    setConnectedStatus(false);
 }
 
-void MainWindow::buildToolBar()
+/**
+ * Docks (UI design note #3): vertical tabs on the outer edges of the canvas.
+ *
+ *  - left:  joint control, hand tracking, automation;
+ *  - right: joint plots, tactile pairs, log / bus telemetry.
+ *
+ * The 3D model is deliberately NOT a dock page: it is the central widget and
+ * always fills the space between the columns.
+ */
+void MainWindow::buildDocks()
 {
-    toolBar_ = new QToolBar("Panels", this);
-    toolBar_->setMovable(false);
-    toolBar_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-    addToolBar(Qt::TopToolBarArea, toolBar_);
+    leftDock_ = new SideDock(Qt::LeftEdge, canvas_);
+    leftDock_->addPanel(side_, "Joints", "Joint target sliders");
+    leftDock_->addPanel(camera_, "Tracking", "Camera / hand tracking tele-operation");
+    leftDock_->addPanel(actionFlow_, "Actions", "Action set sequencer");
+    leftDock_->setDockWidth(340);
+    canvas_->setLeftDock(leftDock_);
+    // The docks float above the 3D view, so a collapse only re-places them; the
+    // 3D widget keeps its geometry and the model is never resized.
+    connect(leftDock_, &SideDock::collapsedChanged, this,
+            [this](bool) { canvas_->relayout(); });
 
-    actModel3D_    = new QAction("3D Model", this);
-    actActionSets_ = new QAction("Action Sets", this);
-    actJointModes_ = new QAction("Joint Modes", this);
-    actHandDetect_ = new QAction("Hand Detect", this);
-    actTactile_    = new QAction("Tactile", this);
-    actDiagram_    = new QAction("New Diagram", this);
-    actSettings_   = new QAction("Settings", this);
-    actLog_        = new QAction("Log", this);
-    actLog_->setCheckable(true);
-    actLog_->setChecked(true);
+    rightDock_ = new SideDock(Qt::RightEdge, canvas_);
+    rightDock_->addPanel(plotPanel_, "Plots", "Joint position over time (one diagram per joint)");
+    rightDock_->addPanel(tactile_, "Tactile", "Tactile sensors: point cloud + force");
+    rightDock_->addPanel(buildLogPanel(), "Log", "Log and bus telemetry");
+    rightDock_->setDockWidth(430);
+    canvas_->setRightDock(rightDock_);
+    connect(rightDock_, &SideDock::collapsedChanged, this,
+            [this](bool) { canvas_->relayout(); });
 
-    actModel3D_->setToolTip("Show the 3D visualization of the hand");
-    actActionSets_->setToolTip("Show the action set sequencer");
-    actJointModes_->setToolTip("Show per-joint control modes and limits");
-    actHandDetect_->setToolTip("Show tele-operation / hand tracking");
-    actTactile_->setToolTip("Show tactile pressure visualization");
-    actDiagram_->setToolTip("Open a new live diagram panel");
-    actSettings_->setToolTip("Open the settings window (CAN bus + feedback filter)");
-    actLog_->setToolTip("Show or hide the log console");
-
-    connect(actModel3D_,    &QAction::triggered, this, &MainWindow::openUrdfLoaderTab);
-    connect(actActionSets_, &QAction::triggered, this, &MainWindow::openActionPanelTab);
-    connect(actJointModes_, &QAction::triggered, this, &MainWindow::openMotorControlTab);
-    connect(actHandDetect_, &QAction::triggered, this, &MainWindow::openCameraTab);
-    connect(actTactile_,    &QAction::triggered, this, &MainWindow::openTactileImage);
-    connect(actDiagram_,    &QAction::triggered, this, &MainWindow::openDiagram);
-    connect(actSettings_,   &QAction::triggered, this, &MainWindow::openSettings);
-    connect(actLog_,        &QAction::triggered, this, &MainWindow::toggleLogPanel);
-
-    toolBar_->addAction(actModel3D_);
-    toolBar_->addAction(actActionSets_);
-    toolBar_->addAction(actJointModes_);
-    toolBar_->addSeparator();
-    toolBar_->addAction(actHandDetect_);
-    toolBar_->addAction(actTactile_);
-    toolBar_->addAction(actDiagram_);
-    toolBar_->addSeparator();
-    toolBar_->addAction(actSettings_);
-    toolBar_->addAction(actLog_);
-
-    // The same shortcuts stay reachable from the menu bar.
-    auto *viewMenu = menuBar()->addMenu("&View");
-    viewMenu->addAction(actModel3D_);
-    viewMenu->addAction(actActionSets_);
-    viewMenu->addAction(actJointModes_);
-    viewMenu->addSeparator();
-    viewMenu->addAction(actHandDetect_);
-    viewMenu->addAction(actTactile_);
-    viewMenu->addAction(actDiagram_);
-    viewMenu->addSeparator();
-    viewMenu->addAction(actSettings_);
-    viewMenu->addAction(actLog_);
+    // Start with both columns hidden: only their tab strips are shown, so the 3D
+    // view gets the full window on launch and the panels are opened on demand by
+    // clicking a tab. This runs after every panel has been added, because the
+    // strip width is derived from the tab list.
+    leftDock_->setCollapsed(true);
+    rightDock_->setCollapsed(true);
+    canvas_->relayout();
 }
 
-void MainWindow::buildLogPanel()
+/* Log panel: a dock page (not an overlay), so it sits inside the right column
+   together with the other tabs. It owns the text log (timestamp + level) and the
+   bus telemetry table underneath it. */
+QWidget *MainWindow::buildLogPanel()
 {
-    logPanel_ = new QWidget(this);
-    auto *logLyt = new QVBoxLayout(logPanel_);
-    logLyt->setContentsMargins(0, 0, 0, 0);
-    logLyt->setSpacing(0);
-
-    auto *header = new QWidget(logPanel_);
-    auto *headerLyt = new QHBoxLayout(header);
-    headerLyt->setContentsMargins(6, 2, 6, 2);
-    headerLyt->setSpacing(6);
-    auto *title = new QLabel("Log");
-    auto *clearBtn = new QPushButton("Clear");
-    clearBtn->setFixedHeight(22);
-    headerLyt->addWidget(title);
-    headerLyt->addStretch(1);
-    headerLyt->addWidget(clearBtn);
-
-    log_ = new QTextEdit;
-    log_->setReadOnly(true);
-    log_->setLineWrapMode(QTextEdit::NoWrap);
-
-    logLyt->addWidget(header);
-    logLyt->addWidget(log_, 1);
-
-    connect(clearBtn, &QPushButton::clicked, log_, &QTextEdit::clear);
+    logPanel_ = new LogPanel(canvas_);
+    return logPanel_;
 }
 
 void MainWindow::appendLog(const QString &msg)
 {
-    if (log_)
-        log_->append(msg);
+    appendLog(LogLevel::Info, msg);
+}
+
+void MainWindow::appendLog(LogLevel level, const QString &msg)
+{
+    if (logPanel_)
+        logPanel_->append(level, msg);
 }
 
 void MainWindow::setConnectedStatus(bool connected)
@@ -305,29 +268,12 @@ void MainWindow::setConnectedStatus(bool connected)
         : QString("Not connected"));
 }
 
-void MainWindow::addOrShowTab(QWidget *widget, const QString &title)
-{
-    if (!widget)
-        return;
-
-    // Reuse the existing tab instead of adding a duplicate one.
-    const int existing = upperTabs->indexOf(widget);
-    if (existing >= 0)
-    {
-        upperTabs->setCurrentIndex(existing);
-        return;
-    }
-
-    upperTabs->addTab(widget, title);
-    upperTabs->setCurrentIndex(upperTabs->count() - 1);
-    widget->show();
-}
+/* ------------------------------------------------------------------ *
+ *  Joint targets
+ * ------------------------------------------------------------------ */
 
 void MainWindow::onSidePanelValuesChanged()
 {
-    // Only act in Follow mode
-    if (side_->modeText() != "Mode: Follow")
-        return;
     if (!ctrl_)
         return;
 
@@ -338,14 +284,17 @@ void MainWindow::onSidePanelValuesChanged()
     const int count = std::min({deg.size(), dof_names.size(), control_mode.size()});
     for (int i = 0; i < count; ++i)
     {
+        if (control_mode[i] == "zero_torque")
+            continue; // disarmed joints are not commanded
+
         const float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
         ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i]));
 
-        std::unordered_map<std::string, float> joint_pos = {};
-        if (control_mode[i] == "hall_position")
-            joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), float(deg[i]), true);
-        else
-            joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad, false);
+        const std::unordered_map<std::string, float> joint_pos =
+            (control_mode[i] == "hall_position")
+                ? dofsToJoints(dof_names[i].toUtf8().constData(), float(deg[i]), true)
+                : dofsToJoints(dof_names[i].toUtf8().constData(), rad, false);
+
         for (const auto &j : joint_pos)
         {
             const auto &name = j.first;
@@ -356,123 +305,76 @@ void MainWindow::onSidePanelValuesChanged()
                 joint_target.emplace(name, j.second);
         }
     }
+
     if (model3DShowsSource("cmd"))
     {
-        if (model3DDual())
-        {
-            for (auto &[key, value] : joint_target)
-                ogre_->setJointPosition("cmd", key, value);
-        }
-        else
-        {
-            for (auto &[key, value] : joint_target)
-                ogre_->setJointPosition(key, value);
-        }
+        for (auto &[key, value] : joint_target)
+            ogre_->setJointPosition(key, value);
     }
 }
 
-void MainWindow::onSidePanelCommitted()
-{
-    if (!ctrl_)
-        return;
 
-    const QList<int> deg = side_->jointDegrees();
-    const QStringList control_mode = side_->getControlModes();
-
-    std::unordered_map<std::string, float> joint_target;
-    const int count = std::min({deg.size(), dof_names.size(), control_mode.size()});
-    for (int i = 0; i < count; ++i)
-    {
-        const float rad = float(deg[i]) * float(M_PI) / 180.0f / 100.0;
-        ctrl_->submit_target(dof_names[i].toUtf8().constData(), float(deg[i]));
-        appendLog(QString("Execute: %1, %2").arg(dof_names[i]).arg(rad));
-
-        std::unordered_map<std::string, float> joint_pos = {};
-        if (control_mode[i] == "hall_position")
-            joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), float(deg[i]), true);
-        else
-            joint_pos = dofsToJoints(dof_names[i].toUtf8().constData(), rad, false);
-        for (const auto &j : joint_pos)
-        {
-            const auto &name = j.first;
-            auto item = joint_target.find(name);
-            if (item != joint_target.end())
-                item->second += j.second;
-            else
-                joint_target.emplace(name, j.second);
-        }
-    }
-    if (model3DShowsSource("cmd"))
-    {
-        if (model3DDual())
-        {
-            for (auto &[key, value] : joint_target)
-                ogre_->setJointPosition("cmd", key, value);
-        }
-        else
-        {
-            for (auto &[key, value] : joint_target)
-                ogre_->setJointPosition(key, value);
-        }
-    }
-
-    appendLog(QString("Execute: %1 targets sent.").arg(count));
-}
 
 void MainWindow::onSidePanelNotify(const QString &msg)
 {
     appendLog(msg);
 }
 
-void MainWindow::onSidePanelControlChanged(const QString &name, const QString &mode)
+/**
+ * Enable/Disable from the connection bar (UI design note #6).
+ *
+ * Enable  -> every actuated joint is switched to `joint_position`, the sliders
+ *            become live and the current positions are pushed right away.
+ * Disable -> every joint goes back to `zero_torque` and the sliders are parked.
+ */
+void MainWindow::onEnableChanged(bool enable)
 {
+    const char *mode = enable ? "joint_position" : "zero_torque";
+
+    side_->setAllJointsEnabled(enable);
+
     if (!ctrl_)
-        return;
-    for (auto mod : hand_cfg_.structs)
     {
-        if (mod.first == "WRIST" && name == "wrist")
+        appendLog(enable ? "Hand enabled (no connection: 3D preview only)."
+                         : "Hand disabled.");
+        return;
+    }
+
+    for (const auto &mod : hand_cfg_.structs)
+    {
+        for (const auto &j : mod.second)
         {
-            for (auto j : mod.second)
-            {
-                if (!motor_->checkJointStandalone(QString(j.name.c_str())))
-                {
-                    side_->applyModeChange(&hand_cfg_, QString(j.name.c_str()), mode);
-                    motor_->applyModeChange(QString(j.name.c_str()), mode);
-                    ctrl_->submit_control_mode(j.name, mode.toUtf8().constData());
-                }
-            }
-        }
-        else if (mod.first != "WRIST" && name == "finger")
-        {
-            for (auto j : mod.second)
-            {
-                if (!motor_->checkJointStandalone(QString(j.name.c_str())))
-                {
-                    side_->applyModeChange(&hand_cfg_, QString(j.name.c_str()), mode);
-                    motor_->applyModeChange(QString(j.name.c_str()), mode);
-                    ctrl_->submit_control_mode(j.name, mode.toUtf8().constData());
-                }
-            }
+            if (j.id <= 0)
+                continue; // passive joint: nothing to command
+            ctrl_->submit_control_mode(j.name, mode);
         }
     }
+
+    appendLog(QString("Hand %1: all joints -> %2.")
+                  .arg(enable ? "enabled" : "disabled")
+                  .arg(mode));
+
+    if (enable)
+        onSidePanelValuesChanged(); // push the current targets immediately
 }
+
+/* ------------------------------------------------------------------ *
+ *  Connection lifecycle
+ * ------------------------------------------------------------------ */
 
 void MainWindow::onConnectorDeviceConnect(const QString &msg)
 {
     if (msg == "Connect")
         onDeviceConnect();
     else
-    {
         onDeviceDisconnect();
-        side_->updateBusInfo(BusData{});
-    }
 }
 
 void MainWindow::onDeviceConnect()
 {
     if (selectedModel_.isEmpty())
     {
-        appendLog("Please select a hand model before connecting.");
+        appendLog(LogLevel::Warning, "Please select a hand model before connecting.");
         connBar_->onChange(false);
         return;
     }
@@ -484,8 +386,6 @@ void MainWindow::onDeviceConnect()
 
         ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
 
-        // A fresh ControlInterface starts from its own defaults: push whatever the
-        // settings window currently shows so the GUI stays the single source of truth.
         ctrl_->set_filter_enabled(settingsWindow_->filterEnabled());
         ctrl_->set_filter_params(settingsWindow_->filterFreq(), settingsWindow_->filterMinCutoff(),
                                  settingsWindow_->filterBeta(), settingsWindow_->filterDCutoff());
@@ -499,8 +399,6 @@ void MainWindow::onDeviceConnect()
                           .arg(ctrl_->hand_id())
                           .arg(QString::fromStdString(ctrl_->hand_side())));
             ctrl_->start_control_loop();
-            // appendLog("Control Policy Applied. \nCurrent Policy: Protected Hall Position Control");
-            appendLog("Current control mode: " + side_->modeText());
 
             read_timer_ = new QTimer(this);
             connect(read_timer_, &QTimer::timeout, this, &MainWindow::readJointAngles);
@@ -525,24 +423,24 @@ void MainWindow::onDeviceConnect()
         }
 
         side_->loadHandControllor(&hand_cfg_);
-        motor_->load(hand_cfg_);
         loadModel3D();
 
-        // The action panel owns the store, so it is released to it only after
-        // everything else succeeded; a throw in between still frees it.
         std::unique_ptr<ActionStore> store(new ActionStore(action_path_.c_str()));
         store->load();
         actionFlow_->setStore(store.get());
         store.release();
 
+        if (plot_timer_ && !plot_timer_->isActive())
+            plot_timer_->start(20);
+
         connBar_->onChange(true);
-        settingsWindow_->setConnected(true); // CAN parameters are frozen now
+        settingsWindow_->setConnected(true);
         setConnectedStatus(true);
     }
     catch (const std::exception &e)
     {
         const QString qerr = QString(e.what());
-        appendLog(qerr);
+        appendLog(LogLevel::Error, qerr);
         connBar_->onChange(false);
         settingsWindow_->setConnected(false);
         setConnectedStatus(false);
@@ -551,11 +449,18 @@ void MainWindow::onDeviceConnect()
 
 void MainWindow::onDeviceDisconnect()
 {
-    // ActionPanel owns (and deletes) the ActionStore, so hand it a null store
-    // before the joint widgets go away.
     actionFlow_->setStore(nullptr);
     side_->removeAll();
-    motor_->removeAll();
+
+    if (plot_timer_)
+        plot_timer_->stop();
+    if (plotPanel_)
+    {
+        plotPanel_->clearDiagrams();
+        plotPanel_->resetHistory();
+    }
+    if (tactile_)
+        tactile_->resetHistory();
 
     if (ctrl_)
     {
@@ -571,6 +476,11 @@ void MainWindow::onDeviceDisconnect()
     connBar_->onChange(false);
     settingsWindow_->setConnected(false);
     setConnectedStatus(false);
+    // The telemetry below belongs to the closed bus: show it as unavailable
+    // rather than leaving the last reading on screen as if it were live.
+    if (logPanel_)
+        logPanel_->clearBusTelemetry();
+    busFaultActive_ = false;
     ogre_->clearScene();
     dof_names.clear();
     joints_inverted_index.clear();
@@ -600,19 +510,15 @@ void MainWindow::onCanConfigChanged(int device_type, int device_index, int chann
     can_cfg_.bit_timing.arbitration = {arb_tseg1, arb_tseg2, arb_sjw, arb_brp};
     can_cfg_.bit_timing.data_phase = {data_tseg1, data_tseg2, data_sjw, data_brp};
 
-    // Keep the connection bar showing the same location.
     connBar_->setDeviceLocation(device_index, channel_index);
 }
 
 void MainWindow::onConnectionBarCanConfigChanged(int device_index, int channel_index)
 {
-    // The bar owns device index / channel; mirror them into the shared config and
-    // tell the settings window so its CAN signal echoes the same values back.
     can_cfg_.device_index = device_index;
     can_cfg_.channel_index = channel_index;
     if (settingsWindow_)
         settingsWindow_->setDeviceLocation(device_index, channel_index);
-    appendLog(QString("CAN location: device=%1, channel=%2").arg(device_index).arg(channel_index));
 }
 
 void MainWindow::onFilterChanged(bool enabled, double freq, double min_cutoff,
@@ -632,47 +538,47 @@ void MainWindow::onFilterReset()
     appendLog("Filter state reset.");
 }
 
+/* ------------------------------------------------------------------ *
+ *  3D model: a single scene driven by one data source
+ * ------------------------------------------------------------------ */
+
 void MainWindow::loadModel3D()
 {
     if (!ogre_ || hand_cfg_.urdf_file.empty())
         return;
 
-    model3DDual_ = settingsWindow_ ? settingsWindow_->dualModel() : model3DDual_;
     model3DUseFeedback_ = settingsWindow_ ? settingsWindow_->useFeedbackData() : model3DUseFeedback_;
 
-    const bool dual = model3DDual();
-    const bool ok = dual ? ogre_->loadURDFDual(hand_cfg_.urdf_file)
-                         : ogre_->loadURDF(hand_cfg_.urdf_file);
-    appendLog(ok ? QString("3D model loaded: %1.").arg(dual ? "dual (command + feedback)" : "single")
-                 : QString("3D model load failed: %1").arg(QString::fromStdString(hand_cfg_.urdf_file)));
-}
-
-bool MainWindow::model3DDual() const
-{
-    return model3DDual_;
+    const bool ok = ogre_->loadURDF(hand_cfg_.urdf_file);
+    if (ok)
+    {
+        appendLog(QString("3D model loaded (source: %1).")
+                      .arg(model3DUseFeedback_ ? "feedback" : "command"));
+    }
+    else
+    {
+        appendLog(LogLevel::Error,
+                  QString("3D model load failed: %1")
+                      .arg(QString::fromStdString(hand_cfg_.urdf_file)));
+    }
 }
 
 bool MainWindow::model3DShowsSource(const char *source) const
 {
-    if (model3DDual_)
-        return true; // dual mode draws both instances
-
     return model3DUseFeedback_ ? (std::strcmp(source, "fb") == 0)
                                : (std::strcmp(source, "cmd") == 0);
 }
 
-void MainWindow::onModel3DConfigChanged(bool dual, bool use_feedback)
+void MainWindow::onModel3DConfigChanged(bool use_feedback)
 {
     if (hand_cfg_.urdf_file.empty())
         return; // nothing loaded yet: the choice is applied on the next connect
 
-    // Applying unrelated settings (e.g. filter parameters) re-emits this signal:
-    // only rebuild the scene when the choice actually changed, otherwise the model
-    // would be torn down and recreated on every Apply.
-    if (dual == model3DDual_ && use_feedback == model3DUseFeedback_)
+    // Applying unrelated settings re-emits this signal: only rebuild the scene
+    // when the choice actually changed.
+    if (use_feedback == model3DUseFeedback_)
         return;
 
-    model3DDual_ = dual;
     model3DUseFeedback_ = use_feedback;
     loadModel3D();
 }
@@ -694,48 +600,22 @@ void MainWindow::onActionPanelActionUpdate(const QString &msg)
     side_->applyActionValues(values);
 }
 
-void MainWindow::onJointPanelControlModeChange(const QString &module_name, const QString &control_mode)
-{
-    if (!ctrl_)
-        return;
-    if (motor_->checkJointStandalone(module_name))
-    {
-        side_->applyModeChange(&hand_cfg_, module_name, control_mode);
-        ctrl_->submit_control_mode(module_name.toUtf8().constData(), control_mode.toUtf8().constData());
-    }
-}
-
-void MainWindow::onJointPanelVelRefModeChange(const QString &module_name, const int vel_ref)
-{
-    if (!ctrl_)
-        return;
-    ctrl_->submit_vel_ref(module_name.toUtf8().constData(), vel_ref);
-}
-
-void MainWindow::onJointPanelTorqueRefModeChange(const QString &module_name, const int torque_ref)
-{
-    if (!ctrl_)
-        return;
-    ctrl_->submit_torque_ref(module_name.toUtf8().constData(), torque_ref);
-}
+/* ------------------------------------------------------------------ *
+ *  Feedback loop
+ * ------------------------------------------------------------------ */
 
 void MainWindow::readJointAngles()
 {
     HandStateMap state = ctrl_->snapshot();
-    std::unordered_map<std::string, float> joints;
     std::unordered_map<std::string, float> joint_target;
-    std::unordered_map<std::string, int> controlStates;
-    TactileVisual::HandPressureData tips;
-    for (auto &[name, joint_group] : state)
+
+    for (auto &[group_name, joint_group] : state)
     {
         for (auto &[joint_name, data] : joint_group.joints)
         {
-            // auto j = dof_map.find(i);
-            // if (j == dof_map.end())
-            //     continue;
-            joints.emplace(joint_name, data.position);
-            float rad = float(data.position) * float(M_PI) / 180.0f;
-            std::unordered_map<std::string, float> joint_pos = dofsToJoints(joint_name, rad, false);
+            const float rad = float(data.position) * float(M_PI) / 180.0f;
+            const std::unordered_map<std::string, float> joint_pos =
+                dofsToJoints(joint_name, rad, false);
             for (const auto &j : joint_pos)
             {
                 const auto &name = j.first;
@@ -746,44 +626,41 @@ void MainWindow::readJointAngles()
                     joint_target.emplace(name, j.second);
             }
         }
-        QVector<float> pressure;
-        pressure.append((float)joint_group.tip_sensor.tip_tactile / 100.0f);
-        if (name == "THUMB")
-            tips.thumb.values = pressure;
-        else if (name == "INDEX_FINGER")
-            tips.index.values = pressure;
-        else if (name == "MIDDLE_FINGER")
-            tips.middle.values = pressure;
-        else if (name == "RING_FINGER")
-            tips.ring.values = pressure;
-        else if (name == "PINKY")
-            tips.pinky.values = pressure;
-        for (auto &[joint_name, data] : joint_group.control_mode)
-        {
-            controlStates.emplace(joint_name, data);
-        }
     }
+
     if (model3DShowsSource("fb"))
     {
-        if (model3DDual())
-        {
-            for (auto &[key, value] : joint_target)
-                ogre_->setJointPosition("fb", key, value);
-        }
-        else
-        {
-            for (auto &[key, value] : joint_target)
-                ogre_->setJointPosition(key, value);
-        }
+        for (auto &[key, value] : joint_target)
+            ogre_->setJointPosition(key, value);
     }
-    side_->updateFeedback(state);
-    side_->updateBusInfo(ctrl_->bus_info());
-    tactile_->setHandPressureData(tips);
+
+    // Bus telemetry feeds the table under the log text box. This runs in the
+    // 10 ms loop, so it must not append to the text log: a line per cycle would
+    // bury everything else within seconds.
+    if (ctrl_ && logPanel_)
+    {
+        const BusData bus = ctrl_->bus_info();
+        const bool fault = bus.fault_code != 0;
+        logPanel_->setBusTelemetry(double(bus.bus_voltage), int(bus.bus_current),
+                                   double(bus.temp1_cC),
+                                   double(bus.temp2_cC),
+                                   quint16(bus.fault_code), fault);
+
+        // Report a fault once, when it appears, instead of every cycle.
+        if (fault && !busFaultActive_)
+            appendLog(LogLevel::Error, QString("Bus fault 0x%1").arg(bus.fault_code, 0, 16));
+        else if (!fault && busFaultActive_)
+            appendLog(LogLevel::Info, "Bus fault cleared.");
+        busFaultActive_ = fault;
+    }
 }
+
+/* ------------------------------------------------------------------ *
+ *  Panel visibility
+ * ------------------------------------------------------------------ */
 
 void MainWindow::onConnectorModelChange(const QString &model_name)
 {
-    // The first combo entry is the "- Select a model -" placeholder.
     if (model_name.isEmpty() || model_name.startsWith("-"))
     {
         selectedModel_.clear();
@@ -797,74 +674,48 @@ void MainWindow::onConnectorModelChange(const QString &model_name)
     action_path_ = std::string("data/action_") + model_name.toUtf8().constData() + std::string(".json");
 }
 
-void MainWindow::onUpperTabCloseRequested(int idx)
+void MainWindow::showCameraPanel()
 {
-    // Always keep at least one tab so the work area never collapses.
-    if (upperTabs->count() <= 1)
-        return;
-    upperTabs->removeTab(idx);
+    if (leftDock_)
+        leftDock_->showPanel(camera_);
 }
 
-void MainWindow::toggleLogPanel()
+void MainWindow::showPlotPanel()
 {
-    if (!logPanel_)
-        return;
-    const bool visible = actLog_ && actLog_->isChecked();
-    logPanel_->setVisible(visible);
+    if (rightDock_)
+        rightDock_->showPanel(plotPanel_);
 }
 
-void MainWindow::openCameraTab()
+void MainWindow::showTactilePanel()
 {
-    addOrShowTab(camera_, "Hand Detect");
+    if (rightDock_)
+        rightDock_->showPanel(tactile_);
 }
 
-void MainWindow::openUrdfLoaderTab()
+void MainWindow::showLogPanel()
 {
-    addOrShowTab(ogre_, "3D Model");
+    if (rightDock_ && logPanel_)
+        rightDock_->showPanel(logPanel_);
 }
 
-void MainWindow::openMotorControlTab()
+void MainWindow::toggleLeftDock()
 {
-    addOrShowTab(motor_, "Joint Modes");
+    if (leftDock_)
+        leftDock_->setCollapsed(!leftDock_->isCollapsed());
 }
 
-void MainWindow::openActionPanelTab()
+void MainWindow::toggleRightDock()
 {
-    addOrShowTab(actionFlow_, "Action Sets");
+    if (rightDock_)
+        rightDock_->setCollapsed(!rightDock_->isCollapsed());
 }
 
-void MainWindow::openDiagram()
-{
-    auto *plot = new PlotPanel(this);
-    upperTabs->addTab(plot, "Diagram");
-    upperTabs->setCurrentIndex(upperTabs->count() - 1);
-
-    auto *timer = new QTimer(plot); // lifetime tied to this panel
-
-    connect(timer, &QTimer::timeout, plot, [this, plot]()
-            {
-        HandStateMap snapshot;
-        {
-            std::lock_guard<std::mutex> lk(mtx_);
-            if (ctrl_)
-                snapshot = ctrl_->snapshot();
-        }
-        plot->feedData(snapshot); });
-
-    plot->setUpdateTimer(timer);
-    timer->start(20);
-}
-
-void MainWindow::openTactileImage()
-{
-    addOrShowTab(tactile_, "Tactile");
-}
+/* ------------------------------------------------------------------ *
+ *  Joint <-> DOF mapping helpers
+ * ------------------------------------------------------------------ */
 
 std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::string dof_name, float value, bool is_hall)
 {
-    // auto module_name = dofs_inverted_index.find(dof_name);
-    // if (module_name == dofs_inverted_index.end())
-    //     return {};
     auto module_name = joints_inverted_index.find(dof_name);
     if (module_name == joints_inverted_index.end())
         return {};
@@ -880,16 +731,13 @@ std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::strin
         {
             map = j.joint_feedback_map;
             if (is_hall)
-                joint_rad = value / (j.hall_route.second - j.hall_route.first) * 
+                joint_rad = value / (j.hall_route.second - j.hall_route.first) *
                             (j.route.second - j.route.first) / 180.0 * float(M_PI);
             break;
         }
     }
     if (map.size() == 0)
         return {};
-    // float sum = 0;
-    // for (float v : map)
-    //     sum += v;
 
     std::unordered_map<std::string, float> result;
     const int count = std::min(map.size(), ms.size());

@@ -17,7 +17,7 @@ class QVBoxLayout;
  * --------------------
  * Pop-up with one tab per topic:
  *   - CAN:      CAN bus parameters + simulation mode (both moved out of Connector)
- *   - 3D Model: single model (driven by feedback *or* command data) or dual model
+ *   - 3D Model: the single model instance and whether command or feedback drives it
  *   - Filter:   feedback filter / One Euro parameters (moved out of SidePanel)
  *   - Software: read-only build / environment information
  *
@@ -59,8 +59,7 @@ public:
     bool simulationMode() const;
 
     // --- 3D model ---
-    bool dualModel() const;       // true = two instances (cmd + fb), false = single
-    bool useFeedbackData() const; // single model only: feedback or command driven
+    bool useFeedbackData() const; // true = feedback drives the model, false = command
 
     /* Navigation style of the 3D view, named after RViz' view controller. */
     QString viewStyle() const;
@@ -82,7 +81,7 @@ signals:
     void filterChanged(bool enabled, double freq, double min_cutoff, double beta, double d_cutoff);
     void filterReset();
     void simulationModeChanged(bool simulation);
-    void model3DConfigChanged(bool dual, bool use_feedback);
+    void model3DConfigChanged(bool use_feedback);
     void viewStyleChanged(const QString &style);
     void focalMarkerVisibilityChanged(bool visible);
     void notify(const QString &msg);
@@ -90,7 +89,6 @@ signals:
 private slots:
     void onApply();
     void onResetFilterState();
-    void onModelModeChanged(int index);
 
 private:
     void buildCanSection(QVBoxLayout *root);
@@ -130,7 +128,6 @@ private:
     QPair<int, int> deviceLocation_{0, 0};
 
     /* 3D model */
-    QComboBox *model3DMode_{nullptr};
     QComboBox *model3DSource_{nullptr};
     QComboBox *viewStyle_{nullptr};
     QCheckBox *showFocalMarker_{nullptr};

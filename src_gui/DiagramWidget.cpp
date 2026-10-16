@@ -1,847 +1,473 @@
 // DiagramWidget.cpp
 #include "DiagramWidget.hpp"
 
-#include <QComboBox>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QCheckBox>
-#include <QLabel>
-#include <QScrollArea>
-#include <QScrollBar>
-#include <QPushButton>
-#include <QToolButton>
-#include <QFileDialog>
-#include <QFile>
-#include <QTextStream>
-#include <QMessageBox>
-#include <QDateTime>
-#include <QStandardPaths>
-#include <QDir>
-#include <QDialog>
 #include <QPainter>
-#include <QtMath>
-#include <QSplitter>
-#include <QDebug>
+#include <QPaintEvent>
+#include <QWheelEvent>
+#include <QMouseEvent>
+#include <QLinearGradient>
+#include <QPolygonF>
+#include <QFont>
+#include <QPen>
+#include <QCursor>
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
-// using grip::HandStateMap;
-// using grip::JointState;
-// using grip::ModuleState;
-// using grip::Telemetry;
+namespace
+{
+/* Same palette as the tactile plots so both panels look alike. */
+const QColor kBackground(22, 24, 28);
+const QColor kGrid(70, 76, 88, 150);
+const QColor kAxis(110, 118, 132, 200);
+const QColor kCurve(120, 200, 255);
+const QColor kFillTop(90, 170, 235, 150);
+const QColor kFillBottom(90, 170, 235, 20);
+const QColor kText(214, 219, 226);
+const QColor kTextDim(150, 158, 170);
+
+/* Zoom limits, in visible samples. */
+constexpr int kMinWindow = 20;
+constexpr int kMaxWindow = 5000;
+
+/* Rounds a value to a "nice" grid step (1, 2, 5 x 10^n). */
+double niceStep(double raw)
+{
+    if (raw <= 0.0)
+        return 1.0;
+    const double mag = std::pow(10.0, std::floor(std::log10(raw)));
+    const double norm = raw / mag;
+    double step = 1.0;
+    if (norm > 5.0)
+        step = 10.0;
+    else if (norm > 2.0)
+        step = 5.0;
+    else if (norm > 1.0)
+        step = 2.0;
+    return step * mag;
+}
+} // namespace
 
 DiagramWidget::DiagramWidget(QWidget *parent)
     : QWidget(parent)
 {
-    buildUi();
+    setMinimumSize(120, 90);
+    // The widget repaints itself whenever the buffer changes.
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
+    setMouseTracking(false);
+
+    // Zoom and history browsing are frozen-only, and the tooltip says so instead
+    // of leaving the user wondering why the wheel does nothing.
+    setToolTip(tr("Live: the plot follows the newest sample.\n"
+                  "Press Freeze to zoom (wheel) and drag through the history."));
 }
 
-void DiagramWidget::buildUi()
+void DiagramWidget::setJointName(const QString &module, const QString &joint)
 {
-    auto *rootLayout = new QVBoxLayout(this);
-    rootLayout->setContentsMargins(4, 4, 4, 4);
-    rootLayout->setSpacing(4);
-
-    // --- top: close, reset, type combo ---
-    auto *topRow = new QHBoxLayout;
-
-    auto *closeBtn = new QPushButton("×", this);
-    closeBtn->setFixedSize(20, 20);
-    topRow->addWidget(closeBtn);
-    connect(closeBtn, &QPushButton::clicked, this, [this]()
-            { emit requestClose(this); });
-
-    auto *resetBtn = new QPushButton(tr("Reset"), this);
-    resetBtn->setFixedHeight(20);
-    topRow->addWidget(resetBtn);
-    connect(resetBtn, &QPushButton::clicked,
-            this, &DiagramWidget::onResetZoomClicked);
-
-    auto *exportBtn = new QPushButton(tr("CSV"), this);
-    exportBtn->setFixedHeight(20);
-    exportBtn->setToolTip(tr("Save the plotted window to a CSV file"));
-    topRow->addWidget(exportBtn);
-    connect(exportBtn, &QPushButton::clicked,
-            this, &DiagramWidget::onExportCsvClicked);
-
-    auto *typeLabel = new QLabel(tr("Type:"), this);
-    m_typeCombo_ = new QComboBox(this);
-    m_typeCombo_->addItem(tr("Joint position"));
-    m_typeCombo_->addItem(tr("Joint velocity"));
-    m_typeCombo_->addItem(tr("Motor position"));
-    m_typeCombo_->addItem(tr("Motor velocity"));
-    m_typeCombo_->addItem(tr("Motor current"));
-
-    topRow->addWidget(typeLabel);
-    topRow->addWidget(m_typeCombo_, 1);
-    topRow->addStretch();
-    rootLayout->addLayout(topRow);
-
-    // --- middle: chart + scroll area for checkboxes ---
-    auto *middleRow = new QSplitter(Qt::Horizontal);
-    auto *middleRowLyt = new QHBoxLayout(middleRow);
-    rootLayout->addWidget(middleRow, 1);
-
-    // Chart
-    m_chart_ = new QChart;
-    m_chart_->setTitle(tr("Telemetry"));
-    m_chart_->legend()->setVisible(true);
-    m_chart_->legend()->setAlignment(Qt::AlignBottom);
-
-    m_axisX_ = new QValueAxis;
-    m_axisX_->setTitleText(tr("Time [s]"));
-    m_axisX_->setLabelFormat("%.0f");
-    m_axisX_->setTickType(QValueAxis::TicksDynamic);
-    m_axisX_->setTickInterval(1.0); // vertical grid every 1s
-    m_axisX_->setMinorTickCount(0);
-
-    m_axisY_ = new QValueAxis;
-    m_axisY_->setTitleText(tr("Joint Pos [rad]"));
-
-    m_chart_->addAxis(m_axisX_, Qt::AlignBottom);
-    m_chart_->addAxis(m_axisY_, Qt::AlignLeft);
-
-    m_chartView_ = new QChartView(m_chart_, this);
-    m_chartView_->setRenderHint(QPainter::Antialiasing);
-    m_chartView_->setRubberBand(QChartView::RectangleRubberBand);
-    m_chartView_->setDragMode(QGraphicsView::ScrollHandDrag);
-
-    auto *chartWgt = new QWidget();
-    auto *chartLyt = new QVBoxLayout(chartWgt);
-    chartLyt->addWidget(m_chartView_);
-    chartHistoryScroll_ = new QScrollBar(Qt::Horizontal);
-    chartHistoryScroll_->setEnabled(false);
-    chartHistoryScroll_->setRange(0, 0);
-    chartLyt->addWidget(chartHistoryScroll_);
-    chartLyt->setContentsMargins(0, 0, 0, 0);
-    middleRowLyt->addWidget(chartWgt, 3);
-
-    // Scroll area for checkboxes
-    auto *scroll = new QScrollArea(this);
-    scroll->setWidgetResizable(true);
-    middleRowLyt->addWidget(scroll, 1);
-
-    m_checksContainer_ = new QWidget(scroll);
-    m_checksLayout_ = new QVBoxLayout(m_checksContainer_);
-    m_checksLayout_->setContentsMargins(4, 4, 4, 4);
-    m_checksLayout_->setSpacing(2);
-    scroll->setWidget(m_checksContainer_);
-
-    m_globalCheck_ = nullptr;
-
-    // bottom label
-    m_emptyLabel_ = new QLabel(tr("No data yet."), this);
-    m_emptyLabel_->setAlignment(Qt::AlignCenter);
-    rootLayout->addWidget(m_emptyLabel_);
-
-    connect(m_typeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &DiagramWidget::onTypeChanged);
-    connect(chartHistoryScroll_, &QScrollBar::valueChanged, this, &DiagramWidget::timeRangeChanged);
+    moduleName_ = module;
+    jointName_ = joint;
+    window_.clear();
+    update();
 }
 
-void DiagramWidget::onResetZoomClicked()
+void DiagramWidget::setWindowSamples(int samples)
 {
-    m_chart_->zoomReset();
+    const int clamped = std::clamp(samples, kMinWindow, kMaxWindow);
+    if (clamped == windowSamples_)
+        return;
+    windowSamples_ = clamped;
+    update();
+    emit viewChanged(this);
 }
 
-bool DiagramWidget::isJointType() const
+void DiagramWidget::zoomBy(double factor)
 {
-    return m_type_ == DiagramType::JointPosition ||
-           m_type_ == DiagramType::JointVelocity;
+    if (factor <= 0.0)
+        return;
+    setWindowSamples(static_cast<int>(std::lround(windowSamples_ / factor)));
 }
 
-QColor DiagramWidget::colorForId(const QString &id) const
+void DiagramWidget::setFrozen(bool frozen)
 {
-    uint h = qHash(id);
-    int hue = static_cast<int>(h % 360);
-    return QColor::fromHsv(hue, 200, 230);
-}
+    if (frozen_ == frozen)
+        return;
+    frozen_ = frozen;
 
-void DiagramWidget::onTypeChanged(int index)
-{
-    m_type_ = static_cast<DiagramType>(index);
-    m_checkboxesDirty_ = true;
-    m_yRangeValid_ = false; // different quantity => snap to the new range
-    m_rangeDirty_ = true;
-}
-
-void DiagramWidget::clearSignalUi()
-{
-    QLayoutItem *item;
-    while ((item = m_checksLayout_->takeAt(0)) != nullptr)
+    // Leaving the frozen state returns the diagram to the plain live view:
+    // whatever zoom / history position the operator had set is dropped, so the
+    // live mode always shows the standard window at the newest sample instead of
+    // silently keeping a stale, zoomed-in or scrolled-back view.
+    if (!frozen_)
     {
-        if (QWidget *w = item->widget())
-            w->deleteLater();
-        delete item;
+        windowSamples_ = kDefaultWindowSamples;
+        historyOffset_ = 0;
     }
 
-    m_signals_.clear();
-    m_modules_.clear();
-    m_globalCheck_ = nullptr;
-}
-
-void DiagramWidget::rebuildSignalList(const HandStateMap &hand)
-{
-    clearSignalUi();
-    m_signalListType_ = m_type_;
-
-    if (hand.empty())
-    {
-        m_emptyLabel_->setVisible(true);
-        return;
-    }
-    m_emptyLabel_->setVisible(false);
-
-    // global tri-state "Select all"
-    m_globalCheck_ = new QCheckBox(tr("Select all"), m_checksContainer_);
-    m_globalCheck_->setTristate(true);
-    m_globalCheck_->setCheckState(Qt::Unchecked);
-    m_checksLayout_->addWidget(m_globalCheck_);
-    connect(m_globalCheck_, &QCheckBox::clicked,
-            this, &DiagramWidget::onGlobalClicked);
-
-    // per-module groups
-    for (const auto &modPair : hand)
-    {
-        const std::string &modNameStd = modPair.first;
-        const JointGroup &mod = modPair.second;
-        QString modName = QString::fromStdString(modNameStd);
-
-        ModuleUi &mui = m_modules_[modName];
-        if (!mui.headerCheck)
-        {
-            mui.name = modName;
-
-            QWidget *headerRow = new QWidget(m_checksContainer_);
-            auto *hLayout = new QHBoxLayout(headerRow);
-            hLayout->setContentsMargins(0, 0, 0, 0);
-            hLayout->setSpacing(2);
-
-            mui.headerCheck = new QCheckBox(modName, headerRow);
-            mui.headerCheck->setTristate(true);
-            mui.headerCheck->setCheckState(Qt::Unchecked);
-
-            mui.toggleButton = new QPushButton("+", headerRow);
-            mui.toggleButton->setCheckable(true);
-            mui.toggleButton->setMaximumWidth(24);
-            mui.toggleButton->setProperty("moduleName", modName);
-
-            hLayout->addWidget(mui.headerCheck);
-            hLayout->addStretch();
-            hLayout->addWidget(mui.toggleButton);
-            headerRow->setLayout(hLayout);
-            m_checksLayout_->addWidget(headerRow);
-
-            mui.signalsWidget = new QWidget(m_checksContainer_);
-            mui.signalsLayout = new QVBoxLayout(mui.signalsWidget);
-            mui.signalsLayout->setContentsMargins(20, 0, 0, 0);
-            mui.signalsLayout->setSpacing(2);
-            mui.signalsWidget->setVisible(false);
-            m_checksLayout_->addWidget(mui.signalsWidget);
-
-            connect(mui.headerCheck, &QCheckBox::clicked,
-                    this, &DiagramWidget::onModuleHeaderClicked);
-            connect(mui.toggleButton, &QPushButton::toggled,
-                    this, &DiagramWidget::onModuleToggleClicked);
-        }
-
-        // signals
-        if (isJointType())
-        {
-            for (const auto &jPair : mod.joints)
-            {
-                const std::string &jNameStd = jPair.first;
-                QString jointName = QString::fromStdString(jNameStd);
-                QString id = modName + "." + jointName;
-
-                QCheckBox *cb = new QCheckBox(jointName, mui.signalsWidget);
-                cb->setChecked(false);
-                cb->setProperty("signalId", id);
-                mui.signalsLayout->addWidget(cb);
-
-                SignalInfo info;
-                info.id = id;
-                info.moduleName = modName;
-                info.jointName = jointName;
-                info.isJoint = true;
-                info.motorName = "";
-                info.checkBox = cb;
-                info.series = nullptr;
-
-                m_signals_.insert(id, info);
-                mui.signalIds.append(id);
-
-                connect(cb, &QCheckBox::toggled,
-                        this, &DiagramWidget::onSignalToggled);
-            }
-        }
-        else
-        {
-            for (const auto &mPair : mod.motors)
-            {
-                QString motorName = QString::fromStdString(mPair.first);
-                QString id = modName + QString(".M")+motorName;
-
-                QString label = QString("Motor ")+motorName;
-                QCheckBox *cb = new QCheckBox(label, mui.signalsWidget);
-                cb->setChecked(false);
-                cb->setProperty("signalId", id);
-                mui.signalsLayout->addWidget(cb);
-
-                SignalInfo info;
-                info.id = id;
-                info.moduleName = modName;
-                info.jointName = QString("");
-                info.isJoint = false;
-                info.motorName = motorName;
-                info.checkBox = cb;
-                info.series = nullptr;
-
-                m_signals_.insert(id, info);
-                mui.signalIds.append(id);
-
-                connect(cb, &QCheckBox::toggled,
-                        this, &DiagramWidget::onSignalToggled);
-            }
-        }
-    }
-
-    m_checksLayout_->addStretch();
-    updateGlobalHeaderState();
-}
-
-void DiagramWidget::updateSignalListFromHand(const HandStateMap &hand)
-{
-    if (m_checkboxesDirty_)
-    {
-        if (!hand.empty())
-            rebuildSignalList(hand);
-        m_checkboxesDirty_ = false;
-    }
-}
-
-void DiagramWidget::onModuleToggleClicked(bool checked)
-{
-    QPushButton *btn = qobject_cast<QPushButton *>(sender());
-    if (!btn)
-        return;
-    QString moduleName = btn->property("moduleName").toString();
-    auto it = m_modules_.find(moduleName);
-    if (it == m_modules_.end())
-        return;
-
-    ModuleUi &mui = it.value();
-    if (mui.signalsWidget)
-        mui.signalsWidget->setVisible(checked);
-    btn->setText(checked ? "-" : "+");
-}
-
-void DiagramWidget::onSignalToggled(bool)
-{
-    QCheckBox *cb = qobject_cast<QCheckBox *>(sender());
-    if (!cb)
-        return;
-    QString id = cb->property("signalId").toString();
-    auto it = m_signals_.find(id);
-    if (it == m_signals_.end())
-        return;
-    SignalInfo &sig = it.value();
-
-    if (cb->isChecked())
-    {
-        ensureSeries(sig);
-        if (sig.series)
-            sig.series->setVisible(true);
-    }
+    // Advertise the interaction only when it is actually available: the open-hand
+    // cursor in the frozen state tells the operator the curve can be dragged.
+    if (frozen_)
+        setCursor(Qt::OpenHandCursor);
     else
-    {
-        if (sig.series)
-            sig.series->setVisible(false);
-    }
+        unsetCursor();
 
-    // Visible signal set changed: re-scale on the next frame.
-    m_rangeDirty_ = true;
-
-    if (!m_updatingFromHeader_)
-    {
-        updateModuleHeaderState(sig.moduleName);
-        updateGlobalHeaderState();
-    }
+    update();
+    emit viewChanged(this);
 }
 
-void DiagramWidget::onModuleHeaderClicked(bool checked)
+void DiagramWidget::setHistoryOffset(int offset)
 {
-    QCheckBox *cb = qobject_cast<QCheckBox *>(sender());
-    if (!cb)
+    const int clamped = std::clamp(offset, 0, std::max(0, maxHistoryOffset_));
+    if (clamped == historyOffset_)
         return;
-    QString moduleName = cb->text();
-    auto it = m_modules_.find(moduleName);
-    if (it == m_modules_.end())
-        return;
-
-    ModuleUi &mui = it.value();
-
-    m_updatingFromHeader_ = true;
-    for (const QString &id : mui.signalIds)
-    {
-        auto sit = m_signals_.find(id);
-        if (sit == m_signals_.end())
-            continue;
-        if (sit->checkBox)
-            sit->checkBox->setChecked(checked);
-    }
-    m_updatingFromHeader_ = false;
-
-    updateModuleHeaderState(moduleName);
-    updateGlobalHeaderState();
+    historyOffset_ = clamped;
+    update();
+    emit viewChanged(this);
 }
 
-void DiagramWidget::onGlobalClicked(bool checked)
+bool DiagramWidget::valueAt(const HandStateMap &hand, float &outValue) const
 {
-    if (!m_globalCheck_)
-        return;
-    m_updatingFromHeader_ = true;
-    for (auto mit = m_modules_.begin(); mit != m_modules_.end(); ++mit)
-    {
-        ModuleUi &mui = mit.value();
-        for (const QString &id : mui.signalIds)
-        {
-            auto sit = m_signals_.find(id);
-            if (sit == m_signals_.end())
-                continue;
-            if (sit->checkBox)
-                sit->checkBox->setChecked(checked);
-        }
-    }
-    m_updatingFromHeader_ = false;
+    if (jointName_.isEmpty())
+        return false;
 
-    for (auto mit = m_modules_.begin(); mit != m_modules_.end(); ++mit)
-        updateModuleHeaderState(mit.key());
-    updateGlobalHeaderState();
-}
-
-void DiagramWidget::updateModuleHeaderState(const QString &moduleName)
-{
-    auto it = m_modules_.find(moduleName);
-    if (it == m_modules_.end())
-        return;
-    ModuleUi &mui = it.value();
-    if (!mui.headerCheck)
-        return;
-
-    int total = 0;
-    int checked = 0;
-
-    for (const QString &id : mui.signalIds)
-    {
-        auto sit = m_signals_.find(id);
-        if (sit == m_signals_.end())
-            continue;
-        QCheckBox *cb = sit->checkBox;
-        if (!cb)
-            continue;
-        ++total;
-        if (cb->isChecked())
-            ++checked;
-    }
-
-    Qt::CheckState st = Qt::Unchecked;
-    if (total > 0)
-    {
-        if (checked == 0)
-            st = Qt::Unchecked;
-        else if (checked == total)
-            st = Qt::Checked;
-        else
-            st = Qt::PartiallyChecked;
-    }
-    mui.headerCheck->setCheckState(st);
-}
-
-void DiagramWidget::updateGlobalHeaderState()
-{
-    if (!m_globalCheck_)
-        return;
-
-    int total = 0;
-    int checked = 0;
-
-    for (auto it = m_signals_.begin(); it != m_signals_.end(); ++it)
-    {
-        QCheckBox *cb = it->checkBox;
-        if (!cb)
-            continue;
-        ++total;
-        if (cb->isChecked())
-            ++checked;
-    }
-
-    Qt::CheckState st = Qt::Unchecked;
-    if (total > 0)
-    {
-        if (checked == 0)
-            st = Qt::Unchecked;
-        else if (checked == total)
-            st = Qt::Checked;
-        else
-            st = Qt::PartiallyChecked;
-    }
-    m_globalCheck_->setCheckState(st);
-}
-
-void DiagramWidget::ensureSeries(SignalInfo &sig)
-{
-    if (sig.series)
-    {
-        return;
-    }
-
-    auto *series = new QLineSeries(m_chart_);
-    series->setName(sig.checkBox ? sig.checkBox->text() : sig.id);
-    series->setColor(colorForId(sig.id));
-
-    m_chart_->addSeries(series);
-    series->attachAxis(m_axisX_);
-    series->attachAxis(m_axisY_);
-
-    sig.series = series;
-}
-
-bool DiagramWidget::getValueForSignalAtSample(const SignalInfo &sig,
-                                              const HandStateMap &hand,
-                                              float &outValue) const
-{
-    auto modIt = hand.find(sig.moduleName.toStdString());
+    auto modIt = hand.find(moduleName_.toStdString());
     if (modIt == hand.end())
         return false;
-    const JointGroup &mod = modIt->second;
 
-    if (sig.isJoint)
-    {
-        auto jIt = mod.joints.find(sig.jointName.toStdString());
-        if (jIt == mod.joints.end())
-            return false;
-        const DevState &js = jIt->second;
-        switch (m_type_)
-        {
-        case DiagramType::JointPosition:
-            outValue = js.position;
-            return true;
-        case DiagramType::JointVelocity:
-            outValue = js.velocity;
-            return true;
-        default:
-            return false;
-        }
-    }
-    else
-    {
-        auto mIt = mod.motors.find(sig.motorName.toStdString());
-        if (mIt == mod.motors.end())
-            return false;
-        const DevState &t = mIt->second;
-        switch (m_type_)
-        {
-        case DiagramType::MotorPosition:
-            outValue = static_cast<float>(t.position);
-            return true;
-        case DiagramType::MotorVelocity:
-            outValue = static_cast<float>(t.velocity);
-            return true;
-        case DiagramType::MotorCurrent:
-            outValue = static_cast<float>(t.effort);
-            return true;
-        default:
-            return false;
-        }
-    }
+    auto jIt = modIt->second.joints.find(jointName_.toStdString());
+    if (jIt == modIt->second.joints.end())
+        return false;
+
+    // Joint position is the only quantity plotted.
+    outValue = jIt->second.position;
+    return true;
 }
 
-void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history,
-                                 double samplePeriodSec,
-                                 int historyOffsetSamples,
-                                 int startIdxDeque,
-                                 int endIdxDeque,
-                                 double xMin, double xMax)
+void DiagramWidget::renderWindow(const std::deque<HandStateMap> &history)
 {
-    if (history.empty() || m_signals_.isEmpty())
-        return;
-    if (startIdxDeque < 0 || endIdxDeque < startIdxDeque)
-        return;
+    // A frozen diagram does not follow new samples: it keeps the sample indices
+    // it is showing, so the view stays put while data keeps arriving. Freezing
+    // must not, however, block an explicit browse (dragging), which is requested
+    // by changing historyOffset_ — that is why the captured indices, not the
+    // frozen flag alone, decide whether there is anything to do.
+    const int requestedEnd = static_cast<int>(history.size()) - 1 - historyOffset_;
 
-    // Keep a handle on the shared history (owned by PlotPanel) so the CSV export
-    // can write every recorded sample instead of only the rendered window.
-    m_history_ = &history;
-    m_historyPeriodSec_ = samplePeriodSec;
-    m_historyOffsetSamples_ = historyOffsetSamples;
-    ++m_rangeFrame_;
+    if (frozen_ && requestedEnd == frozenEnd_)
+        return; // nothing changed and we are not following live
 
-    int startIdx = startIdxDeque;
-    int endIdx = endIdxDeque;
-    double xMin_ = xMin;
-    double xMax_ = xMax;
-
-    if (m_isLive_)
+    const int total = static_cast<int>(history.size());
+    if (total <= 0)
     {
-        chartHistoryScroll_->setRange(0, startIdx);
-        chartHistoryScroll_->setValue(startIdx);
-    }
-    else if (updateRequest_)
-    {
-        startIdx = chartHistoryScroll_->value();
-        endIdx = startIdx + m_maxPoints_ - 1;
-        xMin_ = startIdx * m_samplePeriodSec_;
-        xMax_ = endIdx * m_samplePeriodSec_;
-        updateRequest_ = false;
-        m_rangeDirty_ = true; // window jumped (history scroll): re-scale at once
-    }
-    else
+        window_.clear();
+        windowStartSample_ = 0;
+        update();
         return;
-
-    const int windowLen = endIdx - startIdx + 1;
-    if (windowLen <= 0)
-        return;
-
-    double globalMin = std::numeric_limits<double>::max();
-    double globalMax = std::numeric_limits<double>::lowest();
-    bool haveAny = false;
-
-    // The curve only shows the window above, but the Y range also covers an extra
-    // slice of older history (kRangeLookbackSec). Without it the axis would jump
-    // every time a peak scrolls out of the visible window.
-    const int extraSamples = samplePeriodSec > 0.0
-                                 ? static_cast<int>(std::ceil(kRangeLookbackSec / samplePeriodSec))
-                                 : 0;
-    const int rangeStart = (startIdx > extraSamples) ? startIdx - extraSamples : 0;
-
-    // For each active signal, rebuild its series from this window
-    for (auto it = m_signals_.begin(); it != m_signals_.end(); ++it)
-    {
-        SignalInfo &sig = it.value();
-        if (!sig.checkBox || !sig.checkBox->isChecked())
-            continue;
-
-        ensureSeries(sig);
-        if (!sig.series)
-            continue;
-
-        QLineSeries *series = sig.series;
-        series->clear();
-
-        for (int idx = 0; idx < windowLen; ++idx)
-        {
-            int dequeIndex = startIdx + idx;
-            if (dequeIndex >= static_cast<int>(history.size()))
-                break;
-            const int globalIdx = historyOffsetSamples + dequeIndex + 1; // 1-based
-            double t = globalIdx * samplePeriodSec;
-
-            float v;
-            if (!getValueForSignalAtSample(sig, history[dequeIndex], v))
-                continue;
-
-            series->append(t, v);
-
-            if (v < globalMin)
-                globalMin = v;
-            if (v > globalMax)
-                globalMax = v;
-            haveAny = true;
-        }
-
-        // Older samples are not plotted, they only feed the Y range.
-        for (int dequeIndex = rangeStart; dequeIndex < startIdx; ++dequeIndex)
-        {
-            if (dequeIndex >= static_cast<int>(history.size()))
-                break;
-            float v;
-            if (!getValueForSignalAtSample(sig, history[dequeIndex], v))
-                continue;
-
-            if (v < globalMin)
-                globalMin = v;
-            if (v > globalMax)
-                globalMax = v;
-            haveAny = true;
-        }
     }
 
-    if (haveAny)
-    {
-        // Refresh the *target* range only every N-th frame (or when something
-        // structural changed): recomputing it every frame makes the axis jitter
-        // and costs an extra pass over the lookback window each time.
-        const bool first = !m_yRangeValid_;
-        if (first || m_rangeDirty_ || (m_rangeFrame_ % kRangeRefreshFrames == 0))
-        {
-            double lo = globalMin;
-            double hi = globalMax;
-            if (qFuzzyCompare(lo, hi))
-            {
-                lo -= 1.0;
-                hi += 1.0;
-            }
-            const double pad = (hi - lo) * kRangePadRatio; // +10 % per side = +20 % total
-            m_yTargetMin_ = lo - pad;
-            m_yTargetMax_ = hi + pad;
-            m_yRangeValid_ = true;
-            m_rangeDirty_ = false;
-        }
+    // Expose how far back the user may scroll.
+    maxHistoryOffset_ = std::max(0, total - windowSamples_);
 
-        // Ease the visible range towards the target so it glides instead of jumping.
-        double curMin = m_axisY_->min();
-        double curMax = m_axisY_->max();
-        if (first)
+    // The window ends `historyOffset_` samples before the newest one.
+    const int end = total - 1 - historyOffset_; // inclusive, newest last
+    const int begin = std::max(0, end - windowSamples_ + 1);
+    if (end < begin)
+    {
+        window_.clear();
+        windowStartSample_ = 0;
+        update();
+        return;
+    }
+
+    window_.clear();
+    for (int i = begin; i <= end; ++i)
+    {
+        float v = 0.0f;
+        if (valueAt(history[static_cast<size_t>(i)], v))
+            window_.push_back(v);
+    }
+
+    // Index of the first plotted sample inside the whole recorded run: the X axis
+    // is labelled with when that sample was taken, not with its position in the
+    // window, so the labels stay meaningful while browsing the history.
+    windowStartSample_ = historyOffsetSamples_ + begin;
+
+    // Remember which sample the frozen view is pinned to.
+    frozenEnd_ = end;
+
+    update();
+}
+
+void DiagramWidget::clearWindow()
+{
+    window_.clear();
+    windowStartSample_ = 0;
+    // Invalidate the "already showing this" marker, so the next renderWindow()
+    // call is not skipped as a no-op.
+    frozenEnd_ = -1;
+    update();
+}
+
+QSize DiagramWidget::sizeHint() const { return QSize(300, 260); }
+QSize DiagramWidget::minimumSizeHint() const { return QSize(160, 140); }
+
+void DiagramWidget::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::TextAntialiasing, true);
+    p.fillRect(rect(), kBackground);
+
+    /* The plotting area leaves room for the axis scales: tick labels on the left
+       (values) and along the bottom (time). */
+    const QFontMetrics fm(p.font());
+    const int labelH = fm.height();
+    const int yLabelW = fm.horizontalAdvance(QStringLiteral("-0.000")) + 6;
+    const QRectF area = QRectF(rect()).adjusted(
+        yLabelW + 4,                  // left: Y tick labels
+        labelH + 6,                   // top: title row
+        -8,                           // right
+        -(labelH + 6));               // bottom: X tick labels
+    if (area.width() <= 20 || area.height() <= 20)
+        return;
+
+    /* ---- title (top-left) and readout (top-right) ---- */
+    const QRectF header(4, 2, width() - 8, labelH);
+    const QString title = jointName_.isEmpty() ? moduleName_
+                                               : (moduleName_ + "." + jointName_);
+    QFont f = p.font();
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(kText);
+    p.drawText(header, Qt::AlignTop | Qt::AlignLeft, title);
+
+    f.setBold(false);
+    p.setFont(f);
+    if (!window_.empty())
+    {
+        p.setPen(kTextDim);
+        p.drawText(header, Qt::AlignTop | Qt::AlignRight,
+                   QStringLiteral("%1 rad").arg(double(window_.back()), 0, 'f', 3));
+    }
+
+    /* ---- value range (kept as a base for the 1-2-5 tick walk below) ---- */
+    double vMin = 0.0, vMax = 0.0;
+    if (!window_.empty())
+    {
+        vMin = *std::min_element(window_.begin(), window_.end());
+        vMax = *std::max_element(window_.begin(), window_.end());
+        if (std::abs(vMax - vMin) < 1e-9)
         {
-            curMin = m_yTargetMin_;
-            curMax = m_yTargetMax_;
+            // Flat trace: keep it in the middle of a small band.
+            vMin -= 0.5;
+            vMax += 0.5;
         }
         else
         {
-            curMin += (m_yTargetMin_ - curMin) * kRangeEase;
-            curMax += (m_yTargetMax_ - curMax) * kRangeEase;
+            const double pad = (vMax - vMin) * 0.12;
+            vMin -= pad;
+            vMax += pad;
         }
-        m_axisY_->setRange(curMin, curMax);
+    }
+    else
+    {
+        vMin = -1.0;
+        vMax = 1.0;
     }
 
-    // Shared x-axis range
-    m_axisX_->setRange(xMin_, xMax_);
-}
+    /* ---- X range: absolute time of the first / last plotted sample ----
+       With no data there is no meaningful time to label, so a default span is
+       used and the tick labels are suppressed below (otherwise every tick would
+       collapse onto 0.0). */
+    const double period = samplePeriodSec_ > 0.0 ? samplePeriodSec_ : 0.02;
+    const int n = static_cast<int>(window_.size());
+    const bool hasData = n >= 2;
+    const double t0 = hasData ? windowStartSample_ * period : 0.0;
+    const double t1 = hasData ? (windowStartSample_ + (n - 1)) * period
+                              : windowSamples_ * period;
+    const double tSpan = std::max(1e-9, t1 - t0);
 
-void DiagramWidget::setLiveMode(bool isLive)
-{
-    m_isLive_ = isLive;
-    chartHistoryScroll_->setEnabled(!isLive);
-}
+    /* Snap the Y range outwards to a whole number of grid steps so the tick
+       labels are round numbers and the top/bottom grid lines are on-grid. */
+    const double yStep = niceStep((vMax - vMin) / 4.0);
+    const double gridMin = std::floor(vMin / yStep) * yStep;
+    const double gridMax = std::ceil(vMax / yStep) * yStep;
+    const double vSpan = std::max(1e-9, gridMax - gridMin);
 
-void DiagramWidget::timeRangeChanged(int start)
-{
-    updateRequest_ = true;
-}
-
-void DiagramWidget::onExportCsvClicked()
-{
-    // The file dialog must never take the whole application down: use Qt's own
-    // (non-native) dialog — the native gtk/portal one is a known crash source on
-    // some Linux setups — and turn any unexpected error into a message box.
-    try
+    /* ---- grid ---- */
+    p.setPen(QPen(kGrid, 1.0));
+    for (double v = gridMin; v <= gridMax + yStep * 0.5; v += yStep)
     {
-        exportCsv();
+        const double y = area.bottom() - (v - gridMin) / vSpan * area.height();
+        p.drawLine(QPointF(area.left(), y), QPointF(area.right(), y));
     }
-    catch (const std::exception &e)
+    const double xStep = niceStep(tSpan / 4.0);
+    for (double t = std::ceil(t0 / xStep) * xStep; t <= t1 + xStep * 0.5; t += xStep)
     {
-        QMessageBox::critical(this, tr("Export CSV"),
-                              tr("Export failed:\n%1").arg(QString::fromUtf8(e.what())));
-    }
-    catch (...)
-    {
-        QMessageBox::critical(this, tr("Export CSV"), tr("Export failed: unknown error."));
-    }
-}
-
-void DiagramWidget::exportCsv()
-{
-    // Columns = the signals ticked on the right; their meaning (position,
-    // velocity, current…) comes from the type combo box.
-    if (m_signalListType_ != m_type_)
-    {
-        QMessageBox::warning(this, tr("Export CSV"),
-                             tr("The signal list is still refreshing for the selected type. "
-                                "Please wait for the next sample and try again."));
-        return;
+        const double x = area.left() + (t - t0) / tSpan * area.width();
+        p.drawLine(QPointF(x, area.top()), QPointF(x, area.bottom()));
     }
 
-    QVector<const SignalInfo *> selected;
-    for (auto it = m_signals_.constBegin(); it != m_signals_.constEnd(); ++it)
+    /* ---- plot border (the two axes) ---- */
+    p.setPen(QPen(kAxis, 1.2));
+    p.drawLine(area.bottomLeft(), area.bottomRight()); // X axis
+    p.drawLine(area.topLeft(), area.bottomLeft());     // Y axis
+
+    /* ---- Y tick labels (left of the axis) ---- */
+    p.setPen(kTextDim);
+    for (double v = gridMin; v <= gridMax + yStep * 0.5; v += yStep)
     {
-        const SignalInfo &sig = it.value();
-        if (sig.checkBox && sig.checkBox->isChecked() && sig.isJoint == isJointType())
-            selected.append(&sig);
+        const double y = area.bottom() - (v - gridMin) / vSpan * area.height();
+        const QRectF box(area.left() - yLabelW - 2, y - labelH / 2.0, yLabelW, labelH);
+        p.drawText(box, Qt::AlignRight | Qt::AlignVCenter,
+                   QString::number(v, 'f', 2));
     }
 
-    if (selected.isEmpty())
+    /* ---- X tick labels (below the axis), in seconds ----
+       Only drawn once there is data: with an empty window the range is the
+       default span and labelling it would just print placeholder times. */
+    if (hasData)
     {
-        QMessageBox::warning(this, tr("Export CSV"),
-                             tr("Nothing to export: tick at least one signal on the right."));
-        return;
-    }
-
-    if (!m_history_ || m_history_->empty())
-    {
-        QMessageBox::warning(this, tr("Export CSV"),
-                             tr("Nothing to export: no sample recorded yet (press Start)."));
-        return;
-    }
-
-    QString type = m_typeCombo_ ? m_typeCombo_->currentText() : QStringLiteral("data");
-    type.replace(QLatin1Char(' '), QLatin1Char('_'));
-    const QString defaultName = QStringLiteral("diagram_%1_%2.csv")
-                                    .arg(type)
-                                    .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
-
-    const QString defaultPath = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
-                                    .filePath(defaultName);
-
-    QFileDialog dlg(this, tr("Export CSV"), defaultPath,
-                    tr("CSV files (*.csv);;All files (*)"));
-    dlg.setAcceptMode(QFileDialog::AcceptSave);
-    dlg.setFileMode(QFileDialog::AnyFile);
-    dlg.setDefaultSuffix(QStringLiteral("csv"));
-    dlg.setOption(QFileDialog::DontUseNativeDialog, true);
-    if (dlg.exec() != QDialog::Accepted)
-        return;
-
-    const QString path = dlg.selectedFiles().value(0);
-    if (path.isEmpty())
-        return;
-
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
-    {
-        QMessageBox::warning(this, tr("Export CSV"),
-                             tr("Cannot write the file:\n%1").arg(path));
-        return;
-    }
-
-    auto csvField = [](const QString &s)
-    {
-        if (s.contains(QLatin1Char(',')) || s.contains(QLatin1Char('"')) || s.contains(QLatin1Char('\n')))
-            return QLatin1Char('"') + QString(s).replace(QLatin1Char('"'), QLatin1String("\"\"")) + QLatin1Char('"');
-        return s;
-    };
-
-    QTextStream out(&file);
-
-    // Header: time column first, then one column per selected signal.
-    QStringList header;
-    header << QStringLiteral("time_s");
-    for (const SignalInfo *sig : selected)
-        header << csvField(sig->checkBox ? sig->checkBox->text() : sig->id);
-    out << header.join(QLatin1Char(',')) << '\n';
-
-    // Rows — the whole recorded history, not just the rendered window.
-    const int n = static_cast<int>(m_history_->size());
-    for (int i = 0; i < n; ++i)
-    {
-        const int globalIdx = m_historyOffsetSamples_ + i + 1; // 1-based
-        const double t = globalIdx * m_historyPeriodSec_;
-        const HandStateMap &hand = (*m_history_)[i];
-
-        QStringList row;
-        row << QString::number(t, 'f', 6);
-        for (const SignalInfo *sig : selected)
+        for (double t = std::ceil(t0 / xStep) * xStep; t <= t1 + xStep * 0.5; t += xStep)
         {
-            float v = 0.0f;
-            row << (getValueForSignalAtSample(*sig, hand, v) ? QString::number(static_cast<double>(v), 'f', 6)
-                                                             : QString());
+            const double x = area.left() + (t - t0) / tSpan * area.width();
+            const QRectF box(x - 40, area.bottom() + 2, 80, labelH);
+            p.drawText(box, Qt::AlignHCenter | Qt::AlignTop,
+                       QString::number(t, 'f', 1));
         }
-        out << row.join(QLatin1Char(',')) << '\n';
     }
-    file.close();
 
-    QMessageBox::information(this, tr("Export CSV"),
-                             tr("Saved %1 samples x %2 signals to:\n%3")
-                                 .arg(n)
-                                 .arg(selected.size())
-                                 .arg(path));
+    /* ---- curve ---- */
+    if (n >= 2)
+    {
+        const double stepX = area.width() / double(n - 1);
+
+        QPolygonF line;
+        line.reserve(n);
+        for (int i = 0; i < n; ++i)
+        {
+            const double x = area.left() + i * stepX;
+            const double y = area.bottom() -
+                             std::clamp((double(window_[static_cast<size_t>(i)]) - gridMin) / vSpan,
+                                        0.0, 1.0) * area.height();
+            line << QPointF(x, y);
+        }
+
+        // Filled area under the curve, same treatment as the tactile force plot.
+        QPolygonF filled = line;
+        filled << QPointF(line.last().x(), area.bottom())
+               << QPointF(line.first().x(), area.bottom());
+
+        QLinearGradient grad(area.topLeft(), area.bottomLeft());
+        grad.setColorAt(0.0, kFillTop);
+        grad.setColorAt(1.0, kFillBottom);
+        p.setPen(Qt::NoPen);
+        p.setBrush(grad);
+        p.drawPolygon(filled);
+
+        p.setPen(QPen(kCurve, 1.6));
+        p.setBrush(Qt::NoBrush);
+        p.drawPolyline(line);
+    }
+    else if (window_.empty())
+    {
+        p.setPen(kTextDim);
+        p.drawText(area, Qt::AlignCenter, tr("Waiting for data..."));
+    }
+
+    /* ---- freeze / history badge, so the state is never ambiguous ---- */
+    QString badge;
+    if (frozen_)
+        badge = tr("FROZEN");
+    if (historyOffset_ > 0)
+        badge += (badge.isEmpty() ? QString() : QStringLiteral("  ")) +
+                 tr("-%1").arg(historyOffset_);
+    if (!badge.isEmpty())
+    {
+        f.setBold(true);
+        p.setFont(f);
+        p.setPen(QColor(240, 190, 90)); // amber: "you are not looking at live"
+        const QRectF box(area.right() - 140, area.top() - labelH - 4, 140, labelH);
+        p.drawText(box, Qt::AlignTop | Qt::AlignRight, badge);
+    }
+}
+
+/* ---- interactions: zoom / history, only while frozen ----
+ *
+ * While the view is live the curve must keep following the newest sample, so
+ * changing the zoom or dragging through the history is refused: the panel would
+ * immediately overwrite the change on the next sample anyway, and an operator
+ * would be left fighting the view. Freeze first, then zoom / drag.
+ */
+
+void DiagramWidget::wheelEvent(QWheelEvent *event)
+{
+    if (!frozen_)
+    {
+        // Let the event bubble: the scroll area can use it to scroll the list.
+        event->ignore();
+        return;
+    }
+
+    // Wheel up = zoom in (fewer samples in the window).
+    const int steps = event->angleDelta().y();
+    if (steps == 0)
+    {
+        event->ignore();
+        return;
+    }
+    // Consume the event *before* touching the view: setWindowSamples() emits
+    // viewChanged(), and the panel may re-enter and re-render in response. Doing
+    // the bookkeeping first keeps this handler free of any window-system state
+    // once the signal is out.
+    event->accept();
+
+    const double factor = std::pow(1.15, steps / 120.0);
+    setWindowSamples(static_cast<int>(std::lround(windowSamples_ / factor)));
+}
+
+void DiagramWidget::mousePressEvent(QMouseEvent *event)
+{
+    // Left/right dragging browses the recorded history, but only while frozen:
+    // in live mode the view must stay pinned to the newest sample. Browsing also
+    // needs more history than one window holds, otherwise there is nothing to
+    // walk through.
+    if (event->button() == Qt::LeftButton && frozen_ && maxHistoryOffset_ > 0)
+    {
+        dragging_ = true;
+        dragStartX_ = event->pos().x();
+        dragStartOffset_ = historyOffset_;
+        setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+    QWidget::mousePressEvent(event);
+}
+
+void DiagramWidget::mouseMoveEvent(QMouseEvent *event)
+{
+    if (!dragging_)
+    {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    const int dx = event->pos().x() - dragStartX_;
+    const double perPx = double(windowSamples_) / std::max(1, width());
+    // Dragging to the right moves towards older samples (the content follows the
+    // cursor), so the offset grows.
+    setHistoryOffset(dragStartOffset_ + static_cast<int>(std::lround(dx * perPx)));
+    event->accept();
+}
+
+void DiagramWidget::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (dragging_ && event->button() == Qt::LeftButton)
+    {
+        dragging_ = false;
+        unsetCursor();
+        event->accept();
+        return;
+    }
+    QWidget::mouseReleaseEvent(event);
 }

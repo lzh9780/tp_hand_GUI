@@ -43,6 +43,10 @@ struct HandSettings {
     std::vector<std::string> control_policies;
     std::vector<std::string> wrist_control;
     std::string urdf_file;
+
+    bool tactile_sensor{false};
+    std::vector<std::string> tactile_names;
+    std::vector<std::pair<int, int>> tactile_matrix_size;
 };
 
 struct ActuatorSettings {

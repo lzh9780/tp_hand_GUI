@@ -60,6 +60,10 @@ hand_struct:
     hall_route: [{max: 2000, min: 0}, {max: 2000, min: 0}, {}]
     joint_feedback: [true, true, false]
     joint_feedback_map: [[1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
+  
+tactile_sensor: true
+tactile_names: ["thumb", "index", "middle", "ring", "pinky"]
+tactile_matrix_size: [[1,1], [1,1], [1,1], [1,1], [1,1]]
 
 control_policy: 
   - "zero_torque"

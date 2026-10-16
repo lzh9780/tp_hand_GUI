@@ -43,19 +43,36 @@ ConnectionBar::ConnectionBar(QWidget *parent, std::vector<std::string> models)
     channelIndex_->setToolTip("CAN channel on the selected device.");
     row->addWidget(channelIndex_);
 
-    /* ---- connect + status ---- */
+    /* ---- connect + enable ---- */
     connectBtn_ = new QPushButton("Connect", this);
     connectBtn_->setFixedWidth(110);
     connectBtn_->setEnabled(false); // enabled once a real model is picked
     row->addWidget(connectBtn_);
+
+    // Replaces the removed joint control-mode selection: arming the hand puts
+    // every joint into joint_position, disarming it back into zero_torque.
+    enableBtn_ = new QPushButton("Enable", this);
+    enableBtn_->setFixedWidth(90);
+    enableBtn_->setEnabled(false);
+    enableBtn_->setCheckable(true);
+    enableBtn_->setToolTip("Enable: switch all joints to \"joint_position\".\n"
+                           "Disable: switch all joints to \"zero_torque\".");
+    row->addWidget(enableBtn_);
 
     statusLabel_ = new QLabel("Not connected", this);
     statusLabel_->setMinimumWidth(160);
     row->addWidget(statusLabel_);
     row->addStretch(1);
 
+    /* ---- settings (last item of the row) ---- */
+    auto *settingsBtn = new QPushButton("Settings", this);
+    settingsBtn->setToolTip("Open the settings window (CAN bus, filter, 3D view)");
+    row->addWidget(settingsBtn);
+
     connect(connectBtn_, &QPushButton::clicked, this, &ConnectionBar::onConnect);
+    connect(enableBtn_, &QPushButton::clicked, this, &ConnectionBar::onToggleEnable);
     connect(modelBox_, &QComboBox::currentTextChanged, this, &ConnectionBar::onModelChange);
+    connect(settingsBtn, &QPushButton::clicked, this, &ConnectionBar::settingsRequested);
     connect(deviceIndex_, qOverload<int>(&QSpinBox::valueChanged),
             this, &ConnectionBar::emitDeviceLocation);
     connect(channelIndex_, qOverload<int>(&QSpinBox::valueChanged),
@@ -74,6 +91,20 @@ void ConnectionBar::onConnect()
     connectBtn_->setEnabled(false);
 
     emit deviceConnect(connectBtn_->text());
+}
+
+void ConnectionBar::onToggleEnable()
+{
+    const bool enable = enableBtn_->isChecked();
+    updateEnableButton();
+    emit enableChanged(enable);
+    statusLabel_->setText(enable ? "Enabled (joint_position)" : "Disabled (zero_torque)");
+}
+
+void ConnectionBar::updateEnableButton()
+{
+    const bool on = enableBtn_->isChecked();
+    enableBtn_->setText(on ? "Disable" : "Enable");
 }
 
 void ConnectionBar::onModelChange()
@@ -103,9 +134,32 @@ void ConnectionBar::onChange(bool on)
     deviceIndex_->setEnabled(!on);
     channelIndex_->setEnabled(!on);
 
+    // Arming only makes sense with a live connection.
+    enableBtn_->setEnabled(on);
+    if (!on && enableBtn_->isChecked())
+    {
+        enableBtn_->setChecked(false);
+        updateEnableButton();
+        emit enableChanged(false);
+    }
+
     statusLabel_->setText(on
         ? QString("Connected: %1").arg(modelBox_->currentText())
         : QString("Not connected"));
+}
+
+bool ConnectionBar::isEnabled_() const
+{
+    return enableBtn_->isChecked();
+}
+
+void ConnectionBar::setEnabledState(bool enabled)
+{
+    enableBtn_->blockSignals(true);
+    enableBtn_->setChecked(enabled);
+    enableBtn_->setEnabled(true);
+    updateEnableButton();
+    enableBtn_->blockSignals(false);
 }
 
 QString ConnectionBar::currentModel() const

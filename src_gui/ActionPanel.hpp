@@ -28,15 +28,29 @@ class ActionStore;
  * consumes them so a pose can be captured, ordered and played without leaving
  * the tab.
  *
- *   +---------------------------+----------------------------------------+
- *   | Actions                   | Action Set                               |
- *   | [New][Rename][Delete]     | [flow combo] [Save][Save as][Delete]     |
- *   | ┌───────────────────┐     | [Play] [x]Cycle   Speed 1[-----]5        |
- *   | │ saved poses       │     | ┌──────────────────────────────────┐     |
- *   | │                   │     | │ step 1                           │     |
- *   | └───────────────────┘     | │ step 2                           │     |
- *   | [Add to set ->]           | └──────────────────────────────────┘     |
- *   +---------------------------+----------------------------------------+
+ * The two sections are stacked vertically so both stay readable in the narrow
+ * dock column; the splitter between them can still be dragged.
+ *
+ *   +----------------------------------+
+ *   | Actions                          |
+ *   | [New] [Rename] [Delete]          |
+ *   | +------------------------------+ |
+ *   | | saved pose 1                 | |
+ *   | | saved pose 2                 | |
+ *   | +------------------------------+ |
+ *   | [        Add to set \u2193        ] |
+ *   +----------------------------------+
+ *   | Action Set                       |
+ *   | [ flow combo ------------------ ] |
+ *   | [Save] [Save as] [Delete]        |
+ *   | [Play] [x] Cycle                 |
+ *   | Speed  1 [--------------] 5      |
+ *   | +------------------------------+ |
+ *   | | step 1                       | |
+ *   | | step 2                       | |
+ *   | +------------------------------+ |
+ *   | [  ^  ] [  v  ] [   Remove   ]   |
+ *   +----------------------------------+
  *
  * The panel takes ownership of the ActionStore handed to setStore().
  */

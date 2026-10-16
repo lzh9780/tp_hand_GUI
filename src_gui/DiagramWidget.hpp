@@ -2,162 +2,134 @@
 #pragma once
 
 #include <QWidget>
-#include <QtCharts/QChartView>
-#include <QtCharts/QLineSeries>
-#include <QtCharts/QValueAxis>
-#include <QMap>
-#include <QScrollBar>
-#include <QStringList>
 #include <QVector>
+#include <QPointF>
+#include <QString>
 #include <deque>
-
 #include "grip/data_def.hpp"
 
-QT_CHARTS_USE_NAMESPACE
-
-class QComboBox;
-class QVBoxLayout;
-class QCheckBox;
-class QLabel;
-class QPushButton;
-class QScrollBar;
-
+/**
+ * DiagramWidget (GUI)
+ * -------------------
+ * Live diagram of the joint position, drawn in the same lightweight style as the
+ * tactile plots (TactilePointCloud / TactileForcePlot): a plain QWidget with a
+ * custom paintEvent — dark background, a soft grid, a filled curve and a small
+ * title / readout in the corners. No QtCharts, no QtCharts view, no toolbar.
+ *
+ * It shows exactly one signal: the joint position in radians (UI design note #8).
+ *
+ * Interactions, all performed directly on the diagram:
+ *
+ *   wheel        — zoom in/out: how many samples the visible window holds.
+ *   left/right   — drag to walk through the recorded history; dragging left
+ *     drag         moves towards older samples.
+ *
+ * Freeze lives on the owning PlotPanel, which also renders the shared history.
+ *
+ * The plot carries a labelled X axis (time, in seconds) and a Y axis (joint
+ * position, in radians); the value grid labels are drawn along the left edge.
+ *
+ * Everything else the old widget offered (signal picker, live/start modes,
+ * frequency combo, CSV export, add/close buttons, scrollbars) has been removed.
+ *
+ * The sample history itself lives in the owning PlotPanel, which passes the
+ * shared buffer to renderWindow(); the widget keeps no copy.
+ */
 class DiagramWidget : public QWidget
 {
     Q_OBJECT
 public:
     explicit DiagramWidget(QWidget *parent = nullptr);
 
-    void setMaxPoints(int n) { m_maxPoints_ = n; }
-    void setSamplePeriod(double s) { m_samplePeriodSec_ = s; }
-    void setLiveMode(bool isLive);
+    /* Joint this diagram plots (key as used in HandStateMap's JointGroup). */
+    void setJointName(const QString &module, const QString &joint);
+    QString moduleName() const { return moduleName_; }
+    QString jointName() const { return jointName_; }
 
-    // Called only to build modules / checkboxes from the *latest* hand state
-    void updateSignalListFromHand(const HandStateMap &hand);
+    /* Number of samples the visible window holds (wheel zoom target). */
+    int windowSamples() const { return windowSamples_; }
+    void setWindowSamples(int samples);
 
-    // Render a time window [startIdxDeque .. endIdxDeque] from shared history
-    void renderWindow(const std::deque<HandStateMap> &history,
-                      double samplePeriodSec,
-                      int historyOffsetSamples,  // totalSamples - history.size()
-                      int startIdxDeque,         // inclusive, in deque indices
-                      int endIdxDeque,           // inclusive
-                      double xMin, double xMax); // common x-axis for this panel
+    /* Seconds between two samples, used to label the X axis. */
+    void setSamplePeriod(double seconds) { samplePeriodSec_ = seconds; }
+    /* How many samples have been dropped from the front of the shared buffer, so
+       the X axis can be labelled with absolute time. */
+    void setHistoryOffsetSamples(int dropped) { historyOffsetSamples_ = dropped; }
+
+    /* Freeze / resume the live feed. While frozen the window stays put. */
+    bool isFrozen() const { return frozen_; }
+    void setFrozen(bool frozen);
+
+    /* Offset of the window's right edge from the newest sample, in samples.
+       0 = following live, larger = looking further back. */
+    int historyOffset() const { return historyOffset_; }
+    void setHistoryOffset(int offset);
+
+    /* Oldest offset reachable given the current buffer length. */
+    int maxHistoryOffset() const { return maxHistoryOffset_; }
+
+    /* Scale (pixels per sample) applied by the zoom, for the panel's wheelEvent. */
+    void zoomBy(double factor);
+
+    /* Render the visible window of the shared history.
+       `history` is referenced only for the duration of the call. */
+    void renderWindow(const std::deque<HandStateMap> &history);
+
+    /* Drop the cached samples so the plot renders empty until the next window
+       arrives (used when the recorded history is cleared). */
+    void clearWindow();
+
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 
 signals:
-    void requestClose(DiagramWidget *self);
+    /* Emitted whenever this diagram's own freeze / history / zoom changed, so
+       the owning panel can rebuild just this one window. The sender is passed
+       along because every diagram keeps its own view state. */
+    void viewChanged(DiagramWidget *self);
 
-private slots:
-    void onTypeChanged(int index);
-    void onSignalToggled(bool checked);
-    void onGlobalClicked(bool checked);
-    void onModuleHeaderClicked(bool checked);
-    void onModuleToggleClicked(bool checked);
-    void onResetZoomClicked();
-    void onExportCsvClicked();
+protected:
+    void paintEvent(QPaintEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
-    enum class DiagramType
-    {
-        JointPosition = 0,
-        JointVelocity,
-        MotorPosition,
-        MotorVelocity,
-        MotorCurrent
-    };
+    /* Read this diagram's value out of one history sample. */
+    bool valueAt(const HandStateMap &hand, float &outValue) const;
 
-    struct SignalInfo
-    {
-        QString id;
-        QString moduleName;
-        QString jointName;
-        QString motorName;
-        bool isJoint{true};
+    /* Copy a reference to the shared history for the next paint. */
+    void cacheWindow(const std::deque<HandStateMap> &history);
 
-        QCheckBox *checkBox{nullptr};
-        QLineSeries *series{nullptr};
-    };
+    QString moduleName_;
+    QString jointName_;
 
-    struct ModuleUi
-    {
-        QString name;
-        QCheckBox *headerCheck{nullptr};    // tri-state “select all in module”
-        QPushButton *toggleButton{nullptr}; // show/hide signals
-        QWidget *signalsWidget{nullptr};
-        QVBoxLayout *signalsLayout{nullptr};
-        QStringList signalIds;
-    };
+    /* Default number of visible samples; leaving the frozen state restores it. */
+    static constexpr int kDefaultWindowSamples = 250;
 
-    /* The chart shows the newest window (m_maxPoints_, ~5 s), while the Y range
-       additionally covers this many seconds of older history so the axis stays
-       stable when a peak leaves the visible window. */
-    static constexpr double kRangeLookbackSec = 10.0;
+    /* View state. */
+    int windowSamples_{kDefaultWindowSamples};
+    int historyOffset_{0};   // samples back from the newest
+    int maxHistoryOffset_{0};
+    bool frozen_{false};
 
-    /* Y-axis behaviour: the target range is recomputed every N-th frame only,
-       the visible range then eases towards it (0 = snap, 1 = instant), and the
-       target is padded by this ratio on each side (0.1 => +20 % total). */
-    static constexpr int kRangeRefreshFrames = 10;
-    static constexpr double kRangeEase = 0.25;
-    static constexpr double kRangePadRatio = 0.2;
+    /* Cached samples for the window currently on screen, oldest first. */
+    std::deque<float> window_;
 
-    DiagramType m_type_{DiagramType::JointPosition};
-    bool m_checkboxesDirty_{true};
+    /* Sample period, needed to label the X axis in seconds. */
+    double samplePeriodSec_{0.02};
+    /* Number of samples dropped from the front of the ring buffer so far; index
+       of history[0] in the whole run. Keeps the X axis labels absolute. */
+    int historyOffsetSamples_{0};
+    /* Index (in the whole run) of the first sample currently plotted. */
+    int windowStartSample_{0};
+    /* Sample index (inside the shared buffer) the view is pinned to, so a frozen
+       diagram can tell "no change" from "the user browsed elsewhere". */
+    int frozenEnd_{-1};
 
-    int m_maxPoints_{250};
-    double m_samplePeriodSec_{0.01};
-
-    // UI
-    QComboBox *m_typeCombo_{nullptr};
-    QChart *m_chart_{nullptr};
-    QChartView *m_chartView_{nullptr};
-    QValueAxis *m_axisX_{nullptr};
-    QValueAxis *m_axisY_{nullptr};
-
-    QWidget *m_checksContainer_{nullptr};
-    QVBoxLayout *m_checksLayout_{nullptr};
-    QCheckBox *m_globalCheck_{nullptr};
-    QLabel *m_emptyLabel_{nullptr};
-    QScrollBar *chartHistoryScroll_{nullptr};
-
-    QMap<QString, SignalInfo> m_signals_;
-    QMap<QString, ModuleUi> m_modules_;
-    bool m_updatingFromHeader_{false};
-    bool updateRequest_{false};
-    bool m_isLive_{true};
-
-    /* Y-axis: cached target range + easing state. */
-    double m_yTargetMin_{0.0};
-    double m_yTargetMax_{0.0};
-    bool m_yRangeValid_{false};
-    bool m_rangeDirty_{true};
-    unsigned int m_rangeFrame_{0};
-
-    /* Shared history of the owning PlotPanel. The CSV export dumps all of it,
-       not only the window that happens to be rendered. */
-    const std::deque<HandStateMap> *m_history_{nullptr};
-    double m_historyPeriodSec_{0.01};
-    int m_historyOffsetSamples_{0};
-
-    /* Type the current signal list was built for — the combo box can change
-       before the list is rebuilt on the next incoming sample. */
-    DiagramType m_signalListType_{DiagramType::JointPosition};
-
-    void buildUi();
-    bool isJointType() const;
-    QColor colorForId(const QString &id) const;
-
-    void clearSignalUi();
-    void rebuildSignalList(const HandStateMap &hand);
-
-    void ensureSeries(SignalInfo &sig);
-    bool getValueForSignalAtSample(const SignalInfo &sig,
-                                   const HandStateMap &hand,
-                                   float &outValue) const;
-
-    void updateModuleHeaderState(const QString &moduleName);
-    void updateGlobalHeaderState();
-    void timeRangeChanged(int start);
-
-    /* CSV dump of the whole recorded history (may throw — never call directly
-       from a slot, go through onExportCsvClicked()). */
-    void exportCsv();
+    /* Drag-to-pan state. */
+    bool dragging_{false};
+    int dragStartX_{0};
+    int dragStartOffset_{0};
 };

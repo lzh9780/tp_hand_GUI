@@ -171,18 +171,12 @@ void SettingsWindow::buildModelSection(QVBoxLayout *root)
     form->setContentsMargins(12, 14, 12, 12);
     form->setSpacing(8);
 
-    model3DMode_ = new QComboBox(group);
-    model3DMode_->addItem(tr("Single model"), false);
-    model3DMode_->addItem(tr("Dual model (command + feedback)"), true);
-    model3DMode_->setCurrentIndex(1); // keep the previous behaviour: two models
-    model3DMode_->setToolTip(tr("Dual loads the URDF twice so the commanded and the "
-                                "measured pose can be compared side by side."));
-
     model3DSource_ = new QComboBox(group);
-    model3DSource_->addItem(tr("Feedback data"), true);
     model3DSource_->addItem(tr("Command data"), false);
+    model3DSource_->addItem(tr("Feedback data"), true);
     model3DSource_->setCurrentIndex(0);
-    model3DSource_->setToolTip(tr("Which values drive the model when only one is loaded."));
+    model3DSource_->setToolTip(tr("Which values drive the single model instance: the measured "
+                                  "feedback or the commanded targets."));
 
     viewStyle_ = new QComboBox(group);
     viewStyle_->addItem(tr("Orbit"), QStringLiteral("Orbit"));
@@ -196,13 +190,12 @@ void SettingsWindow::buildModelSection(QVBoxLayout *root)
     showFocalMarker_->setToolTip(tr("Draw a marker on the point the camera orbits around "
                                     "(RViz' focal point). Zoom never moves it."));
 
-    form->addRow(tr("Model count:"), model3DMode_);
-    form->addRow(tr("Single model driven by:"), model3DSource_);
+    form->addRow(tr("Model driven by:"), model3DSource_);
     form->addRow(tr("Navigation:"), viewStyle_);
     form->addRow(QString(), showFocalMarker_);
 
-    auto *hint = new QLabel(tr("Dual: left model follows the commands, right model the feedback. "
-                               "Single: one model only — pick which data drives it.\n"
+    auto *hint = new QLabel(tr("A single model instance is shown; pick whether it follows the "
+                               "measured feedback or the commanded targets.\n"
                                "View: Z is up (ROS/RViz convention). Left drag = orbit / look, "
                                "middle (or shift+left) drag = move the focal point, wheel or "
                                "right drag = zoom, WASD/QE = move, R = reset view."),
@@ -213,17 +206,6 @@ void SettingsWindow::buildModelSection(QVBoxLayout *root)
 
     root->addWidget(group);
     root->addStretch(1);
-
-    connect(model3DMode_, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, &SettingsWindow::onModelModeChanged);
-    onModelModeChanged(model3DMode_->currentIndex());
-}
-
-void SettingsWindow::onModelModeChanged(int index)
-{
-    // The data source only matters when a single model is used.
-    const bool dual = (index == 1);
-    model3DSource_->setEnabled(!dual);
 }
 
 void SettingsWindow::buildSoftwareSection(QVBoxLayout *root)
@@ -358,15 +340,11 @@ void SettingsWindow::onApply()
         emit notify(tr("CAN settings are locked while a device is connected."));
     }
 
-    emit model3DConfigChanged(dualModel(), useFeedbackData());
+    emit model3DConfigChanged(useFeedbackData());
     emit viewStyleChanged(viewStyle());
     emit focalMarkerVisibilityChanged(showFocalMarker());
-    emit notify(tr("3D model: %1%2")
-                    .arg(dualModel() ? tr("dual (command + feedback)")
-                                     : tr("single"))
-                    .arg(dualModel() ? QString()
-                                     : tr(", driven by %1").arg(useFeedbackData() ? tr("feedback data")
-                                                                                  : tr("command data"))));
+    emit notify(tr("3D model: single instance, driven by %1")
+                    .arg(useFeedbackData() ? tr("feedback data") : tr("command data")));
 
     applyFilter();
     emit notify(tr("Filter settings applied: %1, freq=%2 Hz, min cutoff=%3, beta=%4, d cutoff=%5")
@@ -413,11 +391,6 @@ void SettingsWindow::setSoftwareInfo(const QString &configPath, const QStringLis
 bool SettingsWindow::simulationMode() const
 {
     return simulationBox_->isChecked();
-}
-
-bool SettingsWindow::dualModel() const
-{
-    return model3DMode_ && model3DMode_->currentData().toBool();
 }
 
 bool SettingsWindow::useFeedbackData() const

@@ -3,6 +3,7 @@
 #include <QMessageBox>
 #include <QStyleFactory>
 #include "MainWindow.h"
+#include "Theme.hpp"
 #include <csignal>
 #include <exception>
 #include <string>
@@ -19,6 +20,10 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
 
     QApplication::setStyle(QStyleFactory::create("Fusion"));
+
+    // Dark theme + the shared semi-transparent panel styling used by every
+    // floating panel (UI design note #2).
+    app.setStyleSheet(theme::appStyleSheet());
 
     // Optional: set a fixed font to reduce layout differences
     QFont f("Segoe UI");          // or "Noto Sans"

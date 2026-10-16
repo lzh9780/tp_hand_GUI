@@ -31,7 +31,8 @@ find_package(pybind11 CONFIG REQUIRED)
 
 set(QT_REQUIRED_COMPONENTS Widgets)
 find_package(Qt5 COMPONENTS ${QT_REQUIRED_COMPONENTS} REQUIRED)
-find_package(Qt5Charts REQUIRED)
+# Qt5Charts is intentionally NOT required any more: the joint diagrams are plain
+# self-painted widgets (see DiagramWidget), like the tactile plots.
 set(QT_PACKAGE Qt5)
 
 if (BUILD_UDE_GLOVE)
@@ -88,20 +89,26 @@ set(CMAKE_AUTOMOC ON)
 set(GUI_SOURCES
   src_gui/main_gui.cpp
   src_gui/MainWindow.cpp
+  src_gui/MainWidget.cpp
+  src_gui/SideDock.cpp
+  src_gui/DockTabButton.cpp
+  src_gui/LogPanel.cpp
+  src_gui/LogPanel.hpp
+  src_gui/LogLevel.hpp
+  src_gui/Theme.hpp
   src_gui/SidePanel.cpp
   src_gui/ActionStore.cpp
   src_gui/OgreWidget.cpp
   src_gui/UrdfLoader.cpp
-  src_gui/MotorPanel.cpp
   src_gui/ConnectionBar.cpp
   src_gui/SettingsWindow.cpp
   src_gui/CameraWidget.cpp
-  src_gui/DraggableTabBar.cpp
-  src_gui/DraggableTabWidget.cpp
   src_gui/ActionPanel.cpp
   src_gui/DiagramWidget.cpp
   src_gui/PlotPanel.cpp
-  src_gui/TactileVisual.cpp
+  src_gui/TactilePanel.cpp
+  src_gui/TactilePointCloud.cpp
+  src_gui/TactileForcePlot.cpp
   src_gui/LedIndicator.cpp
   src_gui/CameraHandDetect.cpp
   src_gui/TeleOperation.hpp
@@ -134,7 +141,6 @@ target_link_libraries(grip_gui PRIVATE
   ${OGRE_LIBRARIES}
   assimp::assimp
   tinyxml2
-  ${QT_PACKAGE}::Charts
 )
 
 if (BUILD_UDE_GLOVE)

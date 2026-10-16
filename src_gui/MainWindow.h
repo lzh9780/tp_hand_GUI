@@ -8,30 +8,45 @@
 #include "grip/settings.hpp"
 #include "grip/control_interface.hpp"
 #include "ActionStore.hpp"
+#include "LogLevel.hpp"
 
-#include "DraggableTabWidget.hpp"
 #include "OgreWidget.h"
-#include "MotorPanel.hpp"
 #include "PlotPanel.hpp"
-#include "TactileVisual.hpp"
 #include "grip/data_def.hpp"
 
 class SidePanel;
 class ConnectionBar;
 class SettingsWindow;
-class QTextEdit;
+class SideDock;
+class MainWidget;
+class LogPanel;
 class QThread;
 class QString;
 class QWidget;
-class QToolBar;
-class QAction;
 class CameraWidget;
 class ActionPanel;
+class TactilePanel;
 
 Q_DECLARE_METATYPE(QVector<float>)
 
 namespace grip { class ControlInterface; }
 
+/**
+ * MainWindow
+ * ----------
+ * Owns the application state and the widgets; the window layout itself lives in
+ * MainWidget (connection bar on top, 3D model in the middle, panel columns at
+ * the two edges).
+ *
+ * Reference: UI_Design.md
+ *  - no menu bar / tool bar: the only chrome is the single connection row and
+ *    the "Settings" button at its end;
+ *  - the 3D model is the central background, never a dock tab;
+ *  - the right column hosts the plots, the tactile pairs and the log (bus
+ *    telemetry); the left column hosts joint control, tracking and actions;
+ *  - Enable/Disable on the connection bar switches every joint between
+ *    `joint_position` and `zero_torque`, so no per-joint control-mode UI exists.
+ */
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
@@ -40,9 +55,7 @@ public:
     ~MainWindow() override;
 
 private slots:
-    void onUpperTabCloseRequested(int idx);
-    void onSidePanelValuesChanged();   // Follow mode → immediate send
-    void onSidePanelCommitted();       // Setup mode → Execute
+    void onSidePanelValuesChanged();   // slider moved -> send immediately
     void onSidePanelNotify(const QString& msg);
     void onConnectorDeviceConnect(const QString &msg);
     void onConnectionBarCanConfigChanged(int device_index, int channel_index);
@@ -54,42 +67,42 @@ private slots:
     void onFilterChanged(bool enabled, double freq, double min_cutoff,
                          double beta, double d_cutoff);
     void onFilterReset();
-    void onModel3DConfigChanged(bool dual, bool use_feedback);
+    void onModel3DConfigChanged(bool use_feedback);
     void openSettings();
 
+    // Connection-bar Enable/Disable: whole hand <-> joint_position / zero_torque.
+    void onEnableChanged(bool enable);
+
 private:
-    /* 3D model helpers: load single/dual URDF and pick the driving data source. */
+    /* 3D model helpers. The scene holds a single model driven by one data
+       source (command targets or measured feedback). */
     void loadModel3D();
     bool model3DShowsSource(const char *source) const;
-    bool model3DDual() const;
     void readJointAngles();
     void onConnectorModelChange(const QString &model_name);
     void onActionPanelActionUpdate(const QString &msg);
-    void onJointPanelControlModeChange(const QString &module_name, const QString &control_mode);
-    void onJointPanelVelRefModeChange(const QString &module_name, const int vel_ref);
-    void onJointPanelTorqueRefModeChange(const QString &module_name, const int torque_ref);
-    void onSidePanelControlChanged(const QString &name, const QString &mode);
 
 private:
     void buildUI();
-    void buildToolBar();
-    void buildLogPanel();
+    void buildDocks();
+    QWidget *buildLogPanel();
 
-    // Panel shortcuts. Every helper reuses an existing tab instead of
-    // appending a duplicate one (see addOrShowTab).
-    void openCameraTab();
-    void openUrdfLoaderTab();
-    void openMotorControlTab();
-    void openActionPanelTab();
-    void openDiagram();
-    void openTactileImage();
-    void toggleLogPanel();
+    // Panel shortcuts; each brings its dock tab to the front (and restores the
+    // column if it was collapsed).
+    void showCameraPanel();
+    void showPlotPanel();
+    void showTactilePanel();
+    void showLogPanel();
+    // Collapse / restore the two columns, leaving only their tab strips.
+    void toggleLeftDock();
+    void toggleRightDock();
 
     void onDeviceConnect();
     void onDeviceDisconnect();
 
-    void addOrShowTab(QWidget* widget, const QString& title);
+    /* Log helpers: `level` drives the tag and colour written by the LogPanel. */
     void appendLog(const QString& msg);
+    void appendLog(LogLevel level, const QString& msg);
     void setConnectedStatus(bool connected);
 
     std::unordered_map<std::string, float> dofsToJoints(std::string dof_name, float value, bool is_hall);
@@ -112,34 +125,29 @@ private:
     grip::CanDeviceSettings can_cfg_{};
 
     // widgets
-    QWidget* central{nullptr};
+    MainWidget* canvas_{nullptr};
+    SideDock* leftDock_{nullptr};
+    SideDock* rightDock_{nullptr};
+    LogPanel* logPanel_{nullptr};
     SidePanel* side_{nullptr};
-    QTextEdit* log_{nullptr};
-    QWidget* logPanel_{nullptr};
     OgreWidget* ogre_{nullptr};
-    MotorPanel* motor_{nullptr};
     ActionPanel* actionFlow_{nullptr};
+    PlotPanel* plotPanel_{nullptr};
     ConnectionBar* connBar_{nullptr};
-    TactileVisual* tactile_{nullptr};
+    TactilePanel* tactile_{nullptr};
     CameraWidget* camera_{nullptr};
-
-    QToolBar* toolBar_{nullptr};
-    QAction* actModel3D_{nullptr};
-    QAction* actActionSets_{nullptr};
-    QAction* actJointModes_{nullptr};
-    QAction* actDiagram_{nullptr};
-    QAction* actHandDetect_{nullptr};
-    QAction* actTactile_{nullptr};
-    QAction* actSettings_{nullptr};
-    QAction* actLog_{nullptr};
 
     SettingsWindow* settingsWindow_{nullptr};
 
     /* Last applied 3D-model choice, so unrelated "Apply" clicks do not rebuild it. */
-    bool model3DDual_{true};
-    bool model3DUseFeedback_{true};
+    bool model3DUseFeedback_{false};
 
-    DraggableTabWidget* upperTabs{nullptr};
+    /* Edge detector for the bus fault, so it is logged on change only. */
+    bool busFaultActive_{false};
+
+    /* Live feed for the diagram panel: independent of the 10 ms feedback loop so
+       the plots keep sampling at their own rate. */
+    QTimer* plot_timer_{nullptr};
 
     std::string config_path_;
     std::string action_path_;

@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QTimer>
+#include <QImage>
 #include <QVector3D>
 #include <unordered_map>
 #include <memory>
@@ -166,6 +167,10 @@ protected:
     // Qt lifecycle
     void showEvent(QShowEvent *) override;
     void resizeEvent(QResizeEvent *) override;
+    // Blits the frame captured in onFrame() onto this widget. The Ogre surface
+    // is offscreen, so this widget is a normal composited child and the panel
+    // columns can float above it.
+    void paintEvent(QPaintEvent *) override;
 
     // Mouse navigation
     void mousePressEvent(QMouseEvent *) override;
@@ -317,12 +322,28 @@ private:
 private:
     // Ogre
     std::unique_ptr<Ogre::Root> mRoot;
-    Ogre::RenderWindow *mWindow{nullptr};
+    /* Offscreen render target the scene is drawn into. It is a
+       Ogre::RenderTexture, never a window, so it has no on-screen presence: the
+       readback can only contain Ogre's output, not desktop pixels. */
+    Ogre::RenderTarget *mWindow{nullptr};
+    /* 1x1 hidden window that only exists to own the GL context. */
+    Ogre::RenderWindow *mContextWindow{nullptr};
+    Ogre::TexturePtr mRenderTexture;
     Ogre::SceneManager *mScene{nullptr};
     Ogre::Camera *mCamera{nullptr};
     Ogre::Viewport *mViewport{nullptr};
     Ogre::SceneNode *mWorld{nullptr};
     QTimer mTimer;
+    // Frame captured from the offscreen Ogre surface, blitted by paintEvent().
+    // mReadbackBuffer is Ogre's tightly packed (row-pitch == width*3) staging
+    // copy; mFrameImage owns the padded scanlines QImage requires.
+    QImage mFrameImage;
+    std::vector<unsigned char> mReadbackBuffer;
+    bool mFrameDirty{false};
+    // Size the render target / readback buffer to the widget; true if resized.
+    bool ensureReadbackSize();
+    // Copy the rendered target into mFrameImage (flip + pitch correction).
+    void readBackFrame();
     bool mOgreInited{false};
     Ogre::RTShader::ShaderGenerator *mSG{nullptr};
     RtssTechniqueResolver* mRtssListener{nullptr};

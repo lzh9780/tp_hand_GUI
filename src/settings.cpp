@@ -164,6 +164,23 @@ namespace grip
         if (auto p = y["urdf_file"])
             hand.urdf_file = p.as<std::string>();
 
+        if (auto t = y["tactile_sensor"])
+            hand.tactile_sensor = t.as<bool>(hand.tactile_sensor);
+
+        if (auto names = y["tactile_names"])
+        {
+            for (const auto &n : names)
+                hand.tactile_names.push_back(n.as<std::string>());
+        }
+
+        if (auto ms = y["tactile_matrix_size"])
+        {
+            for (const auto &m : ms)
+                hand.tactile_matrix_size.emplace_back(m[0].as<int>(), m[1].as<int>());
+        }
+
+        validate_settings(hand, yaml_path);
+
         throw_errors(errs);
 
         return hand;
@@ -247,6 +264,19 @@ namespace grip
         std::vector<std::string> errs;
         auto add = [&](std::string m)
         { errs.push_back(path + " — " + m); };
+
+        if (s.tactile_sensor)
+        {
+            if (s.tactile_names.empty())
+                add("tactile_sensor enabled but tactile_names is empty");
+            if (s.tactile_matrix_size.size() != s.tactile_names.size())
+                add("tactile_matrix_size size does not match tactile_names size");
+            for (size_t i = 0; i < s.tactile_matrix_size.size(); ++i)
+            {
+                if (s.tactile_matrix_size[i].first <= 0 || s.tactile_matrix_size[i].second <= 0)
+                    add("tactile_matrix_size[" + std::to_string(i) + "] must be positive");
+            }
+        }
 
         throw_errors(errs);
     }

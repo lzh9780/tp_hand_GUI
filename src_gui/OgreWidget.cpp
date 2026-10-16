@@ -5,8 +5,12 @@
 #include <QDebug>
 #include <QResizeEvent>
 #include <QKeyEvent>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QColor>
 
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <cmath>
@@ -33,9 +37,14 @@
 // RTSS (Runtime Shader System) – needed for GL3Plus fixed-function materials
 #include <OgreMaterial.h>
 #include <OgreMaterialManager.h>
+#include <OgreTextureManager.h>
+#include <OgreRenderTexture.h>
+#include <OgreHardwarePixelBuffer.h>
 #include <OgreResourceGroupManager.h>
 #include <OgreRTShaderSystem.h> // RTSS core + listener
 #include <OgreSubEntity.h>
+#include <OgrePixelFormat.h>
+#include <OgreHardwarePixelBuffer.h>
 
 // Assimp for STL/OBJ/DAE
 #include <assimp/Importer.hpp>
@@ -89,9 +98,19 @@ string OgreWidget::resolvePathRelative(const string &baseFile, const string &uri
 // -------------------- ctor/dtor --------------------
 OgreWidget::OgreWidget(QWidget *parent) : QWidget(parent)
 {
-    setAttribute(Qt::WA_PaintOnScreen, true);
+    // NOT WA_PaintOnScreen: the window is created hidden and rendered into an
+    // offscreen buffer that paintEvent() blits onto this widget. A native
+    // paint-on-screen surface would be composited by X11 *above* every sibling
+    // Qt widget, which would make the floating panel columns impossible to draw
+    // on top of the 3D view.
     setAttribute(Qt::WA_NoSystemBackground, true);
-    setUpdatesEnabled(false);
+    // NOT WA_OpaquePaintEvent: the widget must always paint *something*. With the
+    // opaque flag Qt is free to skip the erase/paint of areas that were never
+    // invalidated, which left raw black holes in the window while no frame had
+    // been rendered yet (nothing calls update() before the model is loaded, and
+    // resizes only invalidate the newly exposed strip).
+    setAttribute(Qt::WA_OpaquePaintEvent, false);
+    setUpdatesEnabled(true);
     // The WASD / QE navigation in keyPressEvent() only fires when the widget
     // itself has focus, so it must be able to receive it at all.
     setFocusPolicy(Qt::StrongFocus);
@@ -108,8 +127,13 @@ OgreWidget::OgreWidget(QWidget *parent) : QWidget(parent)
                     mFocalMarkerHideTimer.start(); // still dragging, keep it up
             });
 
+    // Scratch buffer for the offscreen readback: RGB888 matches Ogre's PF_R8G8B8
+    // so copyContentsToMemory() is a straight row-by-row copy.
+    mFrameImage = QImage(std::max(1, width()), std::max(1, height()),
+                         QImage::Format_RGB888);
+
     connect(&mTimer, &QTimer::timeout, this, &OgreWidget::onFrame);
-    ensureOgre();
+    // Ogre is brought up in showEvent(), once the widget has its real size.
 }
 
 void OgreWidget::failOgre(const QString &message)
@@ -230,6 +254,8 @@ void OgreWidget::shutdownOgre()
     mCamera = nullptr;
     mViewport = nullptr;
     mWindow = nullptr;
+    mContextWindow = nullptr;
+    mRenderTexture.setNull();
     mRoot.reset();
 
     mOgreInited = false;
@@ -240,15 +266,25 @@ void OgreWidget::showEvent(QShowEvent *e)
 {
     QWidget::showEvent(e);
     setFocus(Qt::OtherFocusReason);
+    // The render window is created here, not in the constructor: at construction
+    // time the widget still has its provisional size, and a render target created
+    // for that size only ever covered a small rectangle of the final widget.
     ensureOgre();
 }
 void OgreWidget::resizeEvent(QResizeEvent *e)
 {
     QWidget::resizeEvent(e);
-    if (mWindow)
-        mWindow->resize(width(), height());
+
+    // The offscreen target is rebuilt at the new size on the next onFrame(), via
+    // ensureReadbackSize(); a RenderTexture cannot simply be resized here.
     if (mCamera && mViewport)
-        mCamera->setAspectRatio(float(std::max(1, width())) / std::max(1, height()));
+        mCamera->setAspectRatio(float(std::max(1, width())) / float(std::max(1, height())));
+    if (mViewport)
+        mViewport->setDimensions(0.0f, 0.0f, 1.0f, 1.0f);
+
+    // Repaint straight away so the freshly exposed area is not left unpainted
+    // until the next frame tick.
+    update();
 }
 void OgreWidget::onFrame()
 {
@@ -274,8 +310,157 @@ void OgreWidget::onFrame()
     if (mSlew.squaredLength() > 1e-12f)
         updateCamera();
 
-    if (mRoot)
-        mRoot->renderOneFrame();
+    if (!mRoot || !mWindow)
+        return;
+
+    // Keep the render target in sync with the widget every frame. The window is
+    // created while the widget still has its initial size, and some platforms do
+    // not honour a later resizeEvent reliably; without this the frame would be
+    // rendered into a stale sub-rectangle and the rest of the widget showed as
+    // raw black.
+    if (ensureReadbackSize())
+    {
+        if (mViewport)
+            mViewport->setDimensions(0.0f, 0.0f, 1.0f, 1.0f);
+        if (mCamera)
+            mCamera->setAspectRatio(float(mFrameImage.width()) / float(mFrameImage.height()));
+    }
+
+    mRoot->renderOneFrame();
+
+    readBackFrame();
+}
+
+/*
+ * Copy the freshly rendered frame into mFrameImage.
+ *
+ * Two details make this less trivial than a memcpy:
+ *
+ *  1. Row pitch — QImage scanlines are 4-byte aligned, so
+ *     mFrameImage.bytesPerLine() is usually wider than width()*3. Ogre writes
+ *     into a tightly packed PixelBox, so the copy is done row by row with the
+ *     two different pitches. A single contiguous copy would shift every row a
+ *     bit further and smear the image into wrong colours.
+ *
+ *  2. Orientation — copyContentsToMemory() returns the rows in the order the
+ *     QImage expects (top-down), so no vertical flip is applied; see the note
+ *     at the copy loop.
+ */
+void OgreWidget::readBackFrame()
+{
+    if (mFrameImage.isNull() || !mWindow)
+        return;
+
+    const int w = mFrameImage.width();
+    const int h = mFrameImage.height();
+
+    mReadbackBuffer.resize(static_cast<size_t>(w) * static_cast<size_t>(h) * 3u);
+
+    // Ask for exactly the layout QImage uses: PF_BYTE_RGB == R,G,B bytes, which
+    // is QImage::Format_RGB888.
+    //
+    // This must be the *requested* format, not the target's native one. The
+    // offscreen texture is created as PF_BYTE_BGR, and when the destination
+    // PixelBox repeats the target's format Ogre skips the conversion and returns
+    // its internal layout (typically 4 bytes/pixel BGRA on GL). Reading that with
+    // a 3-byte stride shifted every row and swapped the channels — the
+    // upside-down, wrong-coloured image. Naming a different format forces Ogre to
+    // convert into the tightly packed buffer we actually want.
+    Ogre::PixelBox dst(static_cast<size_t>(w), static_cast<size_t>(h),
+                       /*depth=*/1, Ogre::PF_BYTE_RGB, mReadbackBuffer.data());
+    mWindow->copyContentsToMemory(dst, Ogre::RenderTarget::FB_AUTO);
+
+    // Row-by-row copy, honouring QImage's scanline padding (bytesPerLine() is
+    // usually wider than width()*3 because scanlines are 4-byte aligned, while
+    // Ogre writes a tightly packed buffer).
+    //
+    // No vertical flip here: copyContentsToMemory() already hands the rows back in
+    // top-down order for this target. An extra reversal made the whole scene
+    // render upside down.
+    const uchar *src = mReadbackBuffer.data();
+    const int srcPitch = w * 3;
+    for (int y = 0; y < h; ++y)
+    {
+        memcpy(mFrameImage.scanLine(y),
+               src + static_cast<size_t>(y) * srcPitch,
+               static_cast<size_t>(srcPitch));
+    }
+
+    mFrameDirty = true;
+
+    // Repaint this widget (not the whole window) so the blit lands on screen and
+    // the floating panels above it stay untouched.
+    update();
+}
+
+/*
+ * Make sure the offscreen target and the readback buffer match the widget.
+ * Returns true when the size changed in this call.
+ *
+ * A RenderTexture cannot be resized in place: the texture has to be dropped and
+ * recreated at the new size, and the viewport re-attached to the new target.
+ */
+bool OgreWidget::ensureReadbackSize()
+{
+    if (!mWindow || !mRenderTexture)
+        return false;
+
+    const int w = std::max(1, width());
+    const int h = std::max(1, height());
+
+    if (static_cast<int>(mWindow->getWidth()) != w ||
+        static_cast<int>(mWindow->getHeight()) != h)
+    {
+        // Detach the viewport before the target goes away.
+        if (mViewport)
+        {
+            mWindow->removeViewport(mViewport->getZOrder());
+            mViewport = nullptr;
+        }
+
+        Ogre::TextureManager *texMgr = Ogre::TextureManager::getSingletonPtr();
+        texMgr->remove(mRenderTexture->getName());
+        mRenderTexture.setNull();
+        mRenderTexture = texMgr->createManual(
+            "QtOgreTarget", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+            Ogre::TEX_TYPE_2D, static_cast<Ogre::uint>(w),
+            static_cast<Ogre::uint>(h),
+            /*mipmaps=*/0, Ogre::PF_BYTE_BGR, Ogre::TU_RENDERTARGET);
+        mWindow = mRenderTexture->getBuffer()->getRenderTarget();
+
+        if (mCamera)
+        {
+            mViewport = mWindow->addViewport(mCamera);
+            mViewport->setBackgroundColour(Ogre::ColourValue(0.2f, 0.2f, 0.2f));
+            mViewport->setMaterialScheme(
+                Ogre::RTShader::ShaderGenerator::DEFAULT_SCHEME_NAME);
+        }
+    }
+
+    if (mFrameImage.width() == w && mFrameImage.height() == h)
+        return false;
+
+    mFrameImage = QImage(w, h, QImage::Format_RGB888);
+    mFrameDirty = false;
+    return true;
+}
+
+void OgreWidget::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+
+    QPainter p(this);
+    if (mFrameDirty && !mFrameImage.isNull())
+    {
+        // mFrameImage is already in Qt's top-down order, so it is blitted as-is.
+        p.drawImage(rect(), mFrameImage);
+    }
+    else
+    {
+        // Nothing rendered yet (or Ogre failed to start): leave the background
+        // the theme paints, so the panels stay readable over an empty view.
+        p.fillRect(rect(), QColor(45, 48, 54));
+    }
 }
 
 // -------------------- Ogre init --------------------
@@ -285,17 +470,40 @@ void OgreWidget::initOgre()
     mRoot = std::make_unique<Ogre::Root>("", "", "log/ogre.log");
     selectAndInitRenderSystem();
 
-    // Create render window bound to this QWidget
-    Ogre::NameValuePairList params;
-    params["externalWindowHandle"] = Ogre::StringConverter::toString(static_cast<std::uintptr_t>(winId()));
-    mWindow = mRoot->createRenderWindow("QtOgreWindow",
-                                        std::max(1, width()),
-                                        std::max(1, height()),
-                                        false, &params);
+    // A GL context is still required before any GL resource (textures, materials)
+    // can be created, but it must never be a *visible* surface. A hidden render
+    // window is not enough on X11: the driver still maps a real GLX window, and
+    // copyContentsToMemory() then returned whatever the X server had composited
+    // into that screen region — the GUI itself, smeared and mirrored, changing as
+    // the main window moved over it. This 1x1 window only exists to own the
+    // context.
+    {
+        Ogre::NameValuePairList params;
+        params["currentGLContext"] = "false";
+        params["hidden"] = "true";
+        params["border"] = "none";
+        mContextWindow = mRoot->createRenderWindow("QtOgreContext",
+                                                   /*width=*/1, /*height=*/1,
+                                                   /*fullScreen=*/false, &params);
+        mContextWindow->setHidden(true);
+    }
+
+    // The actual drawing target: an offscreen texture. It has no on-screen
+    // representation at all, so the readback can only ever contain Ogre's own
+    // output.
+    mRenderTexture = mRoot->getTextureManager()->createManual(
+        "QtOgreTarget", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+        Ogre::TEX_TYPE_2D,
+        static_cast<Ogre::uint>(std::max(1, width())),
+        static_cast<Ogre::uint>(std::max(1, height())),
+        /*mipmaps=*/0,
+        Ogre::PF_BYTE_BGR,
+        Ogre::TU_RENDERTARGET);
+    mWindow = mRenderTexture->getBuffer()->getRenderTarget();
 
     // Scene + camera. The camera is NOT parented to a node: updateCamera()
     // positions/orients it explicitly in the Z-up world frame, so what the
-    // window shows is exactly the RViz convention.
+    // target shows is exactly the RViz convention.
     mScene = mRoot->createSceneManager(Ogre::ST_GENERIC);
     mCamera = mScene->createCamera("MainCamera");
     mCamera->setNearClipDistance(0.01f);
