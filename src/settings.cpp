@@ -15,6 +15,18 @@ namespace grip
     }
     static auto rt(const YAML::Node &n) { return Timing{n["tseg1"].as<int>(), n["tseg2"].as<int>(), n["sjw"].as<int>(), n["brp"].as<int>()}; }
 
+    static Point3D yaml_point(const YAML::Node &p)
+    {
+        Point3D pt;
+        if (p.IsSequence() && p.size() >= 2)
+        {
+            pt.x = p[0].as<double>(0.0);
+            pt.y = p[1].as<double>(0.0);
+            pt.z = p.size() > 2 ? p[2].as<double>(0.0) : 0.0; // 2D point -> z = 0
+        }
+        return pt;
+    }
+
     AppSettings load_app_settings(const std::string &yaml_path)
     {
         YAML::Node y = YAML::LoadFile(yaml_path);
@@ -167,16 +179,46 @@ namespace grip
         if (auto t = y["tactile_sensor"])
             hand.tactile_sensor = t.as<bool>(hand.tactile_sensor);
 
-        if (auto names = y["tactile_names"])
+        // tactiles: per-sensor config. Each entry may inherit a shared layout
+        // ("tactile_layouts") through the YAML merge anchor "<<: *name"; the
+        // anchor content is resolved here so the struct stays flat.
+        if (auto tactiles = y["tactiles"])
         {
-            for (const auto &n : names)
-                hand.tactile_names.push_back(n.as<std::string>());
-        }
+            for (auto it = tactiles.begin(); it != tactiles.end(); ++it)
+            {
+                TactileConfig cfg;
+                cfg.name = it->first.as<std::string>();
+                // Take the node by value: holding a reference while iterating
+                // its children trips yaml-cpp's node ownership tracking.
+                YAML::Node n = it->second;
 
-        if (auto ms = y["tactile_matrix_size"])
-        {
-            for (const auto &m : ms)
-                hand.tactile_matrix_size.emplace_back(m[0].as<int>(), m[1].as<int>());
+                // Merge-key resolution: explicit keys win, otherwise the value
+                // comes from the referenced layout.
+                auto field = [&n](const char *key) -> YAML::Node
+                {
+                    if (n[key])
+                        return n[key];
+                    if (n["<<"])
+                        return n["<<"][key];
+                    return YAML::Node();
+                };
+
+                if (auto d = field("dimension"))
+                    cfg.coord_dimension = d.as<int>(2); // 2 - 2D, 3 - 3D
+                if (auto pn = field("point_num"))
+                    cfg.point_num = pn.as<int>(cfg.point_num);
+                if (auto coords = field("point_coords"))
+                {
+                    for (const auto &pc : coords)
+                        cfg.point_coord.push_back(yaml_point(pc));
+                }
+                if (auto link = field("related_link"))
+                    cfg.related_link_name = link.as<std::string>();
+                if (auto off = field("link_offset"))
+                    cfg.link_offset = yaml_point(off);
+
+                hand.tactiles.push_back(std::move(cfg));
+            }
         }
 
         validate_settings(hand, yaml_path);
@@ -267,14 +309,19 @@ namespace grip
 
         if (s.tactile_sensor)
         {
-            if (s.tactile_names.empty())
-                add("tactile_sensor enabled but tactile_names is empty");
-            if (s.tactile_matrix_size.size() != s.tactile_names.size())
-                add("tactile_matrix_size size does not match tactile_names size");
-            for (size_t i = 0; i < s.tactile_matrix_size.size(); ++i)
+            if (s.tactiles.empty())
+                add("tactile_sensor enabled but tactiles is empty");
+            for (size_t i = 0; i < s.tactiles.size(); ++i)
             {
-                if (s.tactile_matrix_size[i].first <= 0 || s.tactile_matrix_size[i].second <= 0)
-                    add("tactile_matrix_size[" + std::to_string(i) + "] must be positive");
+                const TactileConfig &tc = s.tactiles[i];
+                if (tc.name.empty())
+                    add("tactile[" + std::to_string(i) + "] missing name");
+                if (tc.coord_dimension != 2 && tc.coord_dimension != 3)
+                    add("tactile[" + std::to_string(i) + "] dimension must be 2 or 3");
+                if (tc.point_num <= 0)
+                    add("tactile[" + std::to_string(i) + "] point_num must be positive");
+                if (tc.point_coord.size() != static_cast<size_t>(tc.point_num))
+                    add("tactile[" + std::to_string(i) + "] point_coord size does not match point_num");
             }
         }
 

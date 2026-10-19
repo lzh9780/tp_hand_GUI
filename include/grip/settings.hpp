@@ -9,6 +9,11 @@ namespace grip {
 
 struct Timing { int tseg1{}, tseg2{}, sjw{}, brp{}; };
 struct TimingPair { Timing arbitration{}, data_phase{}; };
+struct Point3D {
+    double x = 0;
+    double y = 0;
+    double z = 0;
+};
 
 struct CanDeviceSettings {
     uint32_t device_type{33}, device_index{0}, channel_index{0}, core_clock_hz{60000000};
@@ -38,6 +43,15 @@ struct DeviceSettings {
     int software_version{0};
 };
 
+struct TactileConfig {
+    std::string name;
+    int coord_dimension; // 2 - 2D, 3 - 3D
+    std::string related_link_name{};
+    Point3D link_offset{0, 0, 0};
+    int point_num = 0;
+    std::vector<Point3D> point_coord; // 2D: x, y, 0; 3D: x, y, z
+};
+
 struct HandSettings {
     std::unordered_map<std::string, ModuleStruct> structs;
     std::vector<std::string> control_policies;
@@ -45,8 +59,7 @@ struct HandSettings {
     std::string urdf_file;
 
     bool tactile_sensor{false};
-    std::vector<std::string> tactile_names;
-    std::vector<std::pair<int, int>> tactile_matrix_size;
+    std::vector<TactileConfig> tactiles;
 };
 
 struct ActuatorSettings {

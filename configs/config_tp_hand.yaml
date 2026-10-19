@@ -62,8 +62,54 @@ hand_struct:
     joint_feedback_map: [[1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
   
 tactile_sensor: true
-tactile_names: ["thumb", "index", "middle", "ring", "pinky"]
-tactile_matrix_size: [[1,1], [1,1], [1,1], [1,1], [1,1]]
+tactile_layouts:
+  tip_layout: &tip_layout
+    point_num: 1
+    dimension: 2
+    point_coords: [[0, 0]] # right hand, z up
+
+tactiles:
+  thumb_tip: 
+    <<: *tip_layout
+    related_link: "thumb_tip"
+    link_offset: [0, 0, 0]
+  index_tip:
+    <<: *tip_layout
+    related_link: "index_tip"
+    link_offset: [0, 0, 0]
+  middle_tip:
+    <<: *tip_layout
+    related_link: "middle_tip"
+    link_offset: [0, 0, 0]
+  ring_tip:
+    <<: *tip_layout
+    related_link: "ring_tip"
+    link_offset: [0, 0, 0]
+  pinky_tip:
+    <<: *tip_layout
+    related_link: "pinky_tip"
+    link_offset: [0, 0, 0]
+
+# tactile_names: ["thumb_tip", "index_tip", "middle_tip", "ring_tip", "pinky_tip", 
+#                 "thumb_pad", "index_pad", "middle_pad", "ring_pad", "pinky_pad"]
+# tactile_matrix_shape: [[7,7], [7,7], [7,7], [7,7], [7,7], [7,5], [7,5], [7,5], [7,5], [7,4]]
+# tactile_layout:
+#   "*_tip" : [[0, 0, 1, 1, 1, 0, 0],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1]]
+#   "*_pad" : [[1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1],
+#              [1, 1, 1, 1, 1, 1, 1]]
+#   "pinky_pad" : [[1, 1, 1, 1, 1, 1, 1],
+#                  [1, 1, 1, 1, 1, 1, 1],
+#                  [1, 1, 1, 1, 1, 1, 1],
+#                  [1, 1, 1, 1, 1, 1, 1]]
 
 control_policy: 
   - "zero_torque"

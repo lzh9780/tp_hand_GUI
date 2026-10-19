@@ -119,6 +119,8 @@ private:
 
     std::unordered_map<std::string, std::string> joints_inverted_index;
     std::unordered_map<int, std::string> dof_map;
+    /* tactile config sensor name -> HandStateMap module key carrying its data. */
+    std::unordered_map<std::string, std::string> tactileModule_;
 
     // params
     bool withCan = true;

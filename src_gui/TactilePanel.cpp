@@ -47,10 +47,6 @@ TactilePanel::TactilePanel(QWidget *parent)
 
     scroll->setWidget(content);
     root->addWidget(scroll, 1);
-
-    setSensors({QStringLiteral("THUMB"), QStringLiteral("INDEX_FINGER"),
-                QStringLiteral("MIDDLE_FINGER"), QStringLiteral("RING_FINGER"),
-                QStringLiteral("PINKY")});
 }
 
 TactilePanel::SensorRow *TactilePanel::rowFor(const QString &sensor)
@@ -87,21 +83,36 @@ TactilePanel::SensorRow *TactilePanel::rowFor(const QString &sensor)
     cloud->setPressureRange(minPressure_, maxPressure_);
 
     auto *plot = new TactileForcePlot(this);
-    plot->setTitle(label);
+    // plot->setTitle(label);
 
     grid_->addWidget(cloud, gridRow, 0);
     grid_->addWidget(plot, gridRow, 1);
 
-    SensorRow created{cloud, plot};
+    SensorRow created{cloud, plot, QVector<QPointF>()};
     it = rows_.emplace(key, created).first;
     order_.append(sensor);
     return &it->second;
 }
 
-void TactilePanel::setSensors(const QStringList &sensorNames)
+void TactilePanel::setSensors(const QVector<SensorLayout> &sensors)
 {
-    for (const QString &name : sensorNames)
-        rowFor(name);
+    // Rebuild from scratch so a different config never leaves stale rows behind.
+    for (auto &entry : rows_)
+    {
+        grid_->removeWidget(entry.second.cloud);
+        grid_->removeWidget(entry.second.plot);
+        delete entry.second.cloud;
+        delete entry.second.plot;
+    }
+    rows_.clear();
+    order_.clear();
+
+    for (const SensorLayout &sensor : sensors)
+    {
+        SensorRow *row = rowFor(sensor.name);
+        row->points = sensor.points;
+        row->cloud->setPoints(sensor.points);
+    }
 }
 
 void TactilePanel::setPressureRange(float minPressure, float maxPressure)
@@ -118,39 +129,17 @@ void TactilePanel::resetHistory()
         entry.second.plot->clearHistory();
 }
 
-void TactilePanel::setHandPressureData(const HandPressureData &data)
+void TactilePanel::setHandPressureData(const QVector<SensorFrame> &frames)
 {
-    // Pair each sensor key with its matrix. Both halves always receive the same
-    // frame so the cloud and the force trace stay in step.
-    const QVector<QPair<QString, const PressureMatrix *>> frames = {
-        {QStringLiteral("THUMB"), &data.thumb},
-        {QStringLiteral("INDEX_FINGER"), &data.index},
-        {QStringLiteral("MIDDLE_FINGER"), &data.middle},
-        {QStringLiteral("RING_FINGER"), &data.ring},
-        {QStringLiteral("PINKY"), &data.pinky},
-    };
-
-    for (const auto &frame : frames)
+    for (const SensorFrame &frame : frames)
     {
-        const PressureMatrix *matrix = frame.second;
-        if (!matrix || matrix->rows <= 0 || matrix->cols <= 0)
-            continue;
-        if (matrix->values.size() != matrix->rows * matrix->cols)
+        auto it = rows_.find(frame.name.toStdString());
+        if (it == rows_.end())
             continue;
 
-        SensorRow *row = rowFor(frame.first);
-
-        TactilePointCloud::PressureMatrix cloudFrame;
-        cloudFrame.rows = matrix->rows;
-        cloudFrame.cols = matrix->cols;
-        cloudFrame.values = matrix->values;
-        row->cloud->setPressureMatrix(cloudFrame);
-
-        // "Force" for a 1x1 sensor is the single reading; for a matrix it is the
-        // sum of the cells, which is what a load cell behind the pad would see.
-        double total = 0.0;
-        for (float v : matrix->values)
-            total += static_cast<double>(v);
-        row->plot->appendSample(total);
+        // The telemetry carries one scalar per sensor; every configured contact
+        // point of that sensor shows the same reading.
+        it->second.cloud->setPressure(frame.value);
+        it->second.plot->appendSample(frame.value);
     }
 }

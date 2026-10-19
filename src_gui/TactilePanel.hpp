@@ -2,6 +2,7 @@
 
 #include <QFrame>
 #include <QVector>
+#include <QPointF>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -17,47 +18,47 @@ class TactileForcePlot;
  * TactilePanel (GUI)
  * ------------------
  * One row per tactile sensor (UI design note #10): the left cell renders the
- * pressure matrix as a point cloud, the right cell plots the force derived from
- * the same matrix over time.
+ * contact points configured for the sensor as a 2D point cloud, the right cell
+ * plots the pressure reported by the same sensor over time.
  *
  *   +----------------------+----------------------+
- *   | Thumb                | Thumb                |
- *   |  point cloud         |  force plot          |
+ *   | Thumb Tip            | Thumb Tip            |
+ *   |  point cloud (2D)    |  force plot          |
  *   +----------------------+----------------------+
- *   | Index                | Index                |
+ *   | Index Tip            | Index Tip            |
  *   ...
  *
- * Sensors are declared by name so the panel can be built before the first
- * telemetry frame arrives; unknown sensors reported later are appended.
+ * The sensor list and each sensor's 2D contact layout come from the tactile
+ * section of the hand config ("tactiles" -> TactileConfig::point_coord), so
+ * the panel is built from the config instead of a hard-coded finger list.
+ * related_link / link_offset are not used.
  */
 class TactilePanel : public QFrame
 {
     Q_OBJECT
 public:
-    /* Must match TactileVisual::PressureMatrix / HandPressureData. */
-    struct PressureMatrix
+    /* Sensor geometry from the config: name + 2D contact points (z ignored).
+       (0, 0) is rendered at the centre of the point-cloud panel. */
+    struct SensorLayout
     {
-        int rows = 1;
-        int cols = 1;
-        QVector<float> values;
+        QString name;
+        QVector<QPointF> points;
     };
 
-    struct HandPressureData
+    /* One telemetry frame: a scalar pressure reading per configured sensor. */
+    struct SensorFrame
     {
-        PressureMatrix thumb;
-        PressureMatrix index;
-        PressureMatrix middle;
-        PressureMatrix ring;
-        PressureMatrix pinky;
+        QString name;
+        float value = 0.0f;
     };
 
     explicit TactilePanel(QWidget *parent = nullptr);
 
-    /* Declare the sensors shown by the panel, in order. */
-    void setSensors(const QStringList &sensorNames);
-    /* Push one frame; sensors not declared yet are added on the fly. */
-    void setHandPressureData(const HandPressureData &data);
-    /* Raise the full-scale pressure used by the colour / height mapping. */
+    /* (Re)build the sensor rows from the config layouts. */
+    void setSensors(const QVector<SensorLayout> &sensors);
+    /* Push one frame; unknown sensor names are ignored. */
+    void setHandPressureData(const QVector<SensorFrame> &frames);
+    /* Raise the full-scale pressure used by the colour mapping. */
     void setPressureRange(float minPressure, float maxPressure);
     /* Drop every accumulated force history (on connect / disconnect). */
     void resetHistory();
@@ -67,6 +68,7 @@ private:
     {
         TactilePointCloud *cloud{nullptr};
         TactileForcePlot *plot{nullptr};
+        QVector<QPointF> points;
     };
 
     SensorRow *rowFor(const QString &sensor);

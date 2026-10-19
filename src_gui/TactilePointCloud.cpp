@@ -1,40 +1,18 @@
 #include "TactilePointCloud.hpp"
 
 #include <QPainter>
-#include <QPainterPath>
 #include <QPaintEvent>
 #include <QLinearGradient>
-#include <QPolygonF>
 #include <QFont>
 #include <QPen>
 #include <algorithm>
 #include <cmath>
-
-namespace
-{
-/* Isometric projection: grid (col, row) + height -> screen offset. */
-struct Projector
-{
-    QPointF origin;   // screen position of grid cell (0, 0) at height 0
-    double cw{1.0};   // projected width of one column step
-    double ch{0.5};   // projected height of one row step (depth)
-    double zh{1.0};   // projected height of one pressure unit
-
-    QPointF operator()(double col, double row, double z) const
-    {
-        return origin + QPointF((col - row) * cw * 0.5 + 0.0,
-                                (col + row) * ch * 0.5 - z * zh);
-    }
-};
-} // namespace
+#include <limits>
 
 TactilePointCloud::TactilePointCloud(QWidget *parent)
     : QWidget(parent)
 {
     setMinimumSize(140, 140);
-    matrix_.rows = 4;
-    matrix_.cols = 4;
-    matrix_.values = QVector<float>(16, 0.0f);
 }
 
 void TactilePointCloud::setTitle(const QString &title)
@@ -43,13 +21,22 @@ void TactilePointCloud::setTitle(const QString &title)
     update();
 }
 
-void TactilePointCloud::setPressureMatrix(const PressureMatrix &matrix)
+void TactilePointCloud::setPoints(const QVector<QPointF> &points)
 {
-    if (matrix.rows <= 0 || matrix.cols <= 0)
-        return;
-    if (matrix.values.size() != matrix.rows * matrix.cols)
-        return;
-    matrix_ = matrix;
+    points_ = points;
+    update();
+}
+
+void TactilePointCloud::setPressure(float value)
+{
+    value_ = value;
+
+    // Auto-track the full scale: follow the observed peak but never collapse to
+    // zero, and decay slowly so a single spike does not flatten the colours.
+    peak_ = std::max(value_, peak_ * 0.995f);
+    if (peak_ < 1.0f)
+        peak_ = 1.0f;
+
     update();
 }
 
@@ -63,14 +50,6 @@ void TactilePointCloud::setPressureRange(float minPressure, float maxPressure)
 QSize TactilePointCloud::sizeHint() const { return QSize(220, 200); }
 QSize TactilePointCloud::minimumSizeHint() const { return QSize(120, 120); }
 
-float TactilePointCloud::cellValue(int row, int col) const
-{
-    const int index = row * matrix_.cols + col;
-    if (index < 0 || index >= matrix_.values.size())
-        return 0.0f;
-    return matrix_.values[index];
-}
-
 void TactilePointCloud::paintEvent(QPaintEvent *event)
 {
     Q_UNUSED(event);
@@ -80,83 +59,95 @@ void TactilePointCloud::paintEvent(QPaintEvent *event)
     painter.fillRect(rect(), QColor(22, 24, 28));
 
     const QRectF area = QRectF(rect()).adjusted(8, 8, -8, -8);
-    if (area.width() <= 10 || area.height() <= 10 || matrix_.rows <= 0 || matrix_.cols <= 0)
+    if (area.width() <= 10 || area.height() <= 10)
         return;
 
-    // Full-scale height for the projection: use a fixed reference so a light
-    // touch does not look identical to a firm one.
-    const double zMax = std::max<double>(maxPressure_, 1.0);
-    const double gridSpan = std::max(matrix_.rows, matrix_.cols);
+    const QPointF center = area.center();
 
-    Projector proj;
-    proj.cw = area.width() / (gridSpan + 1.0);
-    proj.ch = proj.cw * 0.55;
-    // Reserve a corner of the box for the tallest possible column.
-    proj.zh = std::min(area.height() * 0.55 / zMax, proj.cw * 6.0);
+    // ---- main axis through the origin ----
+    // (0, 0) is the centre of the panel; +x goes right, +y goes up. Only the
+    // main X/Y axes are drawn, no extra grid.
+    painter.setPen(QPen(QColor(90, 98, 110, 150), 1.0));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(QPointF(area.left(), center.y()), QPointF(area.right(), center.y()));
+    painter.drawLine(QPointF(center.x(), area.top()), QPointF(center.x(), area.bottom()));
 
-    const double gridW = (matrix_.cols + matrix_.rows) * proj.cw * 0.5;
-    const double gridH = (matrix_.cols + matrix_.rows) * proj.ch * 0.5;
-    proj.origin = QPointF(area.center().x() - gridW * 0.5 + proj.cw * 0.5,
-                          area.bottom() - (area.height() - gridH - zMax * proj.zh) * 0.5);
+    // ---- pressure matrix ----
+    // Every configured contact point becomes one cell of the matrix; the cell
+    // size is derived from the spacing between neighbouring points, so adjacent
+    // cells of a regular layout touch and read as a grid.
+    const float fullScale = std::max({peak_, maxPressure_, 1.0f});
 
-    // Back-to-front painter's algorithm: sort by (row + col) so nearer cells are
-    // drawn last and correctly occlude the ones behind them.
-    QVector<QPair<int, int>> cells;
-    cells.reserve(matrix_.rows * matrix_.cols);
-    for (int r = 0; r < matrix_.rows; ++r)
-        for (int c = 0; c < matrix_.cols; ++c)
-            cells.append({r, c});
-    std::sort(cells.begin(), cells.end(), [](const QPair<int, int> &a, const QPair<int, int> &b)
-              { return (a.first + a.second) < (b.first + b.second); });
-
-    // Baseline grid so an idle sensor still shows its footprint.
-    painter.setPen(QPen(QColor(90, 98, 110, 120), 1.0));
-    for (int r = 0; r <= matrix_.rows; ++r)
-        painter.drawLine(proj(0, r, 0), proj(matrix_.cols, r, 0));
-    for (int c = 0; c <= matrix_.cols; ++c)
-        painter.drawLine(proj(c, 0, 0), proj(c, matrix_.rows, 0));
-
-    for (const auto &cell : cells)
+    // Smallest coordinate distance between neighbouring points -> cell spacing.
+    double spacing = std::numeric_limits<double>::infinity();
+    for (int i = 0; i < points_.size(); ++i)
     {
-        const int r = cell.first;
-        const int c = cell.second;
-        const float value = cellValue(r, c);
-        const double z = std::clamp<double>(value, 0.0, zMax);
+        for (int j = i + 1; j < points_.size(); ++j)
+        {
+            const double dx = std::fabs(points_[i].x() - points_[j].x());
+            const double dy = std::fabs(points_[i].y() - points_[j].y());
+            const double d = (dx > 1e-6 && dy > 1e-6) ? std::min(dx, dy)
+                           : (dx > 1e-6 ? dx : dy);
+            if (d > 1e-6)
+                spacing = std::min(spacing, d);
+        }
+    }
+    if (!std::isfinite(spacing))
+        spacing = 1.0; // single point / coincident points
 
-        const QPointF base = proj(c, r, z);
-        const QPointF nextCol = proj(c + 1, r, z);
-        const QPointF nextRow = proj(c, r + 1, z);
-        const QPointF diag = proj(c + 1, r + 1, z);
+    // Matrix spread: how many cells the point layout spans along each axis.
+    double spanX = 0.0, spanY = 0.0;
+    if (!points_.isEmpty())
+    {
+        double minX = points_[0].x(), maxX = points_[0].x();
+        double minY = points_[0].y(), maxY = points_[0].y();
+        for (const QPointF &p : points_)
+        {
+            minX = std::min(minX, p.x());
+            maxX = std::max(maxX, p.x());
+            minY = std::min(minY, p.y());
+            maxY = std::max(maxY, p.y());
+        }
+        spanX = maxX - minX;
+        spanY = maxY - minY;
+    }
+    const double gridSpan = std::max({spanX, spanY, 1.0});
+    const double cellPx = std::clamp(
+        std::min(area.width(), area.height()) * 0.30 / gridSpan, 5.0, 28.0);
+    const double scale = cellPx / spacing;
 
-        // Column side (darker) then top face (coloured by pressure) to fake a
-        // shaded 3D extrusion of the cell.
-        QPolygonF side;
-        side << nextCol << diag << proj(c + 1, r + 1, 0);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(pressureToColor(value).darker(180));
-        painter.drawPolygon(side);
-
-        QPolygonF top;
-        top << base << nextCol << diag << nextRow;
-        painter.setBrush(pressureToColor(value));
-        painter.drawPolygon(top);
+    const QColor color = pressureToColor(value_);
+    for (const QPointF &p : points_)
+    {
+        const QPointF c(center.x() + p.x() * scale,
+                        center.y() - p.y() * scale);
+        const QRectF cell(c.x() - cellPx / 2.0, c.y() - cellPx / 2.0,
+                          cellPx, cellPx);
+        // A light outline separates the matrix cells and keeps them visible on
+        // the dark panel; the bright fills also read on lighter backgrounds.
+        painter.setPen(QPen(QColor(255, 255, 255, 235), 1.5));
+        painter.setBrush(color);
+        painter.drawRoundedRect(cell, 2.0, 2.0);
     }
 
-    // Small orientation hint: the sensor name plus a colour scale legend.
-    if (!title_.isEmpty())
-    {
-        painter.setPen(QColor(210, 214, 220));
-        QFont f = painter.font();
-        f.setBold(true);
-        painter.setFont(f);
-        painter.drawText(area.adjusted(2, 0, 0, 0), Qt::AlignTop | Qt::AlignLeft, title_);
-    }
+    // ---- readouts ----
+    painter.setPen(QColor(210, 214, 220));
+    QFont f = painter.font();
+    f.setBold(true);
+    painter.setFont(f);
+    painter.drawText(area.adjusted(2, 0, 0, 0), Qt::AlignTop | Qt::AlignLeft, title_);
 
+    f.setBold(false);
+    painter.setFont(f);
+    painter.setPen(QColor(150, 158, 170));
+    // painter.drawText(area, Qt::AlignTop | Qt::AlignRight,
+    //                  tr("now %1").arg(QString::number(value_, 'f', 1)));
+
+    // Colour legend: 0 .. full scale.
     const QRectF legend(area.left(), area.bottom() - 8, std::min(area.width() * 0.6, 120.0), 8.0);
     QLinearGradient grad(legend.topLeft(), legend.topRight());
     grad.setColorAt(0.0, pressureToColor(minPressure_));
-    grad.setColorAt(0.5, pressureToColor(minPressure_ + (maxPressure_ - minPressure_) * 0.5f));
-    grad.setColorAt(1.0, pressureToColor(maxPressure_));
+    grad.setColorAt(1.0, pressureToColor(fullScale));
     painter.setPen(Qt::NoPen);
     painter.setBrush(grad);
     painter.drawRect(legend);
@@ -168,31 +159,26 @@ void TactilePointCloud::paintEvent(QPaintEvent *event)
 QColor TactilePointCloud::pressureToColor(float value) const
 {
     float t = 0.0f;
-    if (maxPressure_ > minPressure_)
-        t = (value - minPressure_) / (maxPressure_ - minPressure_);
+    const float fullScale = std::max({peak_, maxPressure_, 1.0f});
+    if (fullScale > minPressure_)
+        t = (value - minPressure_) / (fullScale - minPressure_);
     t = std::clamp(t, 0.0f, 1.0f);
 
-    int red = 0, green = 0, blue = 0;
-    if (t < 0.33f)
-    {
-        const float k = t / 0.33f;
-        red = 0;
-        green = static_cast<int>(255.0f * k);
-        blue = 255;
-    }
-    else if (t < 0.66f)
-    {
-        const float k = (t - 0.33f) / 0.33f;
-        red = static_cast<int>(255.0f * k);
-        green = 255;
-        blue = static_cast<int>(255.0f * (1.0f - k));
-    }
-    else
-    {
-        const float k = (t - 0.66f) / 0.34f;
-        red = 255;
-        green = static_cast<int>(255.0f * (1.0f - k));
-        blue = 0;
-    }
-    return QColor(red, green, blue);
+    // Bright, high-luminance stops: the colours stay obvious both on the dark
+    // panel and against any lighter backdrop (no deep navy that sinks into a
+    // dark background, no pure yellow that disappears on white).
+    constexpr float stops[4][4] = {
+        {0.00f, 0.0f, 170.0f, 255.0f},  // vivid cyan-blue
+        {0.35f, 0.0f, 235.0f, 160.0f},  // spring green
+        {0.70f, 255.0f, 220.0f, 40.0f}, // amber
+        {1.00f, 255.0f, 70.0f, 40.0f},  // hot red-orange
+    };
+    int seg = 0;
+    while (seg < 3 && t > stops[seg + 1][0])
+        ++seg;
+    const float k = (t - stops[seg][0]) / (stops[seg + 1][0] - stops[seg][0]);
+    const int r = static_cast<int>(stops[seg][1] + (stops[seg + 1][1] - stops[seg][1]) * k);
+    const int g = static_cast<int>(stops[seg][2] + (stops[seg + 1][2] - stops[seg][2]) * k);
+    const int b = static_cast<int>(stops[seg][3] + (stops[seg + 1][3] - stops[seg][3]) * k);
+    return QColor(r, g, b);
 }

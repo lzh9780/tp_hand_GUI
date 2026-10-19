@@ -120,7 +120,13 @@ void TactileForcePlot::paintEvent(QPaintEvent *event)
     const QString current = history_.empty()
                                 ? QStringLiteral("--")
                                 : QString::number(history_.back(), 'f', 1);
-    const QString peakText = QString::number(peak_, 'f', 1);
+    // The displayed peak is the real maximum of the current window, so with no
+    // data (sim mode / idle) it reads exactly 0 instead of the decaying axis
+    // scale that peak_ keeps for the Y range.
+    const double shownPeak = history_.empty()
+                                 ? 0.0
+                                 : *std::max_element(history_.begin(), history_.end());
+    const QString peakText = QString::number(shownPeak, 'f', 1);
 
     f.setBold(false);
     painter.setFont(f);

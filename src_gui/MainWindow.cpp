@@ -9,10 +9,12 @@
 #include <QTimer>
 #include <QString>
 #include <QStringList>
-#include <QLabel>
 #include <QPushButton>
 #include <QShortcut>
 #include <QKeySequence>
+#include <QLabel>
+#include <QPointF>
+#include <cctype>
 #include <iostream>
 #include "MainWidget.hpp"
 #include "SideDock.hpp"
@@ -92,6 +94,24 @@ void MainWindow::buildUI()
                         snapshot = ctrl_->snapshot();
                 }
                 plotPanel_->feedData(snapshot);
+
+                // The tactile panel consumes the same snapshot: one scalar
+                // reading per configured sensor, taken from its module's tip
+                // telemetry.
+                if (tactile_ && !tactileModule_.empty())
+                {
+                    QVector<TactilePanel::SensorFrame> frames;
+                    frames.reserve(static_cast<int>(tactileModule_.size()));
+                    for (const auto &[sensor, module] : tactileModule_)
+                    {
+                        auto it = snapshot.find(module);
+                        if (it == snapshot.end())
+                            continue;
+                        frames.append({QString::fromStdString(sensor),
+                                       static_cast<float>(it->second.tip_sensor.tip_tactile)});
+                    }
+                    tactile_->setHandPressureData(frames);
+                }
             });
 
     /* ---- signal wiring ---- */
@@ -384,6 +404,38 @@ void MainWindow::onDeviceConnect()
         dev_cfg_ = grip::load_device_settings(config_path_);
         hand_cfg_ = grip::load_hand_settings(config_path_);
 
+        // Build the tactile panel from the tactile config section: one row per
+        // configured sensor, its 2D contact points, and the module whose tip
+        // telemetry feeds it. related_link / link_offset are not used.
+        {
+            QVector<TactilePanel::SensorLayout> layouts;
+            tactileModule_.clear();
+            for (const auto &t : hand_cfg_.tactiles)
+            {
+                TactilePanel::SensorLayout layout;
+                layout.name = QString::fromStdString(t.name);
+                for (const auto &pt : t.point_coord)
+                    layout.points.append(QPointF(pt.x, pt.y));
+                layouts.append(layout);
+
+                // "thumb_tip" -> prefix "thumb" -> module "THUMB".
+                const std::string prefix =
+                    t.name.substr(0, t.name.find('_'));
+                std::string upper = prefix;
+                std::transform(upper.begin(), upper.end(), upper.begin(),
+                               [](unsigned char c) { return std::toupper(c); });
+                for (const auto &kv : hand_cfg_.structs)
+                {
+                    if (kv.first.rfind(upper, 0) == 0)
+                    {
+                        tactileModule_[t.name] = kv.first;
+                        break;
+                    }
+                }
+            }
+            tactile_->setSensors(layouts);
+        }
+
         ctrl_ = new grip::ControlInterface(hand_cfg_, std::chrono::milliseconds(10));
 
         ctrl_->set_filter_enabled(settingsWindow_->filterEnabled());
@@ -461,6 +513,7 @@ void MainWindow::onDeviceDisconnect()
     }
     if (tactile_)
         tactile_->resetHistory();
+    tactileModule_.clear();
 
     if (ctrl_)
     {

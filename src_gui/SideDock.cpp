@@ -21,10 +21,13 @@ SideDock::SideDock(Qt::Edge edge, QWidget *parent)
 
     // Pages are stored in a QTabWidget so it can own them; its own tab bar is
     // hidden because the visible tabs are the rotated buttons built below.
+    // The page widget must stretch across the whole column (dock width minus
+    // the tab strip): with a Fixed policy it would stop at the current page's
+    // sizeHint and leave transparent gaps on both sides of the page.
     tabs_ = new QTabWidget(this);
     tabs_->tabBar()->hide();
     tabs_->setDocumentMode(true);
-    tabs_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    tabs_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     // ---- tab strip (rotated real tabs) ----
     // No fixed width: the strip sizes itself to the widest tab so the titles
