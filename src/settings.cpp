@@ -82,38 +82,40 @@ namespace grip
 
         if (auto n = y["hand_struct"])
         {
-            for (auto m = n.begin(); m != n.end(); ++m)
+            for (const auto& item : n)
             {
                 ModuleStruct ms;
+                std::string key = item["key"].as<std::string>();
+                YAML::Node value = item["value"];
 
                 int counter = 0;
-                for (const auto joint : m->second["joints"])
+                for (const auto joint : value["joints"])
                 {
                     JointInfo j;
                     j.name = joint.as<std::string>();
-                    if (counter >= m->second["route"].size())
+                    if (counter >= value["route"].size())
                         add("Route size does not match joint number");
-                    if (counter >= m->second["hall_route"].size())
+                    if (counter >= value["hall_route"].size())
                         add("Hall route size does not match joint number");
-                    if (counter >= m->second["joint_feedback_map"].size())
+                    if (counter >= value["joint_feedback_map"].size())
                         add("Map size does not match joint number");
-                    if (counter >= m->second["joint_ids"].size())
+                    if (counter >= value["joint_ids"].size())
                         add("number of Ids does not match joint number");
-                    if (counter >= m->second["joint_feedback"].size())
+                    if (counter >= value["joint_feedback"].size())
                         add("number of feedback states does not match joint number");
 
-                    if (auto dof_id = m->second["joint_ids"][counter])
+                    if (auto dof_id = value["joint_ids"][counter])
                         j.id = dof_id.as<int>(j.id);
 
                     if (j.id >= 0) {
-                        if (auto route = m->second["route"][counter])
+                        if (auto route = value["route"][counter])
                         {
                             if (auto min = route["min"])
                                 j.route.first = min.as<float_t>(j.route.first);
                             if (auto max = route["max"])
                                 j.route.second = max.as<float_t>(j.route.second);
                         }
-                        if (auto hall_route = m->second["hall_route"][counter])
+                        if (auto hall_route = value["hall_route"][counter])
                         {
                             if (auto min = hall_route["min"])
                                 j.hall_route.first = min.as<float_t>(j.hall_route.first);
@@ -126,11 +128,11 @@ namespace grip
                             add("Route range error: " + j.name + "\n");
                     }
 
-                    if (auto jf = m->second["joint_feedback"][counter])
+                    if (auto jf = value["joint_feedback"][counter])
                         j.have_joint_feedback = jf.as<bool>(j.have_joint_feedback);
                     if (j.have_joint_feedback)
                     {
-                        if (auto map = m->second["joint_feedback_map"][counter])
+                        if (auto map = value["joint_feedback_map"][counter])
                         {
                             for (auto v : map)
                                 j.joint_feedback_map.push_back(v.as<float>());
@@ -140,16 +142,17 @@ namespace grip
                     // if (j.dof_joint_map.size() != ms.joints.size())
                     //     add("Map size for " + d.name + " dose not match the number of joints\n");
 
-                    ms.push_back(j);
+                    ms.second.push_back(j);
                     counter += 1;
                 }
 
-                if (ms.size() <= 0)
-                    add("No joint info for " + m->first.as<std::string>() + "\n");
+                if (ms.second.size() <= 0)
+                    add("No joint info for " + key + "\n");
 
-                hand.structs[m->first.as<std::string>()] = std::move(ms);
-                if (!valid_device(m->first.as<std::string>()))
-                    add("Invalid module: "+ m->first.as<std::string>() + "\n");
+                ms.first = key;
+                hand.structs.push_back(std::move(ms));
+                if (!valid_device(key))
+                    add("Invalid module: "+ key + "\n");
             }
         }
 

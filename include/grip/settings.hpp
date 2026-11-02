@@ -30,7 +30,7 @@ struct JointInfo {
     std::vector<float> joint_feedback_map{};
 };
 
-using ModuleStruct = std::vector<JointInfo>;
+using ModuleStruct = std::pair<std::string, std::vector<JointInfo>>;
 
 struct AppSettings {
     CanDeviceSettings can_device{};
@@ -53,7 +53,7 @@ struct TactileConfig {
 };
 
 struct HandSettings {
-    std::unordered_map<std::string, ModuleStruct> structs;
+    std::vector<ModuleStruct> structs;
     std::vector<std::string> control_policies;
     std::vector<std::string> wrist_control;
     std::string urdf_file;

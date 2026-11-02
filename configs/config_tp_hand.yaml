@@ -4,62 +4,68 @@ hardware_version: 0
 software_version: 0
 
 hand_struct:
-  WRIST:
-    joints: 
-      # Joint names must match the URDF joint name, otherwise the 3D model will not response. 
-      - pitch
-      - yaw
-    joint_ids: [2, 1] # The id follows the communication protocol. 
-    route: [{max: 80, min: -10}, {max: 15, min: -15}]
-    hall_route: [{max: 3000, min: 0}, {max: 3000, min: 0}]
-    joint_feedback: [true, true]
-    joint_feedback_map: [[1, 0], [0, 1]]
-  PINKY:
-    joints:
-      - pinky_mcp
-      - pinky_pip
-    joint_ids: [8, -1]
-    route: [{max: 90, min: 0}, {}]
-    hall_route: [{max: 2000, min: 0}, {}]
-    joint_feedback: [true, false]
-    joint_feedback_map: [[1, 1.166], [0, 0]]
-  RING_FINGER:
-    joints:
-      - ring_mcp
-      - ring_pip
-    joint_ids: [7, -1]
-    route: [{max: 90, min: 0}, {}]
-    hall_route: [{max: 2000, min: 0}, {}]
-    joint_feedback: [true, false]
-    joint_feedback_map: [[1, 1.166], [0, 0]]
-  MIDDLE_FINGER:
-    joints:
-      - middle_mcp
-      - middle_pip
-    joint_ids: [6, -1]
-    route: [{max: 90, min: 0}, {}]
-    hall_route: [{max: 2000, min: 0}, {}]
-    joint_feedback: [true, false]
-    joint_feedback_map: [[1, 1.166], [0, 0]]
-  INDEX_FINGER:
-    joints:
-      - index_mcp
-      - index_pip
-    joint_ids: [5, -1]
-    route: [{max: 90, min: 0}, {}]
-    hall_route: [{max: 2000, min: 0}, {}]
-    joint_feedback: [true, false]
-    joint_feedback_map: [[1, 1.166], [0, 0]]
-  THUMB:
-    joints:
-      - thumb_rot
-      - thumb_mcp
-      - thumb_dip
-    joint_ids: [4, 3, -1]
-    route: [{max: 80, min: 0}, {max: 60, min: 0}, {}]
-    hall_route: [{max: 2000, min: 0}, {max: 2000, min: 0}, {}]
-    joint_feedback: [true, true, false]
-    joint_feedback_map: [[1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
+  - key: WRIST
+    value: 
+      joints: 
+        # Joint names must match the URDF joint name, otherwise the 3D model will not response. 
+        - pitch
+        - yaw
+      joint_ids: [1, 2] # The id follows the communication protocol. 
+      route: [{max: 80, min: -10}, {max: 15, min: -15}]
+      hall_route: [{max: 3000, min: 0}, {max: 3000, min: 0}]
+      joint_feedback: [true, true]
+      joint_feedback_map: [[1, 0], [0, 1]]
+  - key: THUMB
+    value:
+      joints:
+        - thumb_rot
+        - thumb_mcp
+        - thumb_dip
+      joint_ids: [3, 4, -1]
+      route: [{max: 80, min: 0}, {max: 60, min: 0}, {}]
+      hall_route: [{max: 2000, min: 0}, {max: 2000, min: 0}, {}]
+      joint_feedback: [true, true, false]
+      joint_feedback_map: [[1, 0, 0], [0, 1, 1.33], [0, 0, 0]]
+  - key: INDEX_FINGER
+    value:
+      joints:
+        - index_mcp
+        - index_pip
+      joint_ids: [5, -1]
+      route: [{max: 90, min: 0}, {}]
+      hall_route: [{max: 2000, min: 0}, {}]
+      joint_feedback: [true, false]
+      joint_feedback_map: [[1, 1.166], [0, 0]]
+  - key: MIDDLE_FINGER
+    value:
+      joints:
+        - middle_mcp
+        - middle_pip
+      joint_ids: [6, -1]
+      route: [{max: 90, min: 0}, {}]
+      hall_route: [{max: 2000, min: 0}, {}]
+      joint_feedback: [true, false]
+      joint_feedback_map: [[1, 1.166], [0, 0]]
+  - key: RING_FINGER
+    value:
+      joints:
+        - ring_mcp
+        - ring_pip
+      joint_ids: [7, -1]
+      route: [{max: 90, min: 0}, {}]
+      hall_route: [{max: 2000, min: 0}, {}]
+      joint_feedback: [true, false]
+      joint_feedback_map: [[1, 1.166], [0, 0]]
+  - key: PINKY
+    value:
+      joints:
+        - pinky_mcp
+        - pinky_pip
+      joint_ids: [8, -1]
+      route: [{max: 90, min: 0}, {}]
+      hall_route: [{max: 2000, min: 0}, {}]
+      joint_feedback: [true, false]
+      joint_feedback_map: [[1, 1.166], [0, 0]]
   
 tactile_sensor: true
 tactile_layouts:

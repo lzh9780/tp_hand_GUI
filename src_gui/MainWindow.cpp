@@ -772,31 +772,38 @@ std::unordered_map<std::string, float> MainWindow::dofsToJoints(const std::strin
     auto module_name = joints_inverted_index.find(dof_name);
     if (module_name == joints_inverted_index.end())
         return {};
-    auto module_struct = hand_cfg_.structs.find(module_name->second);
-    if (module_struct == hand_cfg_.structs.end())
-        return {};
-    auto ms = module_struct->second;
-    std::vector<float> map;
-    float joint_rad = value;
-    for (auto &j : ms)
+    for (const auto &ms : hand_cfg_.structs)
     {
-        if (j.name == dof_name)
+        if (ms.first == module_name->second)
         {
-            map = j.joint_feedback_map;
-            if (is_hall)
-                joint_rad = value / (j.hall_route.second - j.hall_route.first) *
-                            (j.route.second - j.route.first) / 180.0 * float(M_PI);
-            break;
+            std::vector<float> map;
+            float joint_rad = value;
+            for (auto &j : ms.second)
+            {
+                if (j.name == dof_name)
+                {
+                    map = j.joint_feedback_map;
+                    if (is_hall)
+                        joint_rad = value / (j.hall_route.second - j.hall_route.first) * 
+                                    (j.route.second - j.route.first) / 180.0 * float(M_PI);
+                    break;
+                }
+            }
+            if (map.size() == 0)
+                return {};
+
+            // float sum = 0;
+            // for (float v : map)
+            //     sum += v;
+
+            std::unordered_map<std::string, float> result;
+            const int count = std::min(map.size(), ms.second.size());
+            for (int counter = 0; counter < count; ++counter)
+                result.emplace(ms.second[counter].name, joint_rad * map[counter]);
+            return result;
         }
     }
-    if (map.size() == 0)
-        return {};
-
-    std::unordered_map<std::string, float> result;
-    const int count = std::min(map.size(), ms.size());
-    for (int counter = 0; counter < count; ++counter)
-        result.emplace(ms[counter].name, joint_rad * map[counter]);
-    return result;
+    return {};
 }
 
 std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string joint_name, float value)
@@ -804,29 +811,33 @@ std::unordered_map<std::string, float> MainWindow::jointsToDofs(std::string join
     auto module_name = joints_inverted_index.find(joint_name);
     if (module_name == joints_inverted_index.end())
         return {};
-    auto module_struct = hand_cfg_.structs.find(module_name->second);
-    if (module_struct == hand_cfg_.structs.end())
-        return {};
-    auto ms = module_struct->second;
-    size_t idx = 0;
-    for (auto j : ms)
+    for (const auto &ms : hand_cfg_.structs)
     {
-        if (j.name == joint_name)
-            break;
-        idx += 1;
+        if (ms.first == module_name->second)
+        {
+            size_t idx = 0;
+            for (auto j : ms.second)
+            {
+                if (j.name == joint_name)
+                    break;
+                idx += 1;
+            }
+            if (idx >= ms.second.size())
+                return {};
+            std::unordered_map<std::string, float> result;
+            for (auto j : ms.second)
+            {
+                if (j.id <= 0)
+                    continue;
+                if (idx >= j.joint_feedback_map.size())
+                    continue;
+                if (j.name != joint_name)
+                    continue;
+                result.emplace(j.name, j.joint_feedback_map[idx] * value);
+            }
+            return result;
+        }
     }
-    if (idx >= ms.size())
-        return {};
-    std::unordered_map<std::string, float> result;
-    for (auto j : ms)
-    {
-        if (j.id <= 0)
-            continue;
-        if (idx >= j.joint_feedback_map.size())
-            continue;
-        if (j.name != joint_name)
-            continue;
-        result.emplace(j.name, j.joint_feedback_map[idx] * value);
-    }
-    return result;
+    return {};
 }
+
